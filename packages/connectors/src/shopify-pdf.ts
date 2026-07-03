@@ -1,8 +1,16 @@
 import { createHash } from 'node:crypto';
-import { createRequire } from 'node:module';
+// Imports pdf-parse's internal lib file directly rather than its package
+// main entry, which has a known top-level side effect (reads a test PDF
+// relative to its own directory when required normally). Must stay a plain
+// static import — not node:module's createRequire — so esbuild can resolve
+// and bundle it for the Vercel deployment; a dynamic createRequire() call
+// with a literal string argument is opaque to static dependency tracers
+// (Vercel's own tracer failed to discover this exact subpath at runtime).
+// @ts-expect-error — no published types for this subpath; cast to PdfParser below.
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 
 type PdfParser = (data: Buffer) => Promise<{ text: string; numpages: number }>;
-const pdf = createRequire(import.meta.url)('pdf-parse/lib/pdf-parse.js') as PdfParser;
+const typedPdf = pdf as PdfParser;
 
 export interface ShopifyPdfItem { description: string; fulfilled: number; total: number; }
 export interface ShopifyOrderEvidence {
@@ -19,7 +27,7 @@ export interface ShopifyPdfEvidence { hash: string; orders: ShopifyOrderEvidence
 const spanishMonths: Record<string, string> = { enero: '01', febrero: '02', marzo: '03', abril: '04', mayo: '05', junio: '06', julio: '07', agosto: '08', septiembre: '09', octubre: '10', noviembre: '11', diciembre: '12' };
 
 export async function extractShopifyOrdersPdf(bytes: Uint8Array): Promise<ShopifyPdfEvidence> {
-  const result = await pdf(Buffer.from(bytes));
+  const result = await typedPdf(Buffer.from(bytes));
   const text = result.text.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ');
   const segments = text.split(/(?=Pedido\s+AI-\d+)/i).filter((segment) => /^Pedido\s+AI-\d+/i.test(segment.trim()));
   const orders = segments.map((segment): ShopifyOrderEvidence => {
