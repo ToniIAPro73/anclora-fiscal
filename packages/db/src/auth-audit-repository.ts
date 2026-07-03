@@ -1,7 +1,7 @@
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { auditEvents } from './schema';
-import * as schema from './schema';
+import { auditEvents } from './schema.js';
+import * as schema from './schema.js';
 
 export class DrizzleAuthAuditRepository<TQueryResult extends PgQueryResultHKT> {
   constructor(private readonly db: PgDatabase<TQueryResult, typeof schema>) {}

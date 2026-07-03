@@ -2,7 +2,7 @@ import { drizzle as drizzlePglite } from 'drizzle-orm/pglite';
 import { drizzle as drizzlePostgres } from 'drizzle-orm/postgres-js';
 import { PGlite } from '@electric-sql/pglite';
 import postgres from 'postgres';
-import * as schema from './schema';
+import * as schema from './schema.js';
 
 export function createRemoteDatabase(url: string) {
   const client = postgres(url, { max: 10, prepare: false });
@@ -14,14 +14,14 @@ export function createOfflineDatabase(path = 'memory://') {
   return { db: drizzlePglite(client, { schema }), client };
 }
 
-export * from './schema';
-export * from './migrations';
-export * from './import-preview-repository';
-export * from './auth-audit-repository';
-export * from './operations-repository';
-export * from './financial-events-repository';
-export * from './reconciliation-repository';
-export * from './issues-repository';
-export * from './fiscal-documents-repository';
-export * from './period-closes-repository';
-export * from './vat-dossiers-repository';
+export * from './schema.js';
+export * from './migrations.js';
+export * from './import-preview-repository.js';
+export * from './auth-audit-repository.js';
+export * from './operations-repository.js';
+export * from './financial-events-repository.js';
+export * from './reconciliation-repository.js';
+export * from './issues-repository.js';
+export * from './fiscal-documents-repository.js';
+export * from './period-closes-repository.js';
+export * from './vat-dossiers-repository.js';

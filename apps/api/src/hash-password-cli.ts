@@ -1,4 +1,4 @@
-import { hashPassword } from './auth-service';
+import { hashPassword } from './auth-service.js';
 
 const chunks: Buffer[] = [];
 for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));

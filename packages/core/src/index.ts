@@ -6,8 +6,8 @@ import { z } from 'zod';
 // Components without dragging Node-only code into webpack's client bundle
 // graph. Node-only modules (storage, invoicing, verifactu, dossier) live
 // behind the `@anclora/core/server` subpath — see `./server.ts`.
-export * from './matching';
-export * from './royalty';
+export * from './matching.js';
+export * from './royalty.js';
 
 export const importStatusSchema = z.enum([
   'PENDING', 'PROCESSING', 'PREVIEW_READY', 'VALIDATED', 'PARTIALLY_IMPORTED', 'FAILED', 'REPROCESSED',

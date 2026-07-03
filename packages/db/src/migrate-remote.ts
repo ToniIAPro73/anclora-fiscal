@@ -1,4 +1,4 @@
-import { migrateRemoteDatabase } from './migrations';
+import { migrateRemoteDatabase } from './migrations.js';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL es obligatoria para migraciones remotas');
 

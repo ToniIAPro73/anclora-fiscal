@@ -21,6 +21,6 @@ export interface SourceConnector {
   getCapabilities(): ConnectorCapabilities;
 }
 
-export * from './shopify-csv';
-export * from './shopify-pdf';
-export * from './kdp-xlsx';
+export * from './shopify-csv.js';
+export * from './shopify-pdf.js';
+export * from './kdp-xlsx.js';

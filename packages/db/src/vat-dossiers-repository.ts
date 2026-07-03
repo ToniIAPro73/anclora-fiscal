@@ -14,8 +14,8 @@ import {
   taxDecisions,
   vatDossiers,
   verifactuSubmissions,
-} from './schema';
-import * as schema from './schema';
+} from './schema.js';
+import * as schema from './schema.js';
 
 export type VatDossier = typeof vatDossiers.$inferSelect;
 

@@ -1,7 +1,7 @@
 import type { StoragePort } from '@anclora/core/server';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { previewImport } from './import-service';
-import type { ImportPreviewPersistencePort } from './import-preview-persistence';
+import { previewImport } from './import-service.js';
+import type { ImportPreviewPersistencePort } from './import-preview-persistence.js';
 
 const ALLOWED_IMPORT_MIME_TYPES = new Set([
   'text/csv',

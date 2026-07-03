@@ -8,8 +8,8 @@ import {
   importFiles,
   importJobs,
   tenants,
-} from './schema';
-import * as schema from './schema';
+} from './schema.js';
+import * as schema from './schema.js';
 
 export interface PersistImportPreviewInput {
   tenantId: string;

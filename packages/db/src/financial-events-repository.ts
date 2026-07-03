@@ -1,8 +1,8 @@
 import { and, count, desc, eq } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { financialEvents } from './schema';
-import * as schema from './schema';
+import { financialEvents } from './schema.js';
+import * as schema from './schema.js';
 
 export interface ListFinancialEventsInput {
   tenantId: string;

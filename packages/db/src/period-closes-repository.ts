@@ -1,8 +1,8 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { auditEvents, canonicalOperations, issues, periodCloses } from './schema';
-import * as schema from './schema';
+import { auditEvents, canonicalOperations, issues, periodCloses } from './schema.js';
+import * as schema from './schema.js';
 
 export type PeriodClose = typeof periodCloses.$inferSelect;
 

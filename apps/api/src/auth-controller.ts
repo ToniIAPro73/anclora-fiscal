@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { AuthService, type AuthSession } from './auth-service';
+import { AuthService, type AuthSession } from './auth-service.js';
 
 export const SESSION_COOKIE = 'anclora_session';
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1).max(256) });

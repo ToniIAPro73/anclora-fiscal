@@ -2,8 +2,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { createIntegrityRecord, InvoiceSequence, issueInvoice, rectifyInvoice, type StoragePort } from '@anclora/core/server';
-import { auditEvents, canonicalOperations, fiscalDocuments, integrityChainRecords, invoiceSeries, taxDecisions } from './schema';
-import * as schema from './schema';
+import { auditEvents, canonicalOperations, fiscalDocuments, integrityChainRecords, invoiceSeries, taxDecisions } from './schema.js';
+import * as schema from './schema.js';
 
 export type FiscalDocument = typeof fiscalDocuments.$inferSelect;
 

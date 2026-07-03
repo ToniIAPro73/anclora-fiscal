@@ -1,5 +1,5 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import type { ImportPreviewResponse } from './import-service';
+import type { ImportPreviewResponse } from './import-service.js';
 
 export interface ImportPreviewRepositoryPort {
   persist(input: {

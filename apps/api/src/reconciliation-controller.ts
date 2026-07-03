@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { parsePagination } from './pagination';
-import type { Paginated } from './pagination';
+import { parsePagination } from './pagination.js';
+import type { Paginated } from './pagination.js';
 
 export interface ReconciliationCandidate {
   id: string;
