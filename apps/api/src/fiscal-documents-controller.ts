@@ -52,7 +52,7 @@ export function createInvoiceIssueHandler(dependencies: {
       storage: dependencies.storage,
     });
 
-    if (!result.ok) {
+    if (isIssueInvoiceError(result)) {
       if (result.reason === 'OPERATION_NOT_FOUND') {
         return reply.code(404).send({ code: 'OPERATION_NOT_FOUND', message: 'La operación no existe' });
       }
@@ -92,7 +92,7 @@ export function createInvoiceRectifyHandler(dependencies: {
       storage: dependencies.storage,
     });
 
-    if (!result.ok) {
+    if (isRectifyInvoiceError(result)) {
       if (result.reason === 'DOCUMENT_NOT_FOUND') {
         return reply.code(404).send({ code: 'DOCUMENT_NOT_FOUND', message: 'El documento fiscal no existe' });
       }
