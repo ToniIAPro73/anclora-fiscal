@@ -9,3 +9,6 @@ storage/*
 .turbo
 .pglite
 MEMORY.md
+test-results
+playwright-report
+playwright/.cache
