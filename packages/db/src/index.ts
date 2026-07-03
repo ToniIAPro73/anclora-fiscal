@@ -15,3 +15,4 @@ export function createOfflineDatabase(path = 'memory://') {
 }
 
 export * from './schema';
+export * from './migrations';
