@@ -1,9 +1,13 @@
 import { z } from 'zod';
-export * from './storage';
+
+// Client-safe entrypoint: only re-export modules with no Node.js built-in
+// dependencies (no `node:*`, `pdf-lib`, `fflate`, or `xlsx`). This keeps
+// `@anclora/core` importable from 'use client' components and Server
+// Components without dragging Node-only code into webpack's client bundle
+// graph. Node-only modules (storage, invoicing, verifactu, dossier) live
+// behind the `@anclora/core/server` subpath — see `./server.ts`.
 export * from './matching';
-export * from './invoicing';
-export * from './verifactu';
-export * from './dossier';
+export * from './royalty';
 
 export const importStatusSchema = z.enum([
   'PENDING', 'PROCESSING', 'PREVIEW_READY', 'VALIDATED', 'PARTIALLY_IMPORTED', 'FAILED', 'REPROCESSED',
