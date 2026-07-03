@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { StatusBadge } from '@anclora/ui';
 import { buildDemoInvoices } from './demo';
 
+const statusLabels: Record<string, string> = { ISSUED: 'Emitida' };
+
 export default async function InvoicingPage() {
   const { original, rectified } = await buildDemoInvoices();
   const documents = [original, rectified];
@@ -17,11 +19,10 @@ export default async function InvoicingPage() {
         <StatusBadge tone={document.type === 'RECTIFYING_INVOICE' ? 'warning' : 'info'}>{document.type === 'RECTIFYING_INVOICE' ? 'Rectificativa' : 'Factura'}</StatusBadge>
         <h2>{document.number}</h2>
         <dl>
-          <div><dt>Estado</dt><dd>{document.status}</dd></div>
+          <div><dt>Estado</dt><dd>{statusLabels[document.status] ?? document.status}</dd></div>
           <div><dt>Base</dt><dd>{document.input.taxBase.toFixed(2)} EUR</dd></div>
           <div><dt>Cuota</dt><dd>{document.input.taxAmount.toFixed(2)} EUR</dd></div>
           <div><dt>Total</dt><dd>{document.input.totalAmount.toFixed(2)} EUR</dd></div>
-          <div><dt>SHA-256</dt><dd>{document.sha256}</dd></div>
         </dl>
         <a href={`/invoicing/pdf?number=${encodeURIComponent(document.number)}`}>Descargar PDF</a>
       </article>)}

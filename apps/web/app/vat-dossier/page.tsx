@@ -2,6 +2,13 @@ import Link from 'next/link';
 import { StatusBadge } from '@anclora/ui';
 import { buildDemoDossier } from './demo';
 
+const fileDescriptions: Record<string, string> = {
+  'facturas.csv': 'Listado de facturas del periodo (CSV)',
+  'facturas.xlsx': 'Listado de facturas del periodo (Excel)',
+  'resumen-iva.pdf': 'Resumen ejecutivo de IVA (PDF)',
+  'estado-verifactu.json': 'Estado de los envíos VERI*FACTU (JSON)',
+};
+
 export default async function VatDossierPage() {
   const dossier = await buildDemoDossier();
 
@@ -15,8 +22,8 @@ export default async function VatDossierPage() {
       <StatusBadge tone="info">{dossier.status}</StatusBadge>
       <h2>Periodo {dossier.period}</h2>
       <table>
-        <thead><tr><th scope="col">Fichero</th><th scope="col">SHA-256</th></tr></thead>
-        <tbody>{Object.entries(dossier.manifest).map(([file, hash]) => <tr key={file}><td>{file}</td><td>{hash}</td></tr>)}</tbody>
+        <thead><tr><th scope="col">Fichero</th><th scope="col">Descripción</th></tr></thead>
+        <tbody>{Object.entries(dossier.manifest).map(([file]) => <tr key={file}><td>{file}</td><td>{fileDescriptions[file] ?? 'Fichero del expediente'}</td></tr>)}</tbody>
       </table>
       <a href="/vat-dossier/zip">Descargar expediente ZIP</a>
     </section>

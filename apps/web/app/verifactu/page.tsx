@@ -3,6 +3,8 @@ import { createIntegrityRecord, MockVerifactuAdapter, verifyIntegrityChain } fro
 import { StatusBadge } from '@anclora/ui';
 import { buildDemoInvoices } from '../invoicing/demo';
 
+const formatShortDate = (iso: string) => new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(iso)).replace('.', '').toUpperCase();
+
 export default async function VerifactuPage() {
   const { original, rectified } = await buildDemoInvoices();
   const enabled = process.env.VERIFACTU_ENABLED === 'true';
@@ -37,8 +39,11 @@ export default async function VerifactuPage() {
       <StatusBadge tone={chainValid ? 'info' : 'blocking'}>{chainValid ? 'Cadena íntegra' : 'Cadena rota'}</StatusBadge>
       <ol className="evidence-thread">
         {records.map((record, index) => <li key={record.hash}>
-          <strong>{record.recordType} · {record.documentNumber}</strong>
-          <p>hash {record.hash.slice(0, 16)}…{record.previousHash ? ` · anterior ${record.previousHash.slice(0, 16)}…` : ' · primer registro'}</p>
+          <time>{formatShortDate(record.createdAt)}</time>
+          <div>
+            <strong>{record.recordType} · {record.documentNumber}</strong>
+            <p>hash {record.hash.slice(0, 16)}…{record.previousHash ? ` · anterior ${record.previousHash.slice(0, 16)}…` : ' · primer registro'}</p>
+          </div>
           <StatusBadge tone={submissions[index]?.status === 'ACCEPTED' ? 'info' : 'warning'}>{submissions[index]?.status}</StatusBadge>
         </li>)}
       </ol>
