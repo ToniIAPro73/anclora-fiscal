@@ -9,7 +9,8 @@
     "start": "node dist/server.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "auth:hash": "bash scripts/hash-password.sh"
   },
   "dependencies": {
     "@anclora/core": "workspace:*",
