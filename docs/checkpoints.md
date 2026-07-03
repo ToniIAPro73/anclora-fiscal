@@ -64,3 +64,31 @@
 - **Riesgo residual:** el parser XLSX sigue dentro del proceso API; antes de
   producción debe aislarse en un worker con límites de memoria/tiempo. La
   autenticación real, persistencia y rutas mutantes permanecen fuera de alcance.
+
+## ✅ CHECKPOINT — REST paginado + mutaciones fiscales auditadas (Plan 1/2 de `docs/completion-action-plan.md`)
+
+- **Completado:**
+  - REST paginado multi-tenant de solo lectura: `GET /api/v1/operations`, `GET /api/v1/financial-events`, `GET /api/v1/reconciliation/candidates`, `GET /api/v1/issues` — todos con `page`/`pageSize` (tope 100), filtros opcionales, y aislamiento de tenant obligatorio en la firma de cada repositorio (`tenantId` siempre desde `request.authSession`, nunca de cabecera/body).
+  - Mutación `PATCH /api/v1/issues/:id` (resolución idempotente, 404 en intento cross-tenant).
+  - Emisión de factura `POST /api/v1/operations/:id/invoices` y rectificación `POST /api/v1/fiscal-documents/:id/rectify`: idempotentes (reintentar devuelve el mismo documento sin duplicar la cadena de integridad), bloqueadas por RBAC (`documents:issue`/`documents:rectify`), con `AuditEvent` en la misma transacción. `verifyIntegrityChain()` confirmado `true` sobre la cadena completa emisión+rectificación.
+  - Cierre/reapertura de período `POST /api/v1/periods/:period/close` y `/reopen`: el cierre se bloquea (409) si existen incidencias `BLOCKING` abiertas en el período, es idempotente, y la reapertura preserva el historial de auditoría previo (nunca lo borra).
+  - Expediente de IVA `POST`/`GET /api/v1/periods/:period/vat-dossier`: solo genera sobre períodos `CLOSED` (409 si no), idempotente salvo `force=true` (limitado a `ADMIN`/`REVIEWER`, verificado server-side contra el rol de sesión, no falseable por query string), `verifyVatDossier()` confirmado `true` sobre el ZIP persistido y releído de storage. La recuperación (`GET`) devuelve `storageKey` en crudo — no existe mecanismo de URL firmada (gap documentado en `docs/security.md`, no corregido en este lote por ser fuera de alcance).
+  - Extensión aditiva del mapa de permisos en `packages/core/src/index.ts` (nuevas claves de lectura/escritura para `FISCAL_OPERATOR`/`REVIEWER`; ninguna clave existente eliminada).
+  - `docs/api.md` y `docs/security.md` actualizados con las rutas reales y el modelo de sesión firmada vigente; sin referencias residuales a la cabecera `x-anclora-role` retirada.
+  - Bug real encontrado y corregido durante el propio lote: las rutas de expediente de IVA quedaron accidentalmente comentadas en `apps/api/src/app.ts` (con el `);` de cierre sin comentar, error de sintaxis) tras una investigación de depuración intermedia — detectado por `pnpm lint`, corregido, y cubierto con un test de regresión en `apps/api/src/app.test.ts`.
+
+- **Archivos creados/modificados (resumen):**
+  - Nuevos: `packages/db/src/{operations,financial-events,reconciliation,issues,fiscal-documents,period-closes,vat-dossiers}-repository.ts` (+ `.test.ts` de cada uno, PGlite), `apps/api/src/{operations,financial-events,reconciliation,issues,fiscal-documents,period-closes,vat-dossier}-controller.ts` (+ `.test.ts`), `apps/api/src/pagination.ts` (+ test).
+  - Modificados: `packages/core/src/index.ts` (+ `test/rbac.test.ts`), `packages/db/src/index.ts`, `apps/api/src/app.ts`, `apps/api/src/server.ts`, `docs/api.md`, `docs/security.md`, `docs/known-limitations.md`, `docs/completion-action-plan.md`.
+
+- **Tests:** `pnpm --filter @anclora/core test` 13/13 · `pnpm --filter @anclora/db test` 34/34 · `pnpm --filter @anclora/api test` 79/79 — 126/126 en total. Lint y typecheck limpios en los tres paquetes.
+
+- **Decisiones registradas:** extensión aditiva de permisos (sin ADR propio, ver diff de `packages/core/src/index.ts`); patrón repository-port + `DrizzleXRepository` + `AuditEvent` en la misma transacción replicado exactamente en las 7 rutas nuevas, siguiendo el precedente de `import-preview-repository.ts`.
+
+- **Riesgos/limitaciones abiertos:**
+  - Sin mecanismo de URL firmada para la descarga del expediente de IVA (`GET` devuelve `storageKey` en crudo) — documentado en `docs/security.md`, no corregido (fuera de alcance de este lote).
+  - Parámetros de query (`status`, `severity`, `eventType`, `accepted`, `period`) se castean con `as` en vez de validarse con Zod en tiempo de ejecución — no explotable hoy (todas las comparaciones van parametrizadas vía Drizzle `eq()`), pero una validación más estricta detectaría entradas malformadas antes.
+  - Duplicación estructural entre los 6 repositorios (patrón `list()`/paginación casi idéntico, inserción de `AuditEvent` repetida en cada mutación) — candidato claro para un helper compartido en una futura limpieza; no es un defecto de corrección.
+  - Las páginas de `apps/web` (Operaciones, Conciliación, Facturación, VERI*FACTU, Expedientes IVA, Configuración) siguen mostrando escenarios de demostración fijos — este lote construye el REST, no reconecta el frontend. Ver plan de seguimiento (`2026-07-03-completion-ui-e2e-closure.md`).
+
+- **Verificación manual:** `pnpm lint && pnpm typecheck && pnpm test` en los tres paquetes afectados, en verde tras la corrección del bug de sintaxis en `app.ts`. Revisión de cumplimiento de especificación (7 puntos), revisión de calidad de código, y revisión de seguridad (aislamiento por tenant, orden RBAC-antes-de-idempotencia, gating de `force=true`) completadas sin hallazgos críticos/altos/medios.

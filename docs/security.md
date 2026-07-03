@@ -13,9 +13,29 @@
 
 ## Modelo de confianza RBAC
 
-`x-anclora-role` es solo un sustituto para desarrollo y tests. El middleware lo
-rechaza cuando `NODE_ENV=production`, incluso si declara `ADMIN`. Producción
-permanece cerrada hasta integrar una identidad y sesión verificadas.
+No existe ningún mecanismo de rol por cabecera. El
+rol, actor y tenant provienen exclusivamente de la sesión firmada
+(`apps/api/src/auth-service.ts`, `apps/api/src/auth-controller.ts`):
+
+- `POST /api/v1/auth/login` valida `email`/`password` contra las identidades
+  configuradas en `AUTH_IDENTITIES_JSON` (scrypt + `timingSafeEqual`) y emite
+  una sesión (`AuthSession`) codificada en base64url dentro de una cookie
+  `anclora_session` firmada por `@fastify/cookie` (`httpOnly`, `SameSite=Strict`,
+  `secure` en producción, expiración máxima de ocho horas).
+- Cada request pasa por un hook `preHandler` global
+  (`registerAuthRoutes`) que decodifica la cookie, valida su firma y su
+  `expiresAt`, y expone `request.authSession` (`null` si no hay sesión válida
+  o ha expirado).
+- `requireRole()` (`apps/api/src/rbac-plugin.ts`) es el único punto donde se
+  aplica autorización por ruta: reutiliza `can()`/`roleSchema` de
+  `@anclora/core` sobre `request.authSession.role`. Sin sesión → `401
+  UNAUTHENTICATED`; sesión con rol insuficiente → `403 FORBIDDEN`.
+- El `tenantId` de cada operación (listados, mutaciones, cierre de período,
+  expediente IVA) se lee siempre de `request.authSession.tenantId`, nunca de
+  query params, body ni cabeceras — no hay forma de que un actor autenticado
+  opere sobre el tenant de otro.
+- `POST /api/v1/auth/logout` audita el cierre (`AuthAuditPort.record`) y
+  limpia la cookie con `reply.clearCookie`.
 
 ## Subidas
 
@@ -31,7 +51,13 @@ paquetes que lo usan. La auditoría queda sin vulnerabilidades conocidas.
 
 ## Riesgos pendientes
 
-No hay aislamiento efectivo por tenant porque DB no está cableada; filesystem
-no cifra en reposo; no existen URLs firmadas; tampoco hay CSRF token específico
-ni rotación de sesión porque no existe login. SSRF no aplica a las rutas actuales:
-ninguna realiza peticiones a URLs aportadas por usuarios.
+El filesystem de `FilesystemStorage` no cifra en reposo. No existen URLs de
+descarga firmadas: `GET /api/v1/periods/:period/vat-dossier` devuelve el
+`storageKey` en crudo porque `StoragePort` no expone todavía un mecanismo de
+firma (ver `docs/api.md`) — cualquier cliente con acceso al `storageKey` y al
+filesystem/almacén subyacente puede leer el expediente sin control adicional
+de expiración o alcance. Tampoco hay CSRF token específico más allá de
+`SameSite=Strict` en la cookie de sesión, ni rotación de sesión (la sesión
+vive hasta su `expiresAt` de ocho horas o hasta el logout explícito). SSRF no
+aplica a las rutas actuales: ninguna realiza peticiones a URLs aportadas por
+usuarios.
