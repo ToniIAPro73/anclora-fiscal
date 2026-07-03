@@ -7,6 +7,19 @@ const nextConfig = {
   typedRoutes: true,
   eslint: { ignoreDuringBuilds: true },
 
+  // @anclora/core (and other transpiled workspace packages) is transpiled
+  // from source here, and its source now writes explicit .js extensions on
+  // relative imports (required by Node's strict ESM resolution for the
+  // Vercel Fastify runtime, which transpiles apps/api/src/*.ts per-file).
+  // Webpack doesn't know a `.js` specifier can resolve to a sibling `.ts`
+  // file unless told to — extensionAlias adds that mapping.
+  webpack: (config) => {
+    config.resolve.extensionAlias = {
+      '.js': ['.ts', '.tsx', '.js'],
+    };
+    return config;
+  },
+
   // Proxies browser calls to /api/* through this same origin so the session
   // cookie set by the API is scoped to the web domain the browser actually
   // visits, instead of the separate anclora-fiscal-api domain (cross-domain
