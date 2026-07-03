@@ -15,9 +15,9 @@
   `TaxRule`/`TaxContext` (ver ADR-010) — las `RoyaltyLine` quedan como
   entidades de importación/clasificación, sin motor fiscal aplicado.
 - Operaciones, Conciliación, Facturación, VERI*FACTU y Expedientes IVA son
-  vistas de demostración sobre casos fijos (AI-1001 / venta KDP) — no hay
-  persistencia (`packages/db` no existe todavía); no reflejan datos reales de
-  tenant.
+  vistas de demostración sobre casos fijos (AI-1001 / venta KDP). El esquema y
+  las migraciones existen en `packages/db`, pero estos flujos todavía no usan
+  repositorios persistentes ni reflejan datos reales de tenant.
 - Las páginas Facturación, VERI*FACTU y Expedientes IVA son Server Components
   que ejecutan lógica de `packages/core` en cada render. La Fase 6 cubre su
   render real mediante Playwright, junto con las otras seis rutas, sin añadir
