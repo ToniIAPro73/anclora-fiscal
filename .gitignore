@@ -3,6 +3,8 @@ node_modules
 dist
 coverage
 .env
+.env.*
+!.env.example
 storage/*
 !storage/.gitkeep
 *.log

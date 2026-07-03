@@ -6,7 +6,6 @@ describe('ImportPreviewPersistenceService', () => {
     const persist = vi.fn().mockResolvedValue({ jobId: 'job-1', duplicate: false });
     const service = new ImportPreviewPersistenceService(
       { persist },
-      'tenant-1',
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
     );
     const preview = {
@@ -18,10 +17,10 @@ describe('ImportPreviewPersistenceService', () => {
       issues: [{ code: 'VAT_ZERO', severity: 'HIGH', message: 'Revisar IVA', row: 2 }],
     };
 
-    await expect(service.persist('clientes-2026.csv', preview)).resolves.toEqual({ jobId: 'job-1', duplicate: false });
+    await expect(service.persist('01977d43-75de-7000-8000-000000000010', 'clientes-2026.csv', preview)).resolves.toEqual({ jobId: 'job-1', duplicate: false });
     const persisted = persist.mock.calls[0]?.[0];
     expect(persisted).toMatchObject({
-      tenantId: 'tenant-1',
+      tenantId: '01977d43-75de-7000-8000-000000000010',
       jobId: 'job-1',
       connectorId: 'shopify-csv',
       importerVersion: 'shopify-csv@0.1.0',

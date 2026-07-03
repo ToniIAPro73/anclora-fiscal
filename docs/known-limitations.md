@@ -1,7 +1,9 @@
 # Limitaciones conocidas
 
-- La Fase 0 no conecta todavía el formulario de acceso a un proveedor de
-  identidad. El modelo RBAC y los límites de autorización ya están definidos.
+- El login usa un directorio de identidades server-only configurado mediante
+  `AUTH_IDENTITIES_JSON`, contraseñas scrypt y cookie firmada. No existe todavía
+  autoservicio de alta, recuperación automática, MFA ni proveedor OIDC/OAuth;
+  Google y GitHub se muestran deshabilitados conforme al contrato transversal.
 - No se ha ejecutado ninguna migración contra la `DATABASE_URL` externa.
 - VERI*FACTU permanece desactivado y no se declara cumplimiento normativo.
 - Los datos mostrados en el centro de control son una vista demostrativa
@@ -35,10 +37,8 @@
 - RBAC (Fase 6): `apps/api/src/rbac-plugin.ts` reutiliza el `can()`/`roleSchema`
   ya implementado y probado en `packages/core` (`packages/core/test/rbac.test.ts`)
   y lo aplica como `preHandler` sobre `POST /api/v1/imports/preview`. No existe
-  todavía sesión/autenticación real (ver nota de Fase 0 más arriba), así que el
-  rol del llamante se lee de la cabecera `x-anclora-role` solo en pruebas y
-  desarrollo. En producción esa cabecera se ignora y la ruta falla cerrada
-  hasta que exista autenticación real. La mayoría de las acciones con puerta RBAC
+  y ahora obtiene rol, actor y tenant de una cookie firmada; la cabecera
+  `x-anclora-role` se ignora en todos los entornos. La mayoría de las acciones con puerta RBAC
   descritas en §8 (emitir/anular/rectificar factura, cierre de periodo) no
   tienen todavía una ruta de API correspondiente — la aplicación de RBAC está
   cableada sobre las rutas que existen hoy; la cobertura completa sobre el
@@ -49,13 +49,17 @@
   estructura con el parser correspondiente antes de persistir el original y
   limita los XLSX KDP a 10.000 filas por hoja durante el parseo. Devuelve 422
   para tipos o estructuras no admitidos. La cookie de sesión
-  registrada vía `@fastify/cookie` fija `sameSite: 'lax'` y `httpOnly: true`.
+  registrada vía `@fastify/cookie` fija `sameSite: 'strict'`, `httpOnly: true`,
+  firma obligatoria, expiración y `secure` en producción.
   El CSP de `@fastify/helmet` se deja en su configuración por defecto
   (`contentSecurityPolicy: true`) — no hay scripts/estilos inline servidos
   por esta API que requieran una política a medida. SSRF no aplica: ninguna
   ruta de `apps/api` realiza peticiones salientes a URLs proporcionadas por
   el usuario; se revisará si en el futuro se añaden webhooks de conectores
   que sí lo hagan.
+- Los textos definitivos de términos y privacidad están pendientes de revisión
+  legal. Las rutas existen para evitar enlaces rotos, pero declaran expresamente
+  que no sustituyen documentos legales publicados.
 - Los escenarios E2E de refund parcial persistido, payout con múltiples
   pedidos, operación sin país enviada a revisión, emisión/rectificación de
   factura, envío/rechazo VERI*FACTU y cierre/reapertura de expediente no se
