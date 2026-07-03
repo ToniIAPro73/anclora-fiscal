@@ -11,6 +11,7 @@ describe('Shopify CSV', () => {
     const preview = previewShopifyCsv(await readFile(resolve(evidence, 'payment_transactions_export_1.csv')));
     expect(new Set(preview.rows.map((row) => row.kind))).toEqual(new Set(['charge', 'refund']));
     expect(preview.issues.filter((issue) => issue.code === 'PLATFORM_VAT_ZERO_UNVALIDATED')).toHaveLength(2);
+    expect(preview.issues).toContainEqual(expect.objectContaining({ code: 'FULL_REFUND_NET_ZERO' }));
     expect(preview.rows[0]?.businessKey).not.toBe(preview.rows[1]?.businessKey);
   });
 });

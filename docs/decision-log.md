@@ -93,3 +93,40 @@
   `TaxRule`/`TaxContext` queda explícitamente fuera de alcance.
 - Consecuencia: ninguna `RoyaltyLine` lleva todavía tipo impositivo calculado;
   documentado como limitación conocida.
+
+## ADR-011 — Remediación de seguridad `xlsx` para parseo de entrada no confiable
+
+- Estado: aceptada
+- Fecha: 2026-07-03
+- Contexto: `packages/connectors/package.json` fijaba `xlsx@0.18.5`, la única
+  versión publicada en el registro público de npm, con vulnerabilidades
+  Prototype Pollution/ReDoS conocidas y sin parche. `packages/connectors/src/kdp-xlsx.ts`
+  usa `xlsx` para parsear **bytes subidos por el usuario, no confiables**
+  (`isKdpXlsxFile`/`previewKdpXlsx`). Se reverificó el registro npm en esta
+  fecha (`npm view xlsx versions --json` / `npm view xlsx`): `0.18.5` sigue
+  siendo la última versión publicada en npm; no existe versión parcheada
+  publicada allí. `packages/core/src/dossier.ts` también importa `xlsx`, pero
+  únicamente para **generar** ficheros XLSX de exportación interna confiable
+  (`XLSX.write`), nunca para parsear bytes externos — perfil de riesgo
+  distinto, fuera de alcance de este ADR.
+- Decisión: en `packages/connectors/package.json` se sustituye el pin de npm
+  `xlsx@0.18.5` por el tarball parcheado alojado en el CDN oficial de SheetJS:
+  `xlsx: "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"`. Se verificó
+  antes de fijarlo que el `package.json` empaquetado en ese tarball no declara
+  ningún script `preinstall`/`install`/`postinstall` (regla dura del proyecto:
+  no añadir dependencias con scripts de postinstall sin preguntar antes —
+  verificado, no aplica aquí). `pnpm install` resuelve y fija el tarball en
+  `pnpm-lock.yaml`; la suite existente (`kdp-xlsx.test.ts` + `shopify.test.ts`,
+  9/9) y `tsc --noEmit` pasan sin cambios de comportamiento. `packages/core/src/dossier.ts`
+  mantiene `xlsx@0.18.5` de npm sin cambios, ya que solo genera ficheros
+  confiables y no parsea entrada externa.
+- Consecuencia: el conector KDP XLSX que procesa subidas de usuarios queda en
+  una build parcheada de SheetJS en lugar de la última versión (vulnerable)
+  publicada en npm. El pin al CDN de SheetJS es una dependencia fuera del
+  registro npm estándar — riesgo residual documentado en
+  `docs/known-limitations.md` (disponibilidad del CDN en `pnpm install`,
+  ausencia de auditoría automática vía `npm audit` para esta dependencia
+  concreta). `packages/core/src/dossier.ts` sigue usando `xlsx@0.18.5` de npm
+  para generación confiable; si en el futuro se detecta que la ruta de
+  generación también procesa datos no confiables, debe revisarse el mismo
+  parche.
