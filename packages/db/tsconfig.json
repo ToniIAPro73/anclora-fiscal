@@ -1,5 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true, "types": ["node"] },
-  "include": ["src", "drizzle.config.ts"]
+  "compilerOptions": { "outDir": "dist", "declaration": true, "types": ["node"] },
+  "include": ["src"],
+  "exclude": ["drizzle.config.ts"]
 }
