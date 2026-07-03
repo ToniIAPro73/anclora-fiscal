@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "pnpm --filter '@anclora/core' --filter '@anclora/db' --filter '@anclora/connectors' build && tsc -p tsconfig.build.json && node ../../scripts/postbuild-dist-extensionless.js dist",
     "start": "node dist/server.js",
-    "lint": "eslint src",
+    "lint": "eslint src api",
     "typecheck": "tsc --noEmit",
     "test": "pnpm --filter '@anclora/core' --filter '@anclora/db' --filter '@anclora/connectors' build && vitest run",
     "auth:hash": "bash scripts/hash-password.sh"
