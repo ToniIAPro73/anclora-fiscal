@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { MetricCard, StatusBadge } from '@anclora/ui';
 import medal from '../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
+import tenantMedal from '../../../packages/ui/assets/brand/anclora-insights-medalla-oro-transparente.png';
 import { LogoutButton } from './logout-button';
 
 const nav = ['Centro de control', 'Importaciones', 'Operaciones', 'Conciliación', 'Facturación', 'VERI*FACTU', 'Motor fiscal', 'Expedientes IVA', 'Configuración'];
@@ -14,7 +15,7 @@ export default function Dashboard() {
         <span>Anclora <em>Fiscal</em></span>
       </div>
       <nav aria-label="Navegación principal">{nav.map((item, index) => <a className={index === 0 ? 'active' : ''} href={routes[index]} key={item}><span>{String(index + 1).padStart(2, '0')}</span>{item}</a>)}</nav>
-      <div className="tenant"><span className="tenant-medal"><Image src={medal} alt="" /></span><div><strong>Anclora Insights</strong><small>Entidad activa · EUR</small></div></div>
+      <div className="tenant"><span className="tenant-medal"><Image src={tenantMedal} alt="" /></span><div><strong>Anclora Insights</strong><small>Entidad activa · EUR</small></div></div>
     </aside>
     <section className="workspace">
       <header className="topbar"><div><span className="eyebrow">Periodo abierto · T3 2026</span><h1>Centro de control</h1></div><div className="topbar-actions"><LogoutButton /><button type="button">Importar evidencias</button></div></header>
