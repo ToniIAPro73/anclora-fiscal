@@ -1,5 +1,18 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "DATABASE_URL",
+    "SESSION_SECRET",
+    "IMPORT_METADATA_SECRET",
+    "AUTH_IDENTITIES_JSON",
+    "APP_ORIGIN",
+    "API_INTERNAL_URL",
+    "NEXT_PUBLIC_API_URL",
+    "VERIFACTU_ENABLED",
+    "VERIFACTU_ENVIRONMENT",
+    "STORAGE_ROOT",
+    "SESSION_COOKIE_DOMAIN"
+  ],
   "tasks": {
     "dev": { "cache": false, "persistent": true },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
