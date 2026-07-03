@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+
+onlyBuiltDependencies:
+  - '@next/swc-linux-x64-gnu'
+  - esbuild
+  - sharp
