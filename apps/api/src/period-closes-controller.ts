@@ -36,13 +36,23 @@ export function createPeriodCloseHandler(dependencies: { repository?: PeriodClos
     const { period } = request.params as { period: string };
     const result = await dependencies.repository.close(tenantId, period, actorId);
 
-    if (!result.ok && result.reason === 'BLOCKING_ISSUES_OPEN') {
-      return reply.code(409).send({ code: 'BLOCKING_ISSUES_OPEN', message: 'Existen incidencias bloqueantes abiertas en el período', issueIds: result.issueIds });
+    if (isClosePeriodError(result)) {
+      if (result.reason === 'BLOCKING_ISSUES_OPEN') {
+        return reply.code(409).send({ code: 'BLOCKING_ISSUES_OPEN', message: 'Existen incidencias bloqueantes abiertas en el período', issueIds: result.issueIds });
+      }
+      return reply.code(500).send({ code: 'PERIOD_CLOSE_FAILED', message: 'No se pudo cerrar el período' });
     }
-    if (!result.ok) return reply.code(500).send({ code: 'PERIOD_CLOSE_FAILED', message: 'No se pudo cerrar el período' });
 
     return reply.code(result.alreadyClosed ? 200 : 201).send(result.periodClose);
   };
+}
+
+function isClosePeriodError(r: ClosePeriodResult): r is { ok: false; reason: 'BLOCKING_ISSUES_OPEN'; issueIds: string[] } {
+  return !r.ok;
+}
+
+function isReopenPeriodError(r: ReopenPeriodResult): r is { ok: false; reason: 'PERIOD_NOT_CLOSED' } {
+  return !r.ok;
 }
 
 export function createPeriodReopenHandler(dependencies: { repository?: PeriodClosesRepositoryPort | undefined }) {
@@ -55,10 +65,12 @@ export function createPeriodReopenHandler(dependencies: { repository?: PeriodClo
     const { period } = request.params as { period: string };
     const result = await dependencies.repository.reopen(tenantId, period, actorId);
 
-    if (!result.ok && result.reason === 'PERIOD_NOT_CLOSED') {
-      return reply.code(409).send({ code: 'PERIOD_NOT_CLOSED', message: 'El período no está cerrado y no puede reabrirse' });
+    if (isReopenPeriodError(result)) {
+      if (result.reason === 'PERIOD_NOT_CLOSED') {
+        return reply.code(409).send({ code: 'PERIOD_NOT_CLOSED', message: 'El período no está cerrado y no puede reabrirse' });
+      }
+      return reply.code(500).send({ code: 'PERIOD_REOPEN_FAILED', message: 'No se pudo reabrir el período' });
     }
-    if (!result.ok) return reply.code(500).send({ code: 'PERIOD_REOPEN_FAILED', message: 'No se pudo reabrir el período' });
 
     return reply.code(200).send(result.periodClose);
   };
