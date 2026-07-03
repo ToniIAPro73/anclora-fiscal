@@ -5,6 +5,10 @@ const API_URL = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL 
 const PUBLIC_ROUTES = ['/auth/login', '/auth/forgot-password', '/auth/register', '/terms', '/privacy'];
 
 export async function middleware(request: NextRequest) {
+  // /api/* is proxied straight through to the API (see next.config.mjs
+  // rewrites) — gating it here would block the login POST itself behind the
+  // very auth check it's meant to satisfy.
+  if (request.nextUrl.pathname.startsWith('/api/')) return NextResponse.next();
   if (PUBLIC_ROUTES.some((route) => request.nextUrl.pathname.startsWith(route))) return NextResponse.next();
   try {
     const response = await fetch(`${API_URL}/api/v1/session`, { headers: { cookie: request.headers.get('cookie') ?? '' }, cache: 'no-store' });
