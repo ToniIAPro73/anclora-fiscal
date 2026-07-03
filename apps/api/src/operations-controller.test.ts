@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Role } from '@anclora/core';
-import { buildApp } from './app';
+import { buildApp } from './build-app';
 import { AuthService } from './auth-service';
 import type { OperationsRepositoryPort } from './operations-controller';
 

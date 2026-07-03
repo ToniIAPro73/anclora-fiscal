@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { buildApp } from './app.js';
+import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller.js';

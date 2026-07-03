@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildApp } from './app';
+import { buildApp } from './build-app';
 import { AuthService } from './auth-service';
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Role } from '@anclora/core';
 import type { StoragePort } from '@anclora/core/server';
-import { buildApp } from './app';
+import { buildApp } from './build-app';
 import { AuthService } from './auth-service';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller';
 
