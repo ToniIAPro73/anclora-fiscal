@@ -52,13 +52,15 @@ export function createInvoiceIssueHandler(dependencies: {
       storage: dependencies.storage,
     });
 
-    if (!result.ok && result.reason === 'OPERATION_NOT_FOUND') {
-      return reply.code(404).send({ code: 'OPERATION_NOT_FOUND', message: 'La operación no existe' });
+    if (!result.ok) {
+      if (result.reason === 'OPERATION_NOT_FOUND') {
+        return reply.code(404).send({ code: 'OPERATION_NOT_FOUND', message: 'La operación no existe' });
+      }
+      if (result.reason === 'TAX_DECISION_MISSING') {
+        return reply.code(422).send({ code: 'TAX_DECISION_MISSING', message: 'La operación no tiene una decisión fiscal registrada' });
+      }
+      return reply.code(500).send({ code: 'INVOICE_ISSUE_FAILED', message: 'No se pudo emitir la factura' });
     }
-    if (!result.ok && result.reason === 'TAX_DECISION_MISSING') {
-      return reply.code(422).send({ code: 'TAX_DECISION_MISSING', message: 'La operación no tiene una decisión fiscal registrada' });
-    }
-    if (!result.ok) return reply.code(500).send({ code: 'INVOICE_ISSUE_FAILED', message: 'No se pudo emitir la factura' });
 
     return reply.code(result.alreadyIssued ? 200 : 201).send(result.document);
   };
@@ -82,13 +84,15 @@ export function createInvoiceRectifyHandler(dependencies: {
       storage: dependencies.storage,
     });
 
-    if (!result.ok && result.reason === 'DOCUMENT_NOT_FOUND') {
-      return reply.code(404).send({ code: 'DOCUMENT_NOT_FOUND', message: 'El documento fiscal no existe' });
+    if (!result.ok) {
+      if (result.reason === 'DOCUMENT_NOT_FOUND') {
+        return reply.code(404).send({ code: 'DOCUMENT_NOT_FOUND', message: 'El documento fiscal no existe' });
+      }
+      if (result.reason === 'INVALID_DOCUMENT_STATE') {
+        return reply.code(409).send({ code: 'INVALID_DOCUMENT_STATE', message: 'El documento no puede rectificarse en su estado actual' });
+      }
+      return reply.code(500).send({ code: 'INVOICE_RECTIFY_FAILED', message: 'No se pudo rectificar la factura' });
     }
-    if (!result.ok && result.reason === 'INVALID_DOCUMENT_STATE') {
-      return reply.code(409).send({ code: 'INVALID_DOCUMENT_STATE', message: 'El documento no puede rectificarse en su estado actual' });
-    }
-    if (!result.ok) return reply.code(500).send({ code: 'INVOICE_RECTIFY_FAILED', message: 'No se pudo rectificar la factura' });
 
     return reply.code(result.alreadyRectified ? 200 : 201).send(result.document);
   };
