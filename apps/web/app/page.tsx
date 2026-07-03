@@ -3,6 +3,7 @@ import { MetricCard, StatusBadge } from '@anclora/ui';
 import medal from '../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
 
 const nav = ['Centro de control', 'Importaciones', 'Operaciones', 'Conciliación', 'Facturación', 'VERI*FACTU', 'Motor fiscal', 'Expedientes IVA', 'Configuración'];
+const routes = ['/', '/imports', '/operations', '/reconciliation', '/invoicing', '/verifactu', '/tax-engine', '/vat-dossier', '/settings'];
 
 export default function Dashboard() {
   return <main className="app-shell">
@@ -11,7 +12,7 @@ export default function Dashboard() {
         <span className="brand-medal"><Image src={medal} alt="" priority /></span>
         <span>Anclora <em>Fiscal</em></span>
       </div>
-      <nav aria-label="Navegación principal">{nav.map((item, index) => <a className={index === 0 ? 'active' : ''} href={index === 1 ? '/imports' : `#${index}`} key={item}><span>{String(index + 1).padStart(2, '0')}</span>{item}</a>)}</nav>
+      <nav aria-label="Navegación principal">{nav.map((item, index) => <a className={index === 0 ? 'active' : ''} href={routes[index]} key={item}><span>{String(index + 1).padStart(2, '0')}</span>{item}</a>)}</nav>
       <div className="tenant"><span className="tenant-medal"><Image src={medal} alt="" /></span><div><strong>Anclora Insights</strong><small>Entidad activa · EUR</small></div></div>
     </aside>
     <section className="workspace">

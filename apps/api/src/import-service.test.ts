@@ -1,7 +1,7 @@
 import { readFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { FilesystemStorage } from '@anclora/core';
+import { FilesystemStorage } from '@anclora/core/server';
 import { previewImport } from './import-service';
 
 const root = resolve(import.meta.dirname, '../../../.tmp-import-test');
@@ -15,5 +15,14 @@ describe('previewImport', () => {
     expect(result.summary).toMatchObject({ records: 2, orderIds: ['AI-1001'] });
     expect(result.evidence.sha256).toHaveLength(64);
     expect(JSON.stringify(result)).not.toContain('@');
+  });
+
+  it('detecta el XLSX de KDP por hoja conocida y devuelve la venta de 4 unidades pendiente de revisión KENP', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/kdp-orders-anonymized.xlsx'));
+    const result = await previewImport({ tenantId: 'test', filename: 'KDP_Orders.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes, storage: new FilesystemStorage(root) });
+    expect(result.status).toBe('PREVIEW_READY');
+    expect(result.connector).toBe('kdp-xlsx');
+    expect(result.summary.orderIds).toContain('9798184523026');
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: 'KENP_PENDING_REVIEW' }));
   });
 });

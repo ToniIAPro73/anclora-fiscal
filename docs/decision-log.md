@@ -49,3 +49,47 @@
   incidencias; nunca texto PDF, nombres, direcciones o correos.
 - Consecuencia: el detalle personal solo se consulta bajo autorización desde
   la evidencia custodiada.
+
+## ADR-007 — Nombres de hoja KDP por coincidencia recortada (`trim`)
+
+- Estado: aceptada
+- Fecha: 2026-07-03
+- Decisión: el conector KDP XLSX busca hojas por nombre normalizado con
+  `trim()` en lugar de coincidencia exacta de bytes, porque el fichero real de
+  Amazon incluye una hoja con espacio final (`"Regalías de los libros de
+  tapa "`).
+- Consecuencia: ningún punto de llamada codifica la secuencia exacta de bytes
+  del nombre; toda búsqueda pasa por `normalizeSheetName`/`buildSheetLookup`.
+
+## ADR-008 — Tolerancia de coherencia Resumen/detalle: ±0,01 € o ±1%
+
+- Estado: aceptada
+- Fecha: 2026-07-03
+- Decisión: la especificación no fija una tolerancia exacta para comparar la
+  hoja `Resumen` contra la suma del detalle por mes; se adopta ±0,01 € o ±1%
+  del valor del resumen, lo que sea mayor.
+- Consecuencia: el desajuste (`SUMMARY_DETAIL_MISMATCH`) es siempre `WARNING`,
+  nunca bloquea el import; revisar si aparecen falsos positivos con datos
+  reales de producción.
+
+## ADR-009 — Regalías KDP como `RoyaltyStatement`/`RoyaltyLine`, no `CanonicalOperation`
+
+- Estado: aceptada
+- Fecha: 2026-07-03
+- Decisión: Amazon es el comerciante registrado en las ventas KDP al lector
+  final (principio #7), así que las filas de regalías se modelan como nuevas
+  entidades `RoyaltyStatement`/`RoyaltyLine` en `packages/core`, no como
+  facturas `CanonicalOperation` emitidas al lector.
+- Consecuencia: el motor fiscal y de facturación existentes no se reutilizan
+  todavía para KDP; la integración fiscal completa queda para una fase
+  posterior (ver ADR-010).
+
+## ADR-010 — Motor fiscal (TaxRule/TaxContext) para KDP diferido
+
+- Estado: aceptada
+- Fecha: 2026-07-03
+- Decisión: el criterio "hecho cuando" de la Fase 5 solo exige importar,
+  clasificar y marcar KENP como `PENDING_TAX_REVIEW`; el cableado completo con
+  `TaxRule`/`TaxContext` queda explícitamente fuera de alcance.
+- Consecuencia: ninguna `RoyaltyLine` lleva todavía tipo impositivo calculado;
+  documentado como limitación conocida.
