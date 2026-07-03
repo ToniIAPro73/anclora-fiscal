@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import Link from 'next/link';
 import { MetricCard, StatusBadge } from '@anclora/ui';
 import medal from '../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
 import tenantMedal from '../../../packages/ui/assets/brand/anclora-insights-medalla-oro-transparente.png';
@@ -22,8 +23,8 @@ export default function Dashboard() {
       <section className="attention" aria-labelledby="attention-title">
         <div><span className="section-index">01 / ATENCIÓN</span><h2 id="attention-title">Lo que requiere una decisión</h2><p>Cada alerta conserva evidencia, cálculo y responsable.</p></div>
         <div className="attention-list">
-          <article><StatusBadge tone="blocking">Bloqueante</StatusBadge><div><strong>1 operación sin país fiscal</strong><p>La regla fiscal no puede determinarse sin evidencia suficiente.</p></div><span>Revisar →</span></article>
-          <article><StatusBadge tone="high">Alta</StatusBadge><div><strong>Refund AI-1001 pendiente</strong><p>Neto cero; requiere evaluar documento rectificativo.</p></div><span>Revisar →</span></article>
+          <article><StatusBadge tone="blocking">Bloqueante</StatusBadge><div><strong>1 operación sin país fiscal</strong><p>La regla fiscal no puede determinarse sin evidencia suficiente.</p></div><Link href="/operations">Revisar →</Link></article>
+          <article><StatusBadge tone="high">Alta</StatusBadge><div><strong>Refund AI-1001 pendiente</strong><p>Neto cero; requiere evaluar documento rectificativo.</p></div><Link href="/invoicing">Revisar →</Link></article>
         </div>
       </section>
       <section className="metrics" aria-label="Resumen operativo">

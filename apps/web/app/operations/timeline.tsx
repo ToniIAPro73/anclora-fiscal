@@ -26,16 +26,27 @@ export function OperationsTimeline() {
       </dl>
     </div>
     <ol className="evidence-thread">
-      <li><strong>Pedido comercial importado</strong><p>AI-1001 · checkout {order.checkoutId}</p><StatusBadge tone="info">Evidencia original</StatusBadge></li>
+      <li>
+        <time>PEDIDO</time>
+        <div><strong>Pedido comercial importado</strong><p>AI-1001 · checkout {order.checkoutId}</p></div>
+        <StatusBadge tone="info">Evidencia original</StatusBadge>
+      </li>
       {events.map((event) => {
         const match = draft.matches.find((candidate) => candidate.eventId === event.id);
         return <li key={event.id}>
-          <strong>{event.type === 'charge' ? 'Cobro enlazado al pedido' : 'Reembolso registrado'}</strong>
-          <p>{event.amount.toFixed(2)} EUR{match ? ` · confianza ${(match.confidence * 100).toFixed(0)} %` : ' · sin coincidencia'}</p>
+          <time>{event.type === 'charge' ? 'COBRO' : 'REEMB.'}</time>
+          <div>
+            <strong>{event.type === 'charge' ? 'Cobro enlazado al pedido' : 'Reembolso registrado'}</strong>
+            <p>{event.amount.toFixed(2)} EUR{match ? ` · confianza ${(match.confidence * 100).toFixed(0)} %` : ' · sin coincidencia'}</p>
+          </div>
           <StatusBadge tone={match ? 'info' : 'blocking'}>{match ? 'Trazado' : 'Sin coincidencia'}</StatusBadge>
         </li>;
       })}
-      <li><strong>Payout pendiente</strong><p>Sin liquidación registrada todavía para este pedido.</p><StatusBadge tone="warning">Pendiente</StatusBadge></li>
+      <li>
+        <time>PAYOUT</time>
+        <div><strong>Payout pendiente</strong><p>Sin liquidación registrada todavía para este pedido.</p></div>
+        <StatusBadge tone="warning">Pendiente</StatusBadge>
+      </li>
     </ol>
     {netZero ? <p className="timeline-net-zero">Neto cero confirmado: el cobro y el reembolso se cancelan.</p> : null}
   </section>;

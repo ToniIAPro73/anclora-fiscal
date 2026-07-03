@@ -14,9 +14,11 @@ const decision = new VersionedTaxEngine(demoSpainConfig).evaluate({
   currency: 'EUR',
 });
 
+// Billing name/location for order AI-1001, from .evidence/pedido-shopify.csv
+// (Billing Name · Billing City, Billing Province Name, Billing Country).
 export const demoInvoiceInput: InvoiceInput = {
   operationId: 'AI-1001',
-  customerLabel: 'Cliente digital · pedido AI-1001',
+  customerLabel: 'Cliente Demo AI-1001 · Palma, Islas Baleares, ES',
   description: 'Venta de ebook — pedido AI-1001',
   taxBase: decision.taxBase ?? 0,
   taxRate: Number(decision.rate ?? 0),

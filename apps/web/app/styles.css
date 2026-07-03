@@ -37,7 +37,7 @@ select:focus-visible,
 .brand-medal, .tenant-medal { position: relative; display: block; overflow: hidden; border-radius: 50%; flex: 0 0 auto; }
 .brand-medal { width: 50px; height: 50px; }
 .tenant-medal { width: 44px; height: 44px; }
-.brand-medal img, .tenant-medal img { position: absolute; width: 112%; height: 112%; max-width: none; inset: -6%; object-fit: cover; }
+.brand-medal img, .tenant-medal img { position: absolute; width: calc(100% + 6px); height: calc(100% + 6px); max-width: none; inset: -3px; object-fit: cover; }
 .sidebar nav { display: grid; gap: 5px; }
 .sidebar nav a { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; padding: 12px 11px; border: 1px solid transparent; color: rgb(243 236 223 / 62%); font-size: .78rem; font-weight: 550; text-decoration: none; transition: .2s ease; }
 .sidebar nav a span { color: rgb(199 150 76 / 68%); font-family: var(--font-editorial), serif; font-size: .7rem; }
@@ -65,7 +65,7 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
 .attention-list article:first-child { border-top: 1px solid rgb(243 236 223 / 10%); }
 .attention-list strong { font-family: var(--font-display), serif; color: #fffaf0; font-size: 1.05rem; }
 .attention-list p { margin: 4px 0 0; color: rgb(243 236 223 / 55%); font-size: .74rem; }
-.attention-list article > span:last-child { color: #e7b766; font-size: .72rem; }
+.attention-list article > a:last-child { color: #e7b766; font-size: .72rem; text-decoration: none; }
 
 .status-badge { width: fit-content; display: inline-flex; padding: 6px 8px; border: 1px solid currentColor; border-radius: 2px; font-size: .58rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .status-info { color: #8fb4d3; background: rgb(122 167 207 / 9%); }
@@ -113,7 +113,7 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
   .topbar button { padding-inline: 14px; }
   .attention, .evidence-panel { grid-template-columns: 1fr; }
   .attention-list article { grid-template-columns: 82px 1fr; }
-  .attention-list article > span:last-child { display: none; }
+  .attention-list article > a:last-child { display: none; }
   .metrics { grid-template-columns: 1fr; }
   .metric-card { border-right: 0; }
 }
