@@ -64,5 +64,15 @@ export function previewShopifyCsv(bytes: Uint8Array): ShopifyCsvPreview {
     const businessKey = createHash('sha256').update([row.Order, row.Checkout, row['Transaction Date'], row.Type, row.Amount, row.Currency].join('|')).digest('hex');
     return { ...row, kind, businessKey };
   });
+  const rowsByOrder = new Map<string, typeof rows>();
+  for (const row of rows) rowsByOrder.set(row.Order, [...(rowsByOrder.get(row.Order) ?? []), row]);
+  for (const [order, orderRows] of rowsByOrder) {
+    const hasCharge = orderRows.some((row) => row.kind === 'charge');
+    const hasRefund = orderRows.some((row) => row.kind === 'refund');
+    const commercialNet = orderRows.reduce((sum, row) => sum + Number(row.Amount), 0);
+    if (hasCharge && hasRefund && Math.abs(commercialNet) < 0.005) {
+      issues.push({ row: 0, code: 'FULL_REFUND_NET_ZERO', severity: 'HIGH', message: `${order}: charge y refund producen neto comercial cero; revisar rectificativa` });
+    }
+  }
   return { hash: createHash('sha256').update(bytes).digest('hex'), headers: parsedHeader, rows, issues };
 }
