@@ -3,7 +3,7 @@ import nextPlugin from '@next/eslint-plugin-next';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['**/.next/**', '**/dist/**', '**/coverage/**', 'packages/ui/assets/**'] },
+  { ignores: ['**/.next/**', '**/dist/**', '**/coverage/**', 'packages/ui/assets/**', 'apps/api/api/_handler.mjs'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

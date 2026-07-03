@@ -16,3 +16,7 @@ playwright-report
 playwright/.cache
 *.tsbuildinfo
 tsconfig.tsbuildinfo
+apps/api/api/_handler.mjs
+apps/api/api/_handler.mjs.map
+.vercel
+.env*

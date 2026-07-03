@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "pnpm --filter '@anclora/core' --filter '@anclora/db' --filter '@anclora/connectors' build && tsc -p tsconfig.build.json && node ../../scripts/postbuild-dist-extensionless.js dist",
+    "build": "pnpm --filter '@anclora/core' --filter '@anclora/db' --filter '@anclora/connectors' build && tsc -p tsconfig.build.json && node ../../scripts/postbuild-dist-extensionless.js dist && pnpm run build:vercel-handler && pnpm run verify:vercel-bundle",
+    "build:vercel-handler": "node scripts/build-vercel-handler.mjs",
+    "verify:vercel-bundle": "node scripts/verify-vercel-bundle.mjs",
     "start": "node dist/server.js",
     "lint": "eslint src api",
     "typecheck": "tsc --noEmit",
@@ -16,6 +18,7 @@
     "@anclora/core": "workspace:*",
     "@anclora/connectors": "workspace:*",
     "@anclora/db": "workspace:*",
+    "@electric-sql/pglite": "^0.3.2",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.1",
     "@fastify/helmet": "^13.0.1",
@@ -23,11 +26,19 @@
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/swagger": "^9.5.1",
     "@fastify/swagger-ui": "^5.2.3",
+    "csv-parse": "^6.1.0",
+    "drizzle-orm": "^0.45.2",
     "fastify": "^5.4.0",
+    "fflate": "^0.8.2",
+    "pdf-lib": "^1.17.1",
+    "pdf-parse": "1.1.1",
+    "postgres": "^3.4.7",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.64"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",
+    "esbuild": "^0.25.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3",
     "vitest": "^3.2.3"

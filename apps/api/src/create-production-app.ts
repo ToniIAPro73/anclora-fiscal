@@ -1,9 +1,6 @@
 import { FilesystemStorage } from '@anclora/core/server';
 import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import { loadEnvFile } from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
@@ -14,14 +11,17 @@ import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controlle
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 
-const localEnvFile = fileURLToPath(new URL('../../../.env.local', import.meta.url));
-if (process.env.NODE_ENV !== 'production' && existsSync(localEnvFile)) loadEnvFile(localEnvFile);
-
 // Reads env vars and wires storage/repositories/auth for production or the
 // local offline (PGlite) database, then builds the Fastify app. Shared by
 // src/server.ts (local dev / classic Node.js server, calls .listen()) and
-// api/index.ts (Vercel Function adapter, calls .ready() + emits the request
-// to the underlying Node HTTP server instead of listening on a port).
+// src/vercel-handler.ts, bundled into api/_handler.mjs (calls .ready() +
+// emits the request to the underlying Node HTTP server instead of listening
+// on a port). Deliberately has no reference to .env.local or any other
+// literal filesystem path outside process.env — that loading only happens
+// in server.ts (never bundled into the Vercel function) since a literal path
+// reference here would get traced and copied into the deployed artifact by
+// static bundling analysis even though the runtime NODE_ENV guard would
+// never actually read it there.
 export async function createProductionApp() {
   const metadataSecret = process.env.IMPORT_METADATA_SECRET ?? 'development-only-import-metadata-secret';
   if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32) {
