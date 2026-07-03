@@ -1,0 +1,17 @@
+CREATE TYPE "role_name" AS ENUM ('ADMIN', 'FISCAL_OPERATOR', 'REVIEWER', 'ADVISOR_READONLY');
+CREATE TABLE "tenants" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "name" text NOT NULL, "slug" text NOT NULL);
+CREATE UNIQUE INDEX "tenants_slug_uq" ON "tenants" ("slug");
+CREATE TABLE "legal_entities" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"), "legal_name" text NOT NULL, "country_code" text NOT NULL, "currency_code" text NOT NULL DEFAULT 'EUR', "tax_identity_encrypted" text);
+CREATE INDEX "legal_entities_tenant_idx" ON "legal_entities" ("tenant_id");
+CREATE TABLE "users" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"), "email_encrypted" text NOT NULL, "display_name" text NOT NULL, "password_hash" text NOT NULL, "active" boolean NOT NULL DEFAULT true);
+CREATE INDEX "users_tenant_idx" ON "users" ("tenant_id");
+CREATE TABLE "roles" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"), "name" role_name NOT NULL, "description" text NOT NULL);
+CREATE TABLE "permissions" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "key" text NOT NULL, "description" text NOT NULL);
+CREATE UNIQUE INDEX "permissions_key_uq" ON "permissions" ("key");
+CREATE TABLE "user_roles" ("user_id" uuid NOT NULL REFERENCES "users"("id"), "role_id" uuid NOT NULL REFERENCES "roles"("id"));
+CREATE UNIQUE INDEX "user_roles_uq" ON "user_roles" ("user_id", "role_id");
+CREATE TABLE "audit_events" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"), "actor_id" uuid REFERENCES "users"("id"), "action" text NOT NULL, "entity_type" text NOT NULL, "entity_id" text NOT NULL, "metadata" jsonb NOT NULL DEFAULT '{}', "ip_hash" text, "occurred_at" timestamptz NOT NULL DEFAULT now());
+CREATE INDEX "audit_tenant_time_idx" ON "audit_events" ("tenant_id", "occurred_at");
+CREATE TABLE "fiscal_configurations" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"), "legal_entity_id" uuid NOT NULL REFERENCES "legal_entities"("id"), "label" text NOT NULL, "version" text NOT NULL, "effective_from" timestamptz NOT NULL, "settings" jsonb NOT NULL, "is_demo" boolean NOT NULL DEFAULT false);
+CREATE TABLE "invoice_series" ("id" uuid PRIMARY KEY DEFAULT gen_random_uuid(), "created_at" timestamptz NOT NULL DEFAULT now(), "updated_at" timestamptz NOT NULL DEFAULT now(), "tenant_id" uuid NOT NULL REFERENCES "tenants"("id"), "legal_entity_id" uuid NOT NULL REFERENCES "legal_entities"("id"), "code" text NOT NULL, "next_number" numeric(20,0) NOT NULL DEFAULT 1, "document_type" text NOT NULL);
+CREATE UNIQUE INDEX "invoice_series_scope_uq" ON "invoice_series" ("legal_entity_id", "code");

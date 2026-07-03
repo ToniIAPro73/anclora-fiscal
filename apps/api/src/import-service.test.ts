@@ -1,0 +1,19 @@
+import { readFile, rm } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
+import { FilesystemStorage } from '@anclora/core';
+import { previewImport } from './import-service';
+
+const root = resolve(import.meta.dirname, '../../../.tmp-import-test');
+afterAll(() => rm(root, { recursive: true, force: true }));
+
+describe('previewImport', () => {
+  it('custodia evidencia y devuelve preview CSV sin PII', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    expect(result.status).toBe('PREVIEW_READY');
+    expect(result.summary).toMatchObject({ records: 2, orderIds: ['AI-1001'] });
+    expect(result.evidence.sha256).toHaveLength(64);
+    expect(JSON.stringify(result)).not.toContain('@');
+  });
+});

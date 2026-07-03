@@ -1,0 +1,27 @@
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { extractShopifyOrdersPdf } from './shopify-pdf';
+import { previewShopifyCsv } from './shopify-csv';
+
+const evidence = resolve(import.meta.dirname, '../../../.evidence');
+
+describe('Shopify CSV', () => {
+  it('clasifica charge/refund sin convertir VAT de canal en IVA fiscal', async () => {
+    const preview = previewShopifyCsv(await readFile(resolve(evidence, 'payment_transactions_export_1.csv')));
+    expect(new Set(preview.rows.map((row) => row.kind))).toEqual(new Set(['charge', 'refund']));
+    expect(preview.issues.filter((issue) => issue.code === 'PLATFORM_VAT_ZERO_UNVALIDATED')).toHaveLength(2);
+    expect(preview.rows[0]?.businessKey).not.toBe(preview.rows[1]?.businessKey);
+  });
+});
+
+describe('Shopify PDF', () => {
+  it('trata el PDF como evidencia comercial e identifica la cantidad incoherente', async () => {
+    const result = await extractShopifyOrdersPdf(await readFile(resolve(evidence, 'pedido-shopify.pdf')));
+    expect(result.orders.map((order) => order.orderId)).toEqual(['AI-1004', 'AI-1003', 'AI-1002', 'AI-1001']);
+    const incident = result.orders.find((order) => order.orderId === 'AI-1001');
+    expect(incident?.commercialDate).toBe('2026-07-01');
+    expect(incident?.issues).toContainEqual(expect.objectContaining({ code: 'INCOHERENT_QUANTITY' }));
+    expect(incident).not.toHaveProperty('amount');
+  });
+});

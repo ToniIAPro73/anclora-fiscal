@@ -1,0 +1,22 @@
+:root {
+  --ai-midnight: #0e1b2c;
+  --ai-midnight-700: #1d3047;
+  --ai-gold: #c7964c;
+  --ai-gold-200: #ead5ad;
+  --ai-ivory: #f5f0e6;
+  --ai-paper: #fffdf8;
+  --ai-terracotta: #b4552d;
+  --ai-blocking: #842f35;
+  --ai-ink: #182333;
+  --ai-muted: #66707d;
+  --ai-border: #d9d1c2;
+  --ai-focus: #c7964c;
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --shadow-editorial: 0 18px 45px rgb(14 27 44 / 10%);
+}
+
+* { box-sizing: border-box; }
+:focus-visible { outline: 3px solid var(--ai-focus); outline-offset: 3px; }
+body { margin: 0; background: var(--ai-ivory); color: var(--ai-ink); }
+button, input, select { font: inherit; }
