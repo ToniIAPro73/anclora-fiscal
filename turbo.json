@@ -2,12 +2,12 @@
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
     "dev": { "cache": false, "persistent": true },
-    "build": { "dependsOn": ["^build"], "outputs": [] },
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "@anclora/web#build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**"] },
     "@anclora/api#build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "lint": { "dependsOn": ["^lint"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": { "dependsOn": ["^test"], "outputs": [] },
+    "test": { "dependsOn": ["^build", "^test"], "outputs": [] },
     "test:e2e": { "dependsOn": ["^build"], "outputs": ["playwright-report/**"], "cache": false }
   }
 }
