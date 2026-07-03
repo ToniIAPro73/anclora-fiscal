@@ -66,6 +66,14 @@ export function createInvoiceIssueHandler(dependencies: {
   };
 }
 
+function isIssueInvoiceError(r: IssueInvoiceResult): r is { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' } {
+  return !r.ok;
+}
+
+function isRectifyInvoiceError(r: RectifyInvoiceResult): r is { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' } {
+  return !r.ok;
+}
+
 export function createInvoiceRectifyHandler(dependencies: {
   repository?: FiscalDocumentsRepositoryPort | undefined;
   storage: StoragePort;
