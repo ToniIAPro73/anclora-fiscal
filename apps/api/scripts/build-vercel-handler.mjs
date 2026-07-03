@@ -7,18 +7,9 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const apiRoot = path.resolve(here, '..');
 const repoRoot = path.resolve(apiRoot, '../..');
 
-// Packages that must be bundled (inlined) rather than left as external
-// runtime dependencies, because their own resolution is fragile in ways
-// Vercel's dependency tracer has failed to handle correctly: pdf-parse's
-// `pdf-parse/lib/pdf-parse.js` is reached via a dynamic createRequire() call
-// (see packages/connectors/src/shopify-pdf.ts) rather than a plain package
-// entry, and that subpath was not included in the deployed function's
-// node_modules ("Cannot find module 'pdf-parse/lib/pdf-parse.js'").
-const forceBundle = new Set(['pdf-parse']);
-
 const apiPackageJson = JSON.parse(readFileSync(path.join(apiRoot, 'package.json'), 'utf8'));
 const externalDeps = Object.keys(apiPackageJson.dependencies ?? {})
-  .filter((name) => !name.startsWith('@anclora/') && !forceBundle.has(name));
+  .filter((name) => !name.startsWith('@anclora/'));
 
 // Resolves bare `@anclora/*` specifiers straight to workspace package
 // TypeScript source (not their built dist/ output) so this bundle never
@@ -66,10 +57,10 @@ const result = await build({
   target: 'node22',
   sourcemap: true,
   metafile: true,
-  // @anclora/* workspace packages (via alias, above) and anything in
-  // forceBundle are inlined; every other direct dependency of apps/api is
-  // left external (derived from package.json rather than hardcoded, so
-  // adding a dependency doesn't silently leave it unbundled or un-external).
+  // @anclora/* workspace packages (via alias, above) are inlined; every
+  // other direct dependency of apps/api is left external (derived from
+  // package.json rather than hardcoded, so adding a dependency doesn't
+  // silently leave it unbundled or un-external).
   external: externalDeps,
   alias: workspaceAlias,
   plugins: [jsToTsPlugin],

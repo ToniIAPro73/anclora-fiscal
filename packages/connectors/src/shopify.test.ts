@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { extractShopifyOrdersPdf } from './shopify-pdf';
+import { extractShopifyOrdersCsv } from './shopify-orders-csv';
 import { previewShopifyCsv } from './shopify-csv';
 
 const evidence = resolve(import.meta.dirname, '../../../.evidence');
@@ -16,9 +16,9 @@ describe('Shopify CSV', () => {
   });
 });
 
-describe('Shopify PDF', () => {
-  it('trata el PDF como evidencia comercial e identifica la cantidad incoherente', async () => {
-    const result = await extractShopifyOrdersPdf(await readFile(resolve(evidence, 'pedido-shopify.pdf')));
+describe('Shopify Orders CSV', () => {
+  it('trata el export de pedidos como evidencia comercial e identifica la incoherencia de reembolso total', async () => {
+    const result = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
     expect(result.orders.map((order) => order.orderId)).toEqual(['AI-1004', 'AI-1003', 'AI-1002', 'AI-1001']);
     const incident = result.orders.find((order) => order.orderId === 'AI-1001');
     expect(incident?.commercialDate).toBe('2026-07-01');

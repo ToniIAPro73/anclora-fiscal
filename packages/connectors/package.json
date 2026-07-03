@@ -14,9 +14,8 @@
   "dependencies": {
     "@anclora/core": "workspace:*",
     "csv-parse": "^6.1.0",
-    "pdf-parse": "1.1.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.64"
   },
-  "devDependencies": { "@types/node": "^22.15.30", "@types/pdf-parse": "^1.1.5", "typescript": "^5.8.3", "vitest": "^3.2.3" }
+  "devDependencies": { "@types/node": "^22.15.30", "typescript": "^5.8.3", "vitest": "^3.2.3" }
 }

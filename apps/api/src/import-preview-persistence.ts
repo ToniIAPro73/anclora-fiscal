@@ -36,7 +36,7 @@ export class ImportMetadataCipher {
 
 const IMPORTER_VERSIONS: Record<ImportPreviewResponse['connector'], string> = {
   'shopify-csv': 'shopify-csv@0.1.0',
-  'shopify-pdf': 'shopify-pdf@0.1.0',
+  'shopify-orders-csv': 'shopify-orders-csv@0.1.0',
   'kdp-xlsx': 'kdp-xlsx@0.1.0',
 };
 

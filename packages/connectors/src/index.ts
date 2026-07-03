@@ -22,5 +22,5 @@ export interface SourceConnector {
 }
 
 export * from './shopify-csv.js';
-export * from './shopify-pdf.js';
+export * from './shopify-orders-csv.js';
 export * from './kdp-xlsx.js';
