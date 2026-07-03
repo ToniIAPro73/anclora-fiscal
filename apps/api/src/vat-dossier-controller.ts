@@ -63,16 +63,22 @@ export function createVatDossierGenerateHandler(dependencies: {
       force: forceRequested,
     });
 
-    if (!result.ok && result.reason === 'PERIOD_NOT_CLOSED') {
-      return reply.code(409).send({ code: 'PERIOD_NOT_CLOSED', message: 'El período no está cerrado y no puede generar un expediente de IVA' });
+    if (isGenerateVatDossierError(result)) {
+      if (result.reason === 'PERIOD_NOT_CLOSED') {
+        return reply.code(409).send({ code: 'PERIOD_NOT_CLOSED', message: 'El período no está cerrado y no puede generar un expediente de IVA' });
+      }
+      if (result.reason === 'BLOCKING_ISSUES_REQUIRE_APPROVAL') {
+        return reply.code(409).send({ code: 'BLOCKING_ISSUES_REQUIRE_APPROVAL', message: 'Existen incidencias bloqueantes sin aprobación' });
+      }
+      return reply.code(500).send({ code: 'VAT_DOSSIER_GENERATE_FAILED', message: 'No se pudo generar el expediente de IVA' });
     }
-    if (!result.ok && result.reason === 'BLOCKING_ISSUES_REQUIRE_APPROVAL') {
-      return reply.code(409).send({ code: 'BLOCKING_ISSUES_REQUIRE_APPROVAL', message: 'Existen incidencias bloqueantes sin aprobación' });
-    }
-    if (!result.ok) return reply.code(500).send({ code: 'VAT_DOSSIER_GENERATE_FAILED', message: 'No se pudo generar el expediente de IVA' });
 
     return reply.code(result.alreadyGenerated ? 200 : 201).send(result.dossier);
   };
+}
+
+function isGenerateVatDossierError(r: GenerateVatDossierResult): r is { ok: false; reason: 'PERIOD_NOT_CLOSED' | 'BLOCKING_ISSUES_REQUIRE_APPROVAL' } {
+  return !r.ok;
 }
 
 export function createVatDossierGetHandler(dependencies: {
