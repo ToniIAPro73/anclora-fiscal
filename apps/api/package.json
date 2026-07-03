@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm --filter '@anclora/core' --filter '@anclora/db' --filter '@anclora/connectors' build && vitest run",
     "auth:hash": "bash scripts/hash-password.sh"
   },
   "dependencies": {
