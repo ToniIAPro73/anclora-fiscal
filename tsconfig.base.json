@@ -1,6 +1,19 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "baseUrl": ".",
+    "paths": {
+      "@anclora/core": ["packages/core/src"],
+      "@anclora/core/*": ["packages/core/src/*"],
+      "@anclora/db": ["packages/db/src"],
+      "@anclora/db/*": ["packages/db/src/*"],
+      "@anclora/connectors": ["packages/connectors/src"],
+      "@anclora/connectors/*": ["packages/connectors/src/*"],
+      "@anclora/ui": ["packages/ui/src"],
+      "@anclora/ui/*": ["packages/ui/src/*"],
+      "@anclora/tax-engine": ["packages/tax-engine/src"],
+      "@anclora/tax-engine/*": ["packages/tax-engine/src/*"]
+    },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
