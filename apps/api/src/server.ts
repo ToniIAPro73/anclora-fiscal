@@ -1,3 +1,9 @@
+// Vercel's Fastify entrypoint detector statically scans this file for a
+// direct `import ... from 'fastify'` — it doesn't follow the import into
+// build-app.ts, where the actual Fastify instance is constructed via
+// buildApp() for testability. This import is otherwise unused here.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import Fastify from 'fastify';
 import { FilesystemStorage } from '@anclora/core/server';
 import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
