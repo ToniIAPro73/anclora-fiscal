@@ -45,3 +45,22 @@
   | 9 | Configuración | `/settings` | 200 | "Configuración" | Ninguno (solo aviso informativo) | PASS |
 
   Resultado: **9/9 PASS.** Las 9 rutas del centro de control devuelven HTTP 200, renderizan su `<h1>` correspondiente y no emiten errores ni warnings de consola (solo el aviso informativo estándar de React DevTools en modo desarrollo). El bloqueante de bundling server/client descrito en checkpoints previos queda cerrado y verificado end-to-end.
+
+## ✅ CHECKPOINT FASE 6
+
+- **Hardening:** RBAC aplicado a la importación; la cabecera de rol solo se
+  acepta en desarrollo/tests y producción falla cerrada. MIME y estructura se
+  validan antes de custodiar bytes; XLSX limitado a 10.000 filas por hoja;
+  cookies `SameSite=Lax`/`HttpOnly` y secreto robusto obligatorio en producción.
+- **Dependencias:** Next.js 15.5.18, Drizzle ORM 0.45.2 y SheetJS 0.20.3 oficial
+  en conectores/core. `pnpm audit --prod`: 0 vulnerabilidades conocidas.
+- **E2E:** Playwright cubre las 9 rutas, Shopify CSV con IVA/refund total, KDP
+  XLSX con KENP/ISBN y rechazo MIME. Resultado: 12/12 PASS, sin errores de
+  consola.
+- **Documentación:** arquitectura, dominio, datos, conciliación, API,
+  seguridad, estrategia de pruebas, runbook y limitaciones actualizados.
+- **Puertas de calidad:** `pnpm lint`, `pnpm typecheck`, `pnpm test` (37/37),
+  `pnpm build` y `pnpm test:e2e` (12/12) en verde.
+- **Riesgo residual:** el parser XLSX sigue dentro del proceso API; antes de
+  producción debe aislarse en un worker con límites de memoria/tiempo. La
+  autenticación real, persistencia y rutas mutantes permanecen fuera de alcance.

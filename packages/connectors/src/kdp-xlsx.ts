@@ -33,6 +33,8 @@ const KNOWN_KDP_SHEETS = [
   SHEET_IMPRESOS, SHEET_TAPA_DURA, SHEET_PEDIDOS_PROCESADOS, SHEET_PEDIDOS_EBOOKS, SHEET_KENP,
 ];
 
+const MAX_KDP_ROWS_PER_SHEET = 10_000;
+
 /**
  * Positive signature for import-service dispatch: an .xlsx file only routes to
  * this connector if it also contains at least one known KDP sheet name
@@ -207,7 +209,10 @@ function buildBusinessKey(row: DetailRowShape, period: string): string {
 }
 
 export function previewKdpXlsx(bytes: Uint8Array): KdpXlsxPreview {
-  const workbook = XLSX.read(Buffer.from(bytes), { type: 'buffer' });
+  const workbook = XLSX.read(Buffer.from(bytes), {
+    type: 'buffer',
+    sheetRows: MAX_KDP_ROWS_PER_SHEET,
+  });
   const lookup = buildSheetLookup(workbook.SheetNames);
   const issues: KdpXlsxIssue[] = [];
 

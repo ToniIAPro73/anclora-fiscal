@@ -13,7 +13,11 @@ export function ImportUploader() {
   async function submit(formData: FormData) {
     setBusy(true); setError(''); setPreview(undefined);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/imports/preview`, { method: 'POST', body: formData });
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/imports/preview`, {
+        method: 'POST',
+        headers: { 'x-anclora-role': 'FISCAL_OPERATOR' },
+        body: formData,
+      });
       if (!response.ok) throw new Error('El archivo no supera la validación estructural');
       setPreview(await response.json() as Preview);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo procesar el archivo'); }
@@ -24,8 +28,8 @@ export function ImportUploader() {
     <form action={submit} className="drop-panel">
       <span className="section-index">NUEVA IMPORTACIÓN</span>
       <FieldLabel htmlFor="evidence-files" required>Archivos de evidencia</FieldLabel>
-      <input id="evidence-files" name="file" type="file" accept=".csv,.pdf,text/csv,application/pdf" required />
-      <p>Shopify CSV o PDF · máximo 15 MB · el original se conserva con SHA-256.</p>
+      <input id="evidence-files" name="file" type="file" accept=".csv,.pdf,.xlsx,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+      <p>Shopify CSV/PDF o Amazon KDP XLSX · máximo 15 MB · el original validado se conserva con SHA-256.</p>
       <button disabled={busy} type="submit">{busy ? 'Analizando…' : 'Generar vista previa'}</button>
     </form>
     <section className="preview-panel" aria-live="polite">

@@ -25,4 +25,19 @@ describe('previewImport', () => {
     expect(result.summary.orderIds).toContain('9798184523026');
     expect(result.issues).toContainEqual(expect.objectContaining({ code: 'KENP_PENDING_REVIEW' }));
   });
+
+  it('no custodia contenido que falle la validación estructural', async () => {
+    let writes = 0;
+    await expect(previewImport({
+      tenantId: 'test',
+      filename: 'falso.csv',
+      mimeType: 'text/csv',
+      bytes: new TextEncoder().encode('contenido no CSV'),
+      storage: {
+        put: async () => { writes += 1; throw new Error('No debería escribirse'); },
+        get: async () => new Uint8Array(),
+      },
+    })).rejects.toThrow();
+    expect(writes).toBe(0);
+  });
 });

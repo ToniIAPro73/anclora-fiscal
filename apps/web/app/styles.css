@@ -17,7 +17,7 @@ select:focus-visible,
 .sidebar nav a:focus-visible,
 .topbar button:focus-visible,
 .invoice-card a:focus-visible {
-  outline: 3px solid var(--ai-gold, #e7b766);
+  outline: 3px solid var(--ai-gold, #c7964c);
   outline-offset: 3px;
   border-radius: 4px;
 }
