@@ -50,19 +50,121 @@ ya aplicado y el bootstrap reutiliza el tenant, actor y rol existentes.
 Acepta multipart con campo `file`, máximo 15 MB. MIME permitidos: CSV, PDF y
 XLSX. Requiere una sesión firmada cuyo actor tenga rol `FISCAL_OPERATOR` o
 `ADMIN`. El tenant de almacenamiento y persistencia se deriva exclusivamente
-de esa sesión; la cabecera `x-anclora-role` ya no se consulta.
+de esa sesión (ver `docs/security.md` para el mecanismo de sesión firmada).
 
 La respuesta incluye conector, hash de evidencia, resumen e incidencias sin
 PII. Los errores son `400 FILE_REQUIRED`, `401 UNAUTHENTICATED`,
 `403 FORBIDDEN` y errores `422` de MIME o estructura.
 
+## Paginación
+
+Las rutas de listado comparten `parsePagination()`
+(`apps/api/src/pagination.ts`): query params `page` (entero ≥ 1, defecto 1) y
+`pageSize` (entero 1-100, defecto 20), validados con Zod (`z.coerce.number()`).
+Un valor no numérico o fuera de rango responde `400` con el error de Zod. La
+respuesta siempre tiene la forma `{ items: T[], page, pageSize, total }`.
+
+Todas las rutas listadas a continuación exigen sesión firmada válida
+(`401 UNAUTHENTICATED` si falta) y aplican `requireRole()` — `403 FORBIDDEN` si
+el rol de la sesión no tiene el permiso indicado. El `tenantId` se deriva
+siempre de la sesión, nunca de query params o body; no hay forma de listar o
+mutar datos de otro tenant.
+
+### `GET /api/v1/operations`
+
+Requiere `operations:read`. Filtro opcional `status` (query). Repositorio no
+cableado → `503 OPERATIONS_REPOSITORY_UNAVAILABLE`.
+
+### `GET /api/v1/financial-events`
+
+Requiere `events:read`. Filtro opcional `eventType` (query). Repositorio no
+cableado → `503 FINANCIAL_EVENTS_REPOSITORY_UNAVAILABLE`.
+
+### `GET /api/v1/reconciliation/candidates`
+
+Requiere `reconciliation:read`. Filtro opcional `accepted` (query, `"true"` se
+interpreta como booleano; cualquier otro valor no filtra). Repositorio no
+cableado → `503 RECONCILIATION_REPOSITORY_UNAVAILABLE`.
+
+### `GET /api/v1/issues`
+
+Requiere `issues:read`. Filtros opcionales `status` y `severity` (query).
+Repositorio no cableado → `503 ISSUES_REPOSITORY_UNAVAILABLE`.
+
+### `PATCH /api/v1/issues/:id`
+
+Requiere `issues:write`. Resuelve la incidencia como el actor de la sesión.
+Devuelve la incidencia actualizada o `404 ISSUE_NOT_FOUND` si no existe para
+el tenant. Repositorio no cableado → `503 ISSUES_REPOSITORY_UNAVAILABLE`.
+
+### `POST /api/v1/operations/:id/invoices`
+
+Requiere `documents:issue`. Emite la factura del `canonicalOperationId`
+indicado. Idempotente: si ya existe una factura emitida para la operación,
+devuelve `200` con el documento existente en lugar de crear una nueva
+(`alreadyIssued: true` internamente, no expuesto en el payload); si es la
+primera emisión, `201`. Errores: `404 OPERATION_NOT_FOUND`,
+`422 TAX_DECISION_MISSING` (la operación no tiene decisión fiscal registrada),
+`500 INVOICE_ISSUE_FAILED`. Repositorio no cableado →
+`503 FISCAL_DOCUMENTS_REPOSITORY_UNAVAILABLE`.
+
+### `POST /api/v1/fiscal-documents/:id/rectify`
+
+Requiere `documents:rectify`. Rectifica el documento fiscal indicado.
+Idempotente igual que la emisión: `200` si ya estaba rectificado, `201` en la
+primera rectificación. Errores: `404 DOCUMENT_NOT_FOUND`,
+`409 INVALID_DOCUMENT_STATE` (el documento no puede rectificarse en su estado
+actual), `500 INVOICE_RECTIFY_FAILED`. Repositorio no cableado →
+`503 FISCAL_DOCUMENTS_REPOSITORY_UNAVAILABLE`.
+
+### `POST /api/v1/periods/:period/close`
+
+Requiere `periods:close`. Cierra el período si no existen incidencias
+`OPEN`/`BLOCKING` vinculadas (vía `canonicalOperationId`) a operaciones de ese
+período; en caso contrario `409 BLOCKING_ISSUES_OPEN` con la lista
+`issueIds`. Idempotente: cerrar un período ya cerrado devuelve `200` con la
+fila existente; el primer cierre devuelve `201`. Error genérico:
+`500 PERIOD_CLOSE_FAILED`. Repositorio no cableado →
+`503 PERIOD_CLOSES_REPOSITORY_UNAVAILABLE`.
+
+### `POST /api/v1/periods/:period/reopen`
+
+Requiere `periods:close` (mismo permiso que el cierre). Solo válido si el
+período está `CLOSED`; en caso contrario `409 PERIOD_NOT_CLOSED`. Nunca borra
+el historial de auditoría del cierre previo. Devuelve `200` con la fila
+actualizada. Error genérico: `500 PERIOD_REOPEN_FAILED`. Repositorio no
+cableado → `503 PERIOD_CLOSES_REPOSITORY_UNAVAILABLE`.
+
+### `POST /api/v1/periods/:period/vat-dossier`
+
+Requiere `dossier:write`. Solo genera el expediente si el período está
+`CLOSED` (`409 PERIOD_NOT_CLOSED` en caso contrario). Si quedan incidencias
+bloqueantes sin aprobar, `409 BLOCKING_ISSUES_REQUIRE_APPROVAL`. Idempotente:
+regenerar un expediente ya existente devuelve `200` con la fila existente,
+salvo que se pase `?force=true` — y solo el rol lo puede forzar si el rol de
+la sesión es `ADMIN` o `REVIEWER` (cualquier otro rol con `dossier:write` que
+pase `force=true` es ignorado silenciosamente y recibe la respuesta
+idempotente normal). Primera generación → `201`. Error genérico:
+`500 VAT_DOSSIER_GENERATE_FAILED`. Repositorio no cableado →
+`503 VAT_DOSSIERS_REPOSITORY_UNAVAILABLE`.
+
+### `GET /api/v1/periods/:period/vat-dossier`
+
+Requiere `dossier:read`. Devuelve los metadatos del expediente
+(`storageKey`, `archiveSha256`, `manifest`, `status`, etc.) o
+`404 NOT_FOUND` si no existe para el período/tenant. **No** incluye una URL de
+descarga firmada — `StoragePort` no expone ese mecanismo todavía; se devuelve
+el `storageKey` en crudo. Ver la brecha documentada en `docs/security.md`.
+
 ## Recursos no implementados
 
-No existen rutas para operaciones, eventos financieros, payouts, reglas o
-decisiones fiscales, documentos, conciliaciones, incidencias, VERI*FACTU,
-periodos, expedientes, exports ni auditoría. Construir esa superficie REST y
-cablear `packages/db` queda fuera del endurecimiento y sigue siendo el mayor
-gap funcional.
+Quedan sin ruta de API: payouts, motor de reglas/decisiones fiscales
+(`TaxRule`/`TaxContext`, más allá de la comprobación de existencia al emitir
+factura), envío/consulta de VERI*FACTU, exports y un endpoint de lectura de
+`auditEvents` (los eventos de auditoría se insertan desde las mutaciones de
+este plan, pero no hay `GET` para consultarlos). Ver
+`docs/known-limitations.md` para el detalle de los escenarios E2E que
+dependen de esta superficie.
 
 ## OpenAPI
 

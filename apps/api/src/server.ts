@@ -1,5 +1,5 @@
 import { FilesystemStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleFinancialEventsRepository, DrizzleImportPreviewRepository, DrizzleOperationsRepository, DrizzleReconciliationRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
@@ -9,6 +9,9 @@ import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPrevi
 import type { OperationsRepositoryPort } from './operations-controller';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller';
 import type { ReconciliationRepositoryPort } from './reconciliation-controller';
+import type { IssuesRepositoryPort } from './issues-controller';
+import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller';
+import type { PeriodClosesRepositoryPort } from './period-closes-controller';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service';
 
 const localEnvFile = fileURLToPath(new URL('../../../.env.local', import.meta.url));
@@ -28,6 +31,9 @@ let importPreviewPersistence: ImportPreviewPersistencePort;
 let operationsRepository: OperationsRepositoryPort;
 let financialEventsRepository: FinancialEventsRepositoryPort;
 let reconciliationRepository: ReconciliationRepositoryPort;
+let issuesRepository: IssuesRepositoryPort;
+let fiscalDocumentsRepository: FiscalDocumentsRepositoryPort;
+let periodClosesRepository: PeriodClosesRepositoryPort;
 let authService: AuthService;
 
 if (process.env.DATABASE_URL) {
@@ -39,6 +45,9 @@ if (process.env.DATABASE_URL) {
   operationsRepository = new DrizzleOperationsRepository(database.db);
   financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
   reconciliationRepository = new DrizzleReconciliationRepository(database.db);
+  issuesRepository = new DrizzleIssuesRepository(database.db);
+  fiscalDocumentsRepository = new DrizzleFiscalDocumentsRepository(database.db);
+  periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
   authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
   closeDatabase = database.close;
 } else {
@@ -52,10 +61,13 @@ if (process.env.DATABASE_URL) {
   operationsRepository = new DrizzleOperationsRepository(database.db);
   financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
   reconciliationRepository = new DrizzleReconciliationRepository(database.db);
+  issuesRepository = new DrizzleIssuesRepository(database.db);
+  fiscalDocumentsRepository = new DrizzleFiscalDocumentsRepository(database.db);
+  periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
   authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
   closeDatabase = () => database.client.close();
 }
 
-const app = await buildApp({ storage, importPreviewPersistence, operationsRepository, financialEventsRepository, reconciliationRepository, authService });
+const app = await buildApp({ storage, importPreviewPersistence, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, authService });
 app.addHook('onClose', closeDatabase);
 await app.listen({ host: '127.0.0.1', port: Number(process.env.PORT ?? 3001) });
