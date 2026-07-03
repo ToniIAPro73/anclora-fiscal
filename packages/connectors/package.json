@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": { 
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js", "default": "./dist/index.js" } 
+  },
   "scripts": { "build": "tsc", "lint": "eslint src", "typecheck": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
   "dependencies": {
     "@anclora/core": "workspace:*",
