@@ -18,3 +18,6 @@ export * from './schema';
 export * from './migrations';
 export * from './import-preview-repository';
 export * from './auth-audit-repository';
+export * from './operations-repository';
+export * from './financial-events-repository';
+export * from './reconciliation-repository';
