@@ -34,16 +34,15 @@
   del alcance de `npm audit`/Dependabot estándar y depende de la
   disponibilidad del CDN de SheetJS en `pnpm install`. `packages/core` usa el
   mismo tarball parcheado para la generación de expedientes.
-- RBAC (Fase 6): `apps/api/src/rbac-plugin.ts` reutiliza el `can()`/`roleSchema`
+- RBAC: `apps/api/src/rbac-plugin.ts` reutiliza el `can()`/`roleSchema`
   ya implementado y probado en `packages/core` (`packages/core/test/rbac.test.ts`)
-  y lo aplica como `preHandler` sobre `POST /api/v1/imports/preview`. No existe
-  y ahora obtiene rol, actor y tenant de una cookie firmada; la cabecera
-  `x-anclora-role` se ignora en todos los entornos. La mayoría de las acciones con puerta RBAC
-  descritas en §8 (emitir/anular/rectificar factura, cierre de periodo) no
-  tienen todavía una ruta de API correspondiente — la aplicación de RBAC está
-  cableada sobre las rutas que existen hoy; la cobertura completa sobre el
-  conjunto de recursos está bloqueada por la superficie REST que falta (ver
-  `docs/api.md`), no es una omisión de la Fase 6.
+  y lo aplica como `preHandler` sobre todas las rutas de `apps/api`, incluida
+  `POST /api/v1/imports/preview`. Rol, actor y tenant se obtienen únicamente de
+  la sesión firmada (ver `docs/security.md`). Las acciones descritas en §8
+  (emitir/rectificar factura, cierre/reapertura de periodo, expediente IVA)
+  ya tienen ruta de API con RBAC (ver `docs/api.md`); siguen sin ruta payouts,
+  motor de reglas/decisiones fiscales, VERI*FACTU, exports y lectura de
+  auditoría (ver `docs/api.md`, sección "Recursos no implementados").
 - Seguridad (Fase 6): `POST /api/v1/imports/preview` ahora valida el
   `mimetype` del adjunto contra una lista permitida (CSV/PDF/XLSX), valida la
   estructura con el parser correspondiente antes de persistir el original y

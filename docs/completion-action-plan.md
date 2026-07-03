@@ -16,11 +16,11 @@ brechas en lotes pequeños, sin activar VERI*FACTU ni conectar servicios reales.
 - [x] Hacer ejecutables y verificables las migraciones existentes en PGlite.
 - [x] Persistir previews, archivos, incidencias y evidencias de importación.
 - [x] Sustituir el rol de cabecera por una sesión firmada y actor multi-tenant.
-- [ ] Implementar REST paginado para operaciones, eventos, conciliación e
+- [x] Implementar REST paginado para operaciones, eventos, conciliación e
   incidencias con aislamiento obligatorio por tenant.
-- [ ] Implementar emisión/rectificación y cadena de integridad como mutaciones
+- [x] Implementar emisión/rectificación y cadena de integridad como mutaciones
   idempotentes, bloqueadas por RBAC y con `AuditEvent`.
-- [ ] Implementar cierre/reapertura y expediente IVA persistentes con controles
+- [x] Implementar cierre/reapertura y expediente IVA persistentes con controles
   de incidencias bloqueantes.
 - [ ] Conectar las páginas actuales a la API y retirar los escenarios fijos.
 - [ ] Añadir los E2E pendientes del apartado 8 y ejecutar todas las puertas de

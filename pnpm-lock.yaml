@@ -204,6 +204,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@anclora/core':
+        specifier: workspace:*
+        version: link:../core
       '@electric-sql/pglite':
         specifier: ^0.3.2
         version: 0.3.16
