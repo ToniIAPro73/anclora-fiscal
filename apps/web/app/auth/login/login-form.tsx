@@ -4,8 +4,6 @@ import Image from 'next/image';
 import { FormEvent, useState } from 'react';
 import medal from '../../../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
@@ -17,7 +15,7 @@ export function LoginForm() {
     setError('');
     const data = new FormData(event.currentTarget);
     try {
-      const response = await fetch(`${API_URL}/api/v1/auth/login`, {
+      const response = await fetch('/api/v1/auth/login', {
         method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ email: data.get('email'), password: data.get('password') }),
       });
