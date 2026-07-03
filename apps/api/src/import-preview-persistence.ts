@@ -15,7 +15,7 @@ export interface ImportPreviewRepositoryPort {
 }
 
 export interface ImportPreviewPersistencePort {
-  persist(filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }>;
+  persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }>;
 }
 
 export class ImportMetadataCipher {
@@ -43,13 +43,12 @@ const IMPORTER_VERSIONS: Record<ImportPreviewResponse['connector'], string> = {
 export class ImportPreviewPersistenceService implements ImportPreviewPersistencePort {
   constructor(
     private readonly repository: ImportPreviewRepositoryPort,
-    private readonly tenantId: string,
     private readonly cipher: ImportMetadataCipher,
   ) {}
 
-  persist(filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
+  persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
     return this.repository.persist({
-      tenantId: this.tenantId,
+      tenantId,
       jobId: preview.jobId,
       connectorId: preview.connector,
       importerVersion: IMPORTER_VERSIONS[preview.connector],

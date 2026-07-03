@@ -10,11 +10,12 @@ const ALLOWED_IMPORT_MIME_TYPES = new Set([
 ]);
 
 export function createImportPreviewHandler(dependencies: {
-  tenantId: string;
   storage: StoragePort;
   persistence?: ImportPreviewPersistencePort | undefined;
 }) {
   return async function importPreviewHandler(request: FastifyRequest, reply: FastifyReply) {
+    const tenantId = request.authSession?.tenantId;
+    if (!tenantId) return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Debe iniciar sesión' });
     const file = await request.file();
     if (!file) return reply.code(400).send({ code: 'FILE_REQUIRED', message: 'Debe adjuntar un archivo' });
     if (!ALLOWED_IMPORT_MIME_TYPES.has(file.mimetype)) {
@@ -24,7 +25,7 @@ export function createImportPreviewHandler(dependencies: {
     let preview;
     try {
       preview = await previewImport({
-        tenantId: dependencies.tenantId,
+        tenantId,
         filename: file.filename,
         mimeType: file.mimetype,
         bytes: await file.toBuffer(),
@@ -38,7 +39,7 @@ export function createImportPreviewHandler(dependencies: {
     if (!dependencies.persistence) return preview;
 
     try {
-      const persisted = await dependencies.persistence.persist(file.filename, preview);
+      const persisted = await dependencies.persistence.persist(tenantId, file.filename, preview);
       return { ...preview, ...persisted };
     } catch (error) {
       request.log.error({ error: error instanceof Error ? error.message : 'unknown' }, 'Import preview persistence failed');

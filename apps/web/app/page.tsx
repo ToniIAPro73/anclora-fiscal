@@ -1,6 +1,7 @@
 import Image from 'next/image';
 import { MetricCard, StatusBadge } from '@anclora/ui';
 import medal from '../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
+import { LogoutButton } from './logout-button';
 
 const nav = ['Centro de control', 'Importaciones', 'Operaciones', 'Conciliación', 'Facturación', 'VERI*FACTU', 'Motor fiscal', 'Expedientes IVA', 'Configuración'];
 const routes = ['/', '/imports', '/operations', '/reconciliation', '/invoicing', '/verifactu', '/tax-engine', '/vat-dossier', '/settings'];
@@ -16,7 +17,7 @@ export default function Dashboard() {
       <div className="tenant"><span className="tenant-medal"><Image src={medal} alt="" /></span><div><strong>Anclora Insights</strong><small>Entidad activa · EUR</small></div></div>
     </aside>
     <section className="workspace">
-      <header className="topbar"><div><span className="eyebrow">Periodo abierto · T3 2026</span><h1>Centro de control</h1></div><button type="button">Importar evidencias</button></header>
+      <header className="topbar"><div><span className="eyebrow">Periodo abierto · T3 2026</span><h1>Centro de control</h1></div><div className="topbar-actions"><LogoutButton /><button type="button">Importar evidencias</button></div></header>
       <section className="attention" aria-labelledby="attention-title">
         <div><span className="section-index">01 / ATENCIÓN</span><h2 id="attention-title">Lo que requiere una decisión</h2><p>Cada alerta conserva evidencia, cálculo y responsable.</p></div>
         <div className="attention-list">
