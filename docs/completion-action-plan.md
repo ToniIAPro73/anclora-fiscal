@@ -14,8 +14,8 @@ brechas en lotes pequeños, sin activar VERI*FACTU ni conectar servicios reales.
 ## Acciones
 
 - [x] Hacer ejecutables y verificables las migraciones existentes en PGlite.
-- [ ] Persistir previews, archivos, incidencias y evidencias de importación.
-- [ ] Sustituir el rol de cabecera por una sesión firmada y actor multi-tenant.
+- [x] Persistir previews, archivos, incidencias y evidencias de importación.
+- [x] Sustituir el rol de cabecera por una sesión firmada y actor multi-tenant.
 - [ ] Implementar REST paginado para operaciones, eventos, conciliación e
   incidencias con aislamiento obligatorio por tenant.
 - [ ] Implementar emisión/rectificación y cadena de integridad como mutaciones

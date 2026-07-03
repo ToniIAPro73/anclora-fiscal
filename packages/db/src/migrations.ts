@@ -2,6 +2,7 @@ import type { PGlite } from '@electric-sql/pglite';
 import { createHash } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import postgres from 'postgres';
 
 const DEFAULT_MIGRATIONS_FOLDER = fileURLToPath(new URL('../migrations/', import.meta.url));
 
@@ -17,6 +18,16 @@ export interface MigrationResult {
 
 function checksum(sql: string): string {
   return createHash('sha256').update(sql).digest('hex');
+}
+
+async function migrationFiles(migrationsFolder: string) {
+  return Promise.all((await readdir(migrationsFolder))
+    .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/i.test(name))
+    .sort()
+    .map(async (name) => {
+      const sql = await readFile(`${migrationsFolder}/${name}`, 'utf8');
+      return { name, sql, checksum: checksum(sql) };
+    }));
 }
 
 /**
@@ -35,18 +46,15 @@ export async function migrateOfflineDatabase(
     );
   `);
 
-  const entries = (await readdir(migrationsFolder))
-    .filter((name) => /^\d{4}_[a-z0-9_-]+\.sql$/i.test(name))
-    .sort();
+  const entries = await migrationFiles(migrationsFolder);
   const appliedRows = await client.query<AppliedMigration>(
     'SELECT "name", "checksum" FROM "_anclora_migrations"',
   );
   const known = new Map(appliedRows.rows.map((row) => [row.name, row.checksum]));
   const result: MigrationResult = { applied: [], skipped: [] };
 
-  for (const name of entries) {
-    const sql = await readFile(`${migrationsFolder}/${name}`, 'utf8');
-    const sqlChecksum = checksum(sql);
+  for (const migration of entries) {
+    const { name, sql, checksum: sqlChecksum } = migration;
     const appliedChecksum = known.get(name);
 
     if (appliedChecksum) {
@@ -73,4 +81,49 @@ export async function migrateOfflineDatabase(
   }
 
   return result;
+}
+
+/** Applies the same immutable migration files to a remote PostgreSQL database. */
+export async function migrateRemoteDatabase(
+  url: string,
+  migrationsFolder = DEFAULT_MIGRATIONS_FOLDER,
+): Promise<MigrationResult> {
+  const client = postgres(url, { max: 1, prepare: false });
+  try {
+    await client.unsafe(`
+      CREATE TABLE IF NOT EXISTS "_anclora_migrations" (
+        "name" text PRIMARY KEY,
+        "checksum" text NOT NULL,
+        "applied_at" timestamptz NOT NULL DEFAULT now()
+      )
+    `);
+    const appliedRows = await client<{ name: string; checksum: string }[]>`
+      SELECT "name", "checksum" FROM "_anclora_migrations"
+    `;
+    const known = new Map(appliedRows.map((row) => [row.name, row.checksum]));
+    const result: MigrationResult = { applied: [], skipped: [] };
+
+    for (const migration of await migrationFiles(migrationsFolder)) {
+      const appliedChecksum = known.get(migration.name);
+      if (appliedChecksum) {
+        if (appliedChecksum !== migration.checksum) {
+          throw new Error(`La migración aplicada ${migration.name} ha cambiado de contenido`);
+        }
+        result.skipped.push(migration.name);
+        continue;
+      }
+
+      await client.begin(async (transaction) => {
+        await transaction.unsafe(migration.sql).simple();
+        await transaction`
+          INSERT INTO "_anclora_migrations" ("name", "checksum")
+          VALUES (${migration.name}, ${migration.checksum})
+        `;
+      });
+      result.applied.push(migration.name);
+    }
+    return result;
+  } finally {
+    await client.end();
+  }
 }
