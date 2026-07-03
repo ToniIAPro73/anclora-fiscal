@@ -6,18 +6,17 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
-import { FilesystemStorage } from '@anclora/core/server';
+import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
 import { resolve } from 'node:path';
-import { previewImport } from './import-service';
+import { createImportPreviewHandler } from './import-controller';
+import type { ImportPreviewPersistencePort } from './import-preview-persistence';
 import { requireRole } from './rbac-plugin';
 
-const ALLOWED_IMPORT_MIME_TYPES = new Set([
-  'text/csv',
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-]);
-
-export async function buildApp() {
+export async function buildApp(options: {
+  tenantId?: string;
+  storage?: StoragePort;
+  importPreviewPersistence?: ImportPreviewPersistencePort;
+} = {}) {
   const sessionSecret = process.env.SESSION_SECRET;
   if (process.env.NODE_ENV === 'production' && (!sessionSecret || sessionSecret.length < 32)) {
     throw new Error('SESSION_SECRET must contain at least 32 characters in production');
@@ -39,20 +38,11 @@ export async function buildApp() {
   app.post(
     '/api/v1/imports/preview',
     { preHandler: requireRole(['imports:write']) },
-    async (request, reply) => {
-      const file = await request.file();
-      if (!file) return reply.code(400).send({ code: 'FILE_REQUIRED', message: 'Debe adjuntar un archivo' });
-      if (!ALLOWED_IMPORT_MIME_TYPES.has(file.mimetype)) {
-        return reply.code(422).send({ code: 'UNSUPPORTED_MIME_TYPE', message: `Tipo de archivo no admitido: ${file.mimetype}` });
-      }
-      const bytes = await file.toBuffer();
-      try {
-        return await previewImport({ tenantId: 'demo-tenant', filename: file.filename, mimeType: file.mimetype, bytes, storage: new FilesystemStorage(resolve(process.cwd(), '../../storage')) });
-      } catch (error) {
-        request.log.warn({ error: error instanceof Error ? error.message : 'unknown' }, 'Import preview rejected');
-        return reply.code(422).send({ code: 'INVALID_IMPORT', message: 'El archivo no coincide con un formato admitido' });
-      }
-    },
+    createImportPreviewHandler({
+      tenantId: options.tenantId ?? 'demo-tenant',
+      storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      persistence: options.importPreviewPersistence,
+    }),
   );
   return app;
 }
