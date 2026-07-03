@@ -5,6 +5,23 @@ body {
   min-height: 100vh;
 }
 
+/* Visible keyboard-focus indicator for the dark midnight theme — outline-based
+   (not color-only) so it satisfies contrast requirements against the sidebar,
+   buttons, and inline links. Uses the shared --ai-gold accent token. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible,
+.sidebar nav a:focus-visible,
+.topbar button:focus-visible,
+.invoice-card a:focus-visible {
+  outline: 3px solid var(--ai-gold, #e7b766);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 270px minmax(0, 1fr); background: #080d15; }
 .sidebar { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; padding: 28px 22px; border-right: 1px solid rgb(199 150 76 / 28%); background: radial-gradient(circle at 30% 0%, rgb(231 183 102 / 8%), transparent 32%), #0d1726; }
 .brand-lockup { height: 58px; display: flex; align-items: center; gap: 11px; margin-bottom: 44px; color: #fffaf0; font: 600 1.25rem var(--font-display), serif; }
@@ -115,3 +132,22 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
 .preview-panel ul { list-style: none; padding: 0; }.preview-panel li { display: grid; gap: 5px; padding: 14px 0; border-bottom: 1px solid rgb(243 236 223 / 8%); }.preview-panel li strong { color: #e7b766; font-size: .64rem; }.preview-panel li span, .import-error { color: rgb(243 236 223 / 62%); font-size: .74rem; }
 @media (max-width: 780px) { .import-workbench { grid-template-columns: 1fr; }.imports-header { align-items: start; flex-direction: column; } }
 .tax-simulator { display: grid; grid-template-columns: .8fr 1.2fr; gap: 4vw; padding-top: 54px; }.tax-form,.tax-decision { min-height: 430px; padding: 34px; border: 1px solid rgb(199 150 76 / 30%); background: linear-gradient(145deg, rgb(23 41 63 / 80%), rgb(13 23 38 / 72%)); }.tax-form { display: grid; align-content: start; gap: 12px; }.tax-form label { margin-top: 18px; color: #fffaf0; font: 600 1rem var(--font-display),serif; }.tax-form input,.tax-form select { min-height: 48px; padding: 0 14px; border: 1px solid rgb(231 183 102 / 35%); background: #080d15; color: #f3ecdf; }.tax-decision .status-badge { margin-top: 32px; }.tax-decision dl { display: grid; grid-template-columns: repeat(3,1fr); margin: 28px 0; border-block: 1px solid rgb(243 236 223 / 10%); }.tax-decision dl div { padding: 20px 0; }.tax-decision dt { color: rgb(243 236 223 / 48%); font-size: .66rem; }.tax-decision dd { margin: 7px 0 0; color: #e7b766; font: 600 1.2rem var(--font-display),serif; }.tax-decision li { color: rgb(243 236 223 / 65%); margin: 10px 0; font-size: .78rem; }.tax-decision small { color: #e7b766; }@media(max-width:780px){.tax-simulator{grid-template-columns:1fr}}
+
+.operations-timeline, .reconciliation-workbench, .invoicing-documents, .verifactu-chain, .vat-dossier, .settings-config { padding-top: 54px; display: grid; gap: 24px; }
+.timeline-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 26px; border: 1px solid rgb(199 150 76 / 30%); background: linear-gradient(145deg, rgb(23 41 63 / 80%), rgb(13 23 38 / 72%)); }
+.timeline-summary dl { display: flex; gap: 26px; margin: 0; }
+.timeline-summary dt { color: rgb(243 236 223 / 48%); font-size: .65rem; }
+.timeline-summary dd { margin: 4px 0 0; color: #e7b766; font: 600 1.1rem var(--font-display), serif; }
+.timeline-net-zero { color: rgb(243 236 223 / 62%); font-size: .78rem; }
+.reconciliation-workbench table, .vat-dossier table, .settings-config table { width: 100%; border-collapse: collapse; }
+.reconciliation-workbench th, .reconciliation-workbench td, .vat-dossier th, .vat-dossier td, .settings-config th, .settings-config td { padding: 14px 12px; border-bottom: 1px solid rgb(243 236 223 / 10%); text-align: left; font-size: .78rem; color: rgb(243 236 223 / 75%); }
+.reconciliation-workbench th, .vat-dossier th, .settings-config th { color: #e7b766; font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; }
+.invoicing-documents { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.invoice-card { display: grid; gap: 10px; padding: 26px; border: 1px solid rgb(199 150 76 / 30%); background: linear-gradient(145deg, rgb(23 41 63 / 80%), rgb(13 23 38 / 72%)); }
+.invoice-card dl { display: grid; grid-template-columns: 1fr 1fr; margin: 10px 0; }
+.invoice-card dt { color: rgb(243 236 223 / 45%); font-size: .65rem; }
+.invoice-card dd { margin: 4px 0 0; color: #fffaf0; word-break: break-all; }
+.invoice-card a { color: #e7b766; font-size: .75rem; text-decoration: none; }
+.verifactu-banner { margin-top: 24px; padding: 16px 20px; border: 1px solid rgb(231 183 102 / 40%); background: rgb(231 183 102 / 8%); color: #e7b766; font-size: .8rem; }
+.role-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.role-list li { color: rgb(243 236 223 / 75%); font-size: .82rem; }

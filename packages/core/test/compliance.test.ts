@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createIntegrityRecord, createVatDossier, MockVerifactuAdapter, verifyIntegrityChain, verifyVatDossier } from '../src/index';
+import { createIntegrityRecord, createVatDossier, MockVerifactuAdapter, verifyIntegrityChain, verifyVatDossier } from '../src/server';
 
 describe('cadena de integridad', () => {
   it('detecta alteraciones y mantiene el hash anterior', () => {

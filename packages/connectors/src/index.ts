@@ -23,3 +23,4 @@ export interface SourceConnector {
 
 export * from './shopify-csv';
 export * from './shopify-pdf';
+export * from './kdp-xlsx';

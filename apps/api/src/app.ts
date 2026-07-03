@@ -6,7 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
-import { FilesystemStorage } from '@anclora/core';
+import { FilesystemStorage } from '@anclora/core/server';
 import { resolve } from 'node:path';
 import { previewImport } from './import-service';
 
