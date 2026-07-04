@@ -1,4 +1,4 @@
-import { FilesystemStorage } from '@anclora/core/server';
+import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
 import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
@@ -33,7 +33,14 @@ export async function createProductionApp() {
   if (process.env.NODE_ENV === 'production' && !process.env.IMPORT_METADATA_SECRET) {
     throw new Error('IMPORT_METADATA_SECRET es obligatorio en producción');
   }
-  const storage = new FilesystemStorage(process.env.STORAGE_ROOT ?? resolve(process.cwd(), 'storage'));
+  // Vercel serverless functions have a read-only filesystem outside `/tmp`,
+  // so FilesystemStorage only works for local/offline dev. BLOB_READ_WRITE_TOKEN
+  // is auto-injected by Vercel once a Blob store is connected to this project;
+  // its presence is what gates the switch, not NODE_ENV, since local dev never
+  // sets it.
+  const storage = process.env.BLOB_READ_WRITE_TOKEN
+    ? new VercelBlobStorage()
+    : new FilesystemStorage(process.env.STORAGE_ROOT ?? resolve(process.cwd(), 'storage'));
 
   let closeDatabase: () => Promise<unknown>;
   let importPreviewPersistence: ImportPreviewPersistencePort;
