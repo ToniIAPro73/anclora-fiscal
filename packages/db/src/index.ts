@@ -28,3 +28,4 @@ export * from './vat-dossiers-repository.js';
 export * from './royalty-repository.js';
 export * from './commercial-orders-repository.js';
 export * from './legal-entities-repository.js';
+export * from './dashboard-summary-repository.js';

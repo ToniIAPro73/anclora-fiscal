@@ -1,5 +1,5 @@
 import { FilesystemStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
@@ -10,6 +10,7 @@ import type { ReconciliationRepositoryPort } from './reconciliation-controller.j
 import type { IssuesRepositoryPort } from './issues-controller.js';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
+import type { DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 
 // Reads env vars and wires storage/repositories/auth for production or the
@@ -41,6 +42,7 @@ export async function createProductionApp() {
   let issuesRepository: IssuesRepositoryPort;
   let fiscalDocumentsRepository: FiscalDocumentsRepositoryPort;
   let periodClosesRepository: PeriodClosesRepositoryPort;
+  let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
   let authService: AuthService;
 
   if (process.env.DATABASE_URL) {
@@ -68,6 +70,7 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = new DrizzleFiscalDocumentsRepository(database.db);
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
+    dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     closeDatabase = database.close;
   } else {
@@ -97,11 +100,12 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = new DrizzleFiscalDocumentsRepository(database.db);
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
+    dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     closeDatabase = () => database.client.close();
   }
 
-  const app = await buildApp({ storage, importPreviewPersistence, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, authService });
+  const app = await buildApp({ storage, importPreviewPersistence, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, authService });
   app.addHook('onClose', closeDatabase);
   return app;
 }

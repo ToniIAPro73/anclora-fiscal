@@ -1,56 +1,76 @@
 'use client';
 
-import type { CommercialEvidence, FinancialEvidence } from '@anclora/core';
-import { matchOrder } from '@anclora/core';
+import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
+
+interface Operation {
+  id: string;
+  sourceChannel: string;
+  sourceOrderId: string | null;
+  operationType: string;
+  operationStatus: string;
+  reviewStatus: string;
+  reconciliationStatus: string;
+  verifactuStatus: string;
+  grossAmount: string | null;
+  platformFeeAmount: string | null;
+  netAmount: string | null;
+  originalCurrency: string | null;
+  createdAt: string;
+}
+
+interface OperationsPage { items: Operation[]; page: number; pageSize: number; total: number }
 
 const statusLabels: Record<string, string> = { PENDING_TAX_REVIEW: 'Pendiente de revisión fiscal', PENDING_EVIDENCE: 'Pendiente de evidencia' };
 const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
 
-const order: CommercialEvidence = { orderId: 'AI-1001', checkoutId: '#68683485610367' };
-const events: FinancialEvidence[] = [
-  { id: 'evt-charge-1', orderId: 'AI-1001', checkoutId: '#68683485610367', type: 'charge', amount: 6.99, fee: 0.35, net: 6.64, currency: 'EUR' },
-  { id: 'evt-refund-1', orderId: 'AI-1001', checkoutId: '#68683485610367', type: 'refund', amount: -6.99, fee: -0.35, net: -6.64, currency: 'EUR' },
-];
-
 export function OperationsTimeline() {
-  const draft = matchOrder(order, events);
-  const netZero = Math.abs(draft.netAmount) < 0.005;
+  const [operations, setOperations] = useState<Operation[]>();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/operations`, { credentials: 'include' });
+        if (!response.ok) throw new Error('No se pudieron obtener las operaciones');
+        const data = await response.json() as OperationsPage;
+        if (!cancelled) setOperations(data.items);
+      } catch (reason) {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las operaciones');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <section className="operations-timeline"><p aria-live="polite">Cargando operaciones…</p></section>;
+  if (error) return <section className="operations-timeline"><p className="import-error">{error}</p></section>;
+  if (!operations || operations.length === 0) return <section className="operations-timeline"><p>No hay operaciones todavía.</p></section>;
 
   return <section className="operations-timeline">
-    <span className="section-index">Vista de demostración — caso de referencia AI-1001</span>
-    <div className="timeline-summary">
-      <StatusBadge tone={draft.status === 'PENDING_TAX_REVIEW' ? 'warning' : 'info'}>{statusLabels[draft.status] ?? draft.status}</StatusBadge>
-      <StatusBadge tone={draft.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{reconciliationLabels[draft.reconciliationStatus] ?? draft.reconciliationStatus}</StatusBadge>
-      <dl>
-        <div><dt>Bruto</dt><dd>{draft.grossAmount.toFixed(2)} EUR</dd></div>
-        <div><dt>Comisión</dt><dd>{draft.platformFeeAmount.toFixed(2)} EUR</dd></div>
-        <div><dt>Neto</dt><dd>{draft.netAmount.toFixed(2)} EUR</dd></div>
-      </dl>
-    </div>
+    <span className="section-index">Operaciones</span>
     <ol className="evidence-thread">
-      <li>
-        <time>PEDIDO</time>
-        <div><strong>Pedido comercial importado</strong><p>AI-1001 · checkout {order.checkoutId}</p></div>
-        <StatusBadge tone="info">Evidencia original</StatusBadge>
-      </li>
-      {events.map((event) => {
-        const match = draft.matches.find((candidate) => candidate.eventId === event.id);
-        return <li key={event.id}>
-          <time>{event.type === 'charge' ? 'COBRO' : 'REEMB.'}</time>
+      {operations.map((operation) => {
+        const gross = operation.grossAmount !== null ? Number(operation.grossAmount).toFixed(2) : '—';
+        const fee = operation.platformFeeAmount !== null ? Number(operation.platformFeeAmount).toFixed(2) : '—';
+        const net = operation.netAmount !== null ? Number(operation.netAmount).toFixed(2) : '—';
+        const currency = operation.originalCurrency ?? 'EUR';
+        return <li key={operation.id}>
+          <time>{operation.sourceChannel}</time>
           <div>
-            <strong>{event.type === 'charge' ? 'Cobro enlazado al pedido' : 'Reembolso registrado'}</strong>
-            <p>{event.amount.toFixed(2)} EUR{match ? ` · confianza ${(match.confidence * 100).toFixed(0)} %` : ' · sin coincidencia'}</p>
+            <strong>{operation.sourceOrderId ?? operation.id}</strong>
+            <p>Bruto {gross} {currency} · Comisión {fee} {currency} · Neto {net} {currency}</p>
           </div>
-          <StatusBadge tone={match ? 'info' : 'blocking'}>{match ? 'Trazado' : 'Sin coincidencia'}</StatusBadge>
+          <div className="operation-status-group">
+            <StatusBadge tone={operation.reviewStatus === 'PENDING' ? 'warning' : 'info'}>{statusLabels[operation.reviewStatus] ?? operation.reviewStatus}</StatusBadge>
+            <StatusBadge tone={operation.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{reconciliationLabels[operation.reconciliationStatus] ?? operation.reconciliationStatus}</StatusBadge>
+          </div>
         </li>;
       })}
-      <li>
-        <time>PAYOUT</time>
-        <div><strong>Payout pendiente</strong><p>Sin liquidación registrada todavía para este pedido.</p></div>
-        <StatusBadge tone="warning">Pendiente</StatusBadge>
-      </li>
     </ol>
-    {netZero ? <p className="timeline-net-zero">Neto cero confirmado: el cobro y el reembolso se cancelan.</p> : null}
   </section>;
 }

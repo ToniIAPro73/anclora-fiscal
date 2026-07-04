@@ -17,6 +17,7 @@ import { createIssueResolveHandler, createIssuesListHandler, type IssuesReposito
 import { createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
+import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
@@ -31,6 +32,7 @@ export async function buildApp(options: {
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
+  dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   authService?: AuthService;
 } = {}) {
   const sessionSecret = process.env.SESSION_SECRET;
@@ -126,6 +128,11 @@ export async function buildApp(options: {
     '/api/v1/periods/:period/vat-dossier',
     { preHandler: requireRole(['dossier:read']) },
     createVatDossierGetHandler({ repository: options.vatDossiersRepository }),
+  );
+  app.get(
+    '/api/v1/dashboard/summary',
+    { preHandler: requireRole(['dashboard:read']) },
+    createDashboardSummaryHandler({ repository: options.dashboardSummaryRepository }),
   );
   return app;
 }

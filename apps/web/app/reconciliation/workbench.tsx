@@ -1,60 +1,60 @@
 'use client';
 
-import type { CommercialEvidence, FinancialEvidence } from '@anclora/core';
-import { matchOrder } from '@anclora/core';
+import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
 
-interface DemoCase { label: string; order: CommercialEvidence; events: FinancialEvidence[] }
+interface ReconciliationCandidate {
+  id: string;
+  commercialOrderId: string;
+  financialEventId: string;
+  confidence: string;
+  accepted: boolean;
+  commercialOrderExternalId: string;
+  financialEventExternalId: string;
+}
 
-const cases: DemoCase[] = [
-  {
-    label: 'AI-1001 · reembolso total',
-    order: { orderId: 'AI-1001', checkoutId: '#68683485610367' },
-    events: [
-      { id: 'evt-charge-1', orderId: 'AI-1001', checkoutId: '#68683485610367', type: 'charge', amount: 6.99, fee: 0.35, net: 6.64, currency: 'EUR' },
-      { id: 'evt-refund-1', orderId: 'AI-1001', checkoutId: '#68683485610367', type: 'refund', amount: -6.99, fee: -0.35, net: -6.64, currency: 'EUR' },
-    ],
-  },
-  {
-    label: 'SP-2045 · cobro único',
-    order: { orderId: 'SP-2045', checkoutId: '#900011' },
-    events: [
-      { id: 'evt-charge-2', orderId: 'SP-2045', checkoutId: '#900011', type: 'charge', amount: 24.5, fee: 1.1, net: 23.4, currency: 'EUR' },
-    ],
-  },
-  {
-    label: 'SP-3399 · cobro sin pedido',
-    order: { orderId: 'SP-3399', checkoutId: '#900099' },
-    events: [
-      { id: 'evt-charge-3', orderId: 'SP-8888', checkoutId: '#111222', type: 'charge', amount: 12.0, fee: 0.6, net: 11.4, currency: 'EUR' },
-    ],
-  },
-];
-
-const stateTone = (status: string) => status === 'MATCHED' ? 'info' : status === 'PARTIALLY_MATCHED' ? 'warning' : 'blocking';
-const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
+interface CandidatesPage { items: ReconciliationCandidate[]; page: number; pageSize: number; total: number }
 
 export function ReconciliationWorkbench() {
-  const rows = cases.map((demoCase) => ({ ...demoCase, draft: matchOrder(demoCase.order, demoCase.events) }));
+  const [candidates, setCandidates] = useState<ReconciliationCandidate[]>();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/reconciliation/candidates`, { credentials: 'include' });
+        if (!response.ok) throw new Error('No se pudieron obtener las candidaturas de conciliación');
+        const data = await response.json() as CandidatesPage;
+        if (!cancelled) setCandidates(data.items);
+      } catch (reason) {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las candidaturas de conciliación');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) return <section className="reconciliation-workbench"><p aria-live="polite">Cargando candidaturas de conciliación…</p></section>;
+  if (error) return <section className="reconciliation-workbench"><p className="import-error">{error}</p></section>;
+  if (!candidates || candidates.length === 0) return <section className="reconciliation-workbench"><p>No hay candidaturas de conciliación todavía.</p></section>;
 
   return <section className="reconciliation-workbench">
-    <span className="section-index">Vista de demostración</span>
+    <span className="section-index">Candidaturas de conciliación</span>
     <table>
       <thead>
-        <tr><th scope="col">Caso</th><th scope="col">Bruto</th><th scope="col">Comisión</th><th scope="col">Neto</th><th scope="col">Estado</th><th scope="col">Confianza</th></tr>
+        <tr><th scope="col">Pedido</th><th scope="col">Evento</th><th scope="col">Confianza</th><th scope="col">Estado</th></tr>
       </thead>
       <tbody>
-        {rows.map(({ label, draft }) => {
-          const confidence = draft.matches.reduce((max, match) => Math.max(max, match.confidence), 0);
-          return <tr key={label}>
-            <td>{label}</td>
-            <td>{draft.grossAmount.toFixed(2)} EUR</td>
-            <td>{draft.platformFeeAmount.toFixed(2)} EUR</td>
-            <td>{draft.netAmount.toFixed(2)} EUR</td>
-            <td><StatusBadge tone={stateTone(draft.reconciliationStatus)}>{reconciliationLabels[draft.reconciliationStatus] ?? draft.reconciliationStatus}</StatusBadge></td>
-            <td>{(confidence * 100).toFixed(0)} %</td>
-          </tr>;
-        })}
+        {candidates.map((candidate) => <tr key={candidate.id}>
+          <td>{candidate.commercialOrderExternalId}</td>
+          <td>{candidate.financialEventExternalId}</td>
+          <td>{(Number(candidate.confidence) * 100).toFixed(0)} %</td>
+          <td><StatusBadge tone={candidate.accepted ? 'info' : 'warning'}>{candidate.accepted ? 'Aceptada' : 'Pendiente'}</StatusBadge></td>
+        </tr>)}
       </tbody>
     </table>
   </section>;

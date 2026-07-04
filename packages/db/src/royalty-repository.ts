@@ -5,6 +5,11 @@ import type { RoyaltyLine, RoyaltyStatement } from '@anclora/core';
 import { royaltyLines, royaltyStatements } from './schema.js';
 import * as schema from './schema.js';
 
+export interface RoyaltySummary {
+  statementsCount: number;
+  totalThisPeriod: string;
+}
+
 export interface PersistRoyaltyStatementInput {
   tenantId: string;
   importFileId: string;
@@ -78,5 +83,26 @@ export class DrizzleRoyaltyRepository<TQueryResult extends PgQueryResultHKT> {
 
       return { statementId: statementRow.id, duplicate: false };
     });
+  }
+
+  /**
+   * Aggregate view for the dashboard-summary endpoint. `statementsCount` is
+   * the tenant's total statement count ever imported; `totalThisPeriod` sums
+   * `totalRoyalties` for statements whose `periods` array includes the given
+   * period key (e.g. `2026-07`). Reuses the existing table shape — no new
+   * columns or aggregation logic beyond a plain sum, kept in JS since the
+   * per-tenant statement count is expected to stay small at this MVP stage.
+   */
+  async getSummary(tenantId: string, period: string): Promise<RoyaltySummary> {
+    const rows = await this.db
+      .select({ totalRoyalties: royaltyStatements.totalRoyalties, periods: royaltyStatements.periods })
+      .from(royaltyStatements)
+      .where(eq(royaltyStatements.tenantId, tenantId));
+
+    const totalThisPeriod = rows
+      .filter((row) => row.periods.includes(period))
+      .reduce((sum, row) => sum + Number(row.totalRoyalties), 0);
+
+    return { statementsCount: rows.length, totalThisPeriod: totalThisPeriod.toFixed(2) };
   }
 }

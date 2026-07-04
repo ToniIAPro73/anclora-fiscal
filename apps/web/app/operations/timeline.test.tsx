@@ -1,21 +1,59 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OperationsTimeline } from './timeline';
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function mockFetchOnce(body: unknown, ok = true) {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok,
+    json: () => Promise.resolve(body),
+  }));
+}
+
 describe('OperationsTimeline', () => {
-  it('renders the AI-1001 demo case with net = 0.00 EUR', () => {
+  it('muestra un estado de carga mientras se obtienen las operaciones', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(<OperationsTimeline />);
-    expect(screen.getAllByText('0.00 EUR').length).toBeGreaterThan(0);
+    expect(screen.getByText('Cargando operaciones…')).toBeInTheDocument();
   });
 
-  it('renders a status badge for the matching result', () => {
+  it('muestra el mensaje de vacío cuando no hay operaciones', async () => {
+    mockFetchOnce({ items: [], page: 1, pageSize: 20, total: 0 });
     render(<OperationsTimeline />);
+    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+  });
+
+  it('renderiza operaciones reales devueltas por la API', async () => {
+    mockFetchOnce({
+      items: [{
+        id: 'op-1',
+        sourceChannel: 'SHOPIFY',
+        sourceOrderId: 'AI-1001',
+        operationType: 'SALE',
+        operationStatus: 'READY_FOR_INVOICING',
+        reviewStatus: 'PENDING_TAX_REVIEW',
+        reconciliationStatus: 'MATCHED',
+        verifactuStatus: 'PENDING',
+        grossAmount: '6.99',
+        platformFeeAmount: '0.35',
+        netAmount: '6.64',
+        originalCurrency: 'EUR',
+        createdAt: new Date().toISOString(),
+      }],
+      page: 1, pageSize: 20, total: 1,
+    });
+    render(<OperationsTimeline />);
+    await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
     expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument();
     expect(screen.getByText('Conciliado')).toBeInTheDocument();
   });
 
-  it('shows the net-zero confirmation message', () => {
+  it('muestra un mensaje de error cuando la petición falla', async () => {
+    mockFetchOnce({}, false);
     render(<OperationsTimeline />);
-    expect(screen.getByText(/neto cero confirmado/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('No se pudieron obtener las operaciones')).toBeInTheDocument());
   });
 });
