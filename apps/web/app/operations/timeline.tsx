@@ -33,7 +33,7 @@ export function OperationsTimeline() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/operations`, { credentials: 'include' });
+        const response = await fetch('/api/v1/operations', { credentials: 'include' });
         if (!response.ok) throw new Error('No se pudieron obtener las operaciones');
         const data = await response.json() as OperationsPage;
         if (!cancelled) setOperations(data.items);

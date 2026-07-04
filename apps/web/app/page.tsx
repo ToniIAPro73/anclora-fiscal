@@ -28,7 +28,7 @@ export default function Dashboard() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/dashboard/summary`, { credentials: 'include' });
+        const response = await fetch('/api/v1/dashboard/summary', { credentials: 'include' });
         if (!response.ok) throw new Error('No se pudo obtener el resumen del panel');
         const data = await response.json() as DashboardSummary;
         if (!cancelled) setSummary(data);

@@ -15,7 +15,7 @@ export function ImportUploader() {
   async function submit(formData: FormData) {
     setBusy(true); setError(''); setPreview(undefined);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/imports/preview`, {
+      const response = await fetch('/api/v1/imports/preview', {
         method: 'POST',
         credentials: 'include',
         body: formData,

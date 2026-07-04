@@ -19,8 +19,6 @@ const fileDescriptions: Record<string, string> = {
   'estado-verifactu.json': 'Estado de los envíos VERI*FACTU (JSON)',
 };
 
-const apiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001';
-
 export function VatDossierPanel() {
   const [period, setPeriod] = useState('');
   const [dossier, setDossier] = useState<VatDossier>();
@@ -39,7 +37,7 @@ export function VatDossierPanel() {
   async function fetchDossier(currentPeriod: string) {
     setBusy(true); resetOutcome();
     try {
-      const response = await fetch(`${apiOrigin}/api/v1/periods/${encodeURIComponent(currentPeriod)}/vat-dossier`, { credentials: 'include' });
+      const response = await fetch(`/api/v1/periods/${encodeURIComponent(currentPeriod)}/vat-dossier`, { credentials: 'include' });
       if (response.status === 404) { setNotFound(true); return; }
       if (!response.ok) throw new Error('No se pudo consultar el expediente de IVA');
       setDossier(await response.json() as VatDossier);
@@ -53,7 +51,7 @@ export function VatDossierPanel() {
   async function generateDossier(currentPeriod: string) {
     setBusy(true); resetOutcome();
     try {
-      const response = await fetch(`${apiOrigin}/api/v1/periods/${encodeURIComponent(currentPeriod)}/vat-dossier`, {
+      const response = await fetch(`/api/v1/periods/${encodeURIComponent(currentPeriod)}/vat-dossier`, {
         method: 'POST',
         credentials: 'include',
       });

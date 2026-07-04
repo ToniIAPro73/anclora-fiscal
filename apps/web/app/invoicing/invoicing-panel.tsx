@@ -36,8 +36,6 @@ type IssueOutcome =
   | { kind: 'tax_decision_missing' }
   | { kind: 'error'; message: string };
 
-const apiOrigin = process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001';
-
 export function InvoicingPanel() {
   const [operations, setOperations] = useState<Operation[]>();
   const [error, setError] = useState('');
@@ -49,7 +47,7 @@ export function InvoicingPanel() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch(`${apiOrigin}/api/v1/operations`, { credentials: 'include' });
+        const response = await fetch('/api/v1/operations', { credentials: 'include' });
         if (!response.ok) throw new Error('No se pudieron obtener las operaciones');
         const data = await response.json() as OperationsPage;
         if (!cancelled) setOperations(data.items);
@@ -66,7 +64,7 @@ export function InvoicingPanel() {
   async function issueInvoiceFor(operationId: string) {
     setIssuing((current) => ({ ...current, [operationId]: true }));
     try {
-      const response = await fetch(`${apiOrigin}/api/v1/operations/${encodeURIComponent(operationId)}/invoices`, {
+      const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}/invoices`, {
         method: 'POST',
         credentials: 'include',
       });

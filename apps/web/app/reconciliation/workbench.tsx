@@ -24,7 +24,7 @@ export function ReconciliationWorkbench() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/reconciliation/candidates`, { credentials: 'include' });
+        const response = await fetch('/api/v1/reconciliation/candidates', { credentials: 'include' });
         if (!response.ok) throw new Error('No se pudieron obtener las candidaturas de conciliación');
         const data = await response.json() as CandidatesPage;
         if (!cancelled) setCandidates(data.items);
