@@ -144,8 +144,13 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
 .preview-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 35px; }
 .preview-heading h2 { margin-bottom: 0; }
 .preview-heading > strong { color: #e7b766; font: 600 3rem var(--font-display), serif; }.preview-heading small { font-size: .7rem; color: rgb(243 236 223 / 52%); }
-.preview-panel dl { display: grid; grid-template-columns: 1fr 1fr; margin: 28px 0; border-block: 1px solid rgb(243 236 223 / 10%); }.preview-panel dl div { padding: 18px 0; }.preview-panel dt { color: rgb(243 236 223 / 45%); font-size: .65rem; }.preview-panel dd { margin: 5px 0 0; color: #fffaf0; }
-.preview-panel ul { list-style: none; padding: 0; }.preview-panel li { display: grid; gap: 5px; padding: 14px 0; border-bottom: 1px solid rgb(243 236 223 / 8%); }.preview-panel li strong { color: #e7b766; font-size: .64rem; }.preview-panel li span, .import-error { color: rgb(243 236 223 / 62%); font-size: .74rem; }
+.preview-panel table { width: 100%; margin-top: 28px; border-collapse: collapse; }
+.preview-panel th, .preview-panel td { padding: 12px 10px; border-bottom: 1px solid rgb(243 236 223 / 10%); text-align: left; font-size: .74rem; color: rgb(243 236 223 / 75%); vertical-align: top; }
+.preview-panel th { color: #e7b766; font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; }
+.preview-panel .general-issues { margin-top: 24px; }
+.preview-panel .general-issues ul { list-style: none; padding: 0; margin: 12px 0 0; }
+.preview-panel .general-issues li { padding: 10px 0; border-bottom: 1px solid rgb(243 236 223 / 8%); color: rgb(243 236 223 / 62%); font-size: .74rem; }
+.import-error { color: rgb(243 236 223 / 62%); font-size: .74rem; }
 @media (max-width: 780px) { .import-workbench { grid-template-columns: 1fr; }.imports-header { align-items: start; flex-direction: column; } }
 .tax-simulator { display: grid; grid-template-columns: .8fr 1.2fr; gap: 4vw; padding-top: 54px; }.tax-form,.tax-decision { min-height: 430px; padding: 34px; border: 1px solid rgb(199 150 76 / 30%); background: linear-gradient(145deg, rgb(23 41 63 / 80%), rgb(13 23 38 / 72%)); }.tax-form { display: grid; align-content: start; gap: 12px; }.tax-form label { margin-top: 18px; color: #fffaf0; font: 600 1rem var(--font-display),serif; }.tax-form input,.tax-form select { min-height: 48px; padding: 0 14px; border: 1px solid rgb(231 183 102 / 35%); background: #080d15; color: #f3ecdf; }.tax-decision .status-badge { margin-top: 32px; }.tax-decision dl { display: grid; grid-template-columns: repeat(3,1fr); margin: 28px 0; border-block: 1px solid rgb(243 236 223 / 10%); }.tax-decision dl div { padding: 20px 0; }.tax-decision dt { color: rgb(243 236 223 / 48%); font-size: .66rem; }.tax-decision dd { margin: 7px 0 0; color: #e7b766; font: 600 1.2rem var(--font-display),serif; }.tax-decision li { color: rgb(243 236 223 / 65%); margin: 10px 0; font-size: .78rem; }.tax-decision small { color: #e7b766; }@media(max-width:780px){.tax-simulator{grid-template-columns:1fr}}
 

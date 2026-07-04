@@ -14,7 +14,7 @@ export interface ImportPreviewResponse {
   connector: 'shopify-csv' | 'shopify-orders-csv' | 'kdp-xlsx';
   evidence: { key: string; sha256: string; size: number; mimeType: string };
   summary: { records: number; issues: number; orderIds: string[]; royaltyByFormat?: RoyaltyFormatSummary[] };
-  issues: Array<{ code: string; severity: string; message: string; row?: number }>;
+  issues: Array<{ code: string; severity: string; message: string; row?: number; sheet?: string }>;
   royalty?: { statement: RoyaltyStatement; lines: RoyaltyLine[] };
   commercialOrders?: NewCommercialOrderWithoutTenant[];
   financialEvents?: NewFinancialEventWithoutTenant[];
