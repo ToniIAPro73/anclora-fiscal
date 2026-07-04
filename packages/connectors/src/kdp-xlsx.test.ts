@@ -27,6 +27,13 @@ describe('KDP XLSX connector', () => {
     expect(sale?.amount).toBe(27.76);
   });
 
+  it('captura el precio de oferta medio y el gasto de producción por línea', async () => {
+    const preview = previewKdpXlsx(await readFile(fixture));
+    const sale = preview.rows.find((row) => row.isbnOrAsin === '9798184523026' && row.classification !== 'kenp_lectura');
+    expect(sale?.averageUnitPrice).toBe(14.99);
+    expect(sale?.productionCost).toBe(2.05);
+  });
+
   it('marca la fila KENP sintética como kenp_lectura / PENDING_TAX_REVIEW', async () => {
     const preview = previewKdpXlsx(await readFile(fixture));
     const kenp = preview.rows.find((row) => row.classification === 'kenp_lectura');

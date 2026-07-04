@@ -199,6 +199,7 @@ interface DetailRowShape {
   Regalías: number;
   Moneda: string;
   isbnOrAsin: string;
+  averageUnitPrice: number | undefined;
   productionCost: number | undefined;
 }
 
@@ -274,6 +275,7 @@ export function previewKdpXlsx(bytes: Uint8Array): KdpXlsxPreview {
         Regalías: Number(row.Regalías),
         Moneda: String(row.Moneda),
         isbnOrAsin,
+        averageUnitPrice: Number(row['Precio de oferta medio sin impuestos'] ?? 0) || undefined,
         productionCost: Number(row['Gasto medio de entrega/producción'] ?? row['Gasto de producción medio'] ?? row['Gasto medio de envío'] ?? 0) || undefined,
       };
       const period = shaped['Fecha de las regalías'].slice(0, 7);
@@ -298,6 +300,7 @@ export function previewKdpXlsx(bytes: Uint8Array): KdpXlsxPreview {
         unitsNet: shaped['Unidades netas vendidas'],
         amount: shaped.Regalías,
         currency: shaped.Moneda,
+        ...(shaped.averageUnitPrice !== undefined ? { averageUnitPrice: shaped.averageUnitPrice } : {}),
         ...(shaped.productionCost !== undefined ? { productionCost: shaped.productionCost } : {}),
         sourceSheet: sheetKey,
       });

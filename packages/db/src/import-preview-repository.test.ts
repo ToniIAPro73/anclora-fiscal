@@ -42,8 +42,9 @@ describe('DrizzleImportPreviewRepository', () => {
       UNION ALL SELECT 'audit_events', count(*)::int FROM audit_events
     `);
 
-    expect(first).toEqual({ jobId: input.jobId, duplicate: false });
-    expect(second).toEqual({ jobId: input.jobId, duplicate: true });
+    expect(first).toMatchObject({ jobId: input.jobId, duplicate: false });
+    expect(second).toMatchObject({ jobId: input.jobId, duplicate: true });
+    expect(second.importFileId).toBe(first.importFileId);
     expect(counts.rows).toEqual([
       { table_name: 'import_jobs', count: 1 },
       { table_name: 'import_files', count: 1 },

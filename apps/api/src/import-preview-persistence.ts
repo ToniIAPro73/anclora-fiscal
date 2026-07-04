@@ -11,7 +11,16 @@ export interface ImportPreviewRepositoryPort {
     evidence: ImportPreviewResponse['evidence'];
     summary: Record<string, unknown>;
     issues: ImportPreviewResponse['issues'];
-  }): Promise<{ jobId: string; duplicate: boolean }>;
+  }): Promise<{ jobId: string; importFileId: string; duplicate: boolean }>;
+}
+
+export interface RoyaltyRepositoryPort {
+  persist(input: {
+    tenantId: string;
+    importFileId: string;
+    statement: NonNullable<ImportPreviewResponse['royalty']>['statement'];
+    lines: NonNullable<ImportPreviewResponse['royalty']>['lines'];
+  }): Promise<{ statementId: string; duplicate: boolean }>;
 }
 
 export interface ImportPreviewPersistencePort {
@@ -44,10 +53,11 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
   constructor(
     private readonly repository: ImportPreviewRepositoryPort,
     private readonly cipher: ImportMetadataCipher,
+    private readonly royaltyRepository?: RoyaltyRepositoryPort,
   ) {}
 
-  persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
-    return this.repository.persist({
+  async persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
+    const result = await this.repository.persist({
       tenantId,
       jobId: preview.jobId,
       connectorId: preview.connector,
@@ -57,5 +67,16 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       summary: preview.summary,
       issues: preview.issues,
     });
+
+    if (this.royaltyRepository && preview.royalty && !result.duplicate) {
+      await this.royaltyRepository.persist({
+        tenantId,
+        importFileId: result.importFileId,
+        statement: preview.royalty.statement,
+        lines: preview.royalty.lines,
+      });
+    }
+
+    return { jobId: result.jobId, duplicate: result.duplicate };
   }
 }

@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { extractShopifyOrdersCsv, isKdpXlsxFile, isShopifyOrdersCsvFile, previewKdpXlsx, previewShopifyCsv } from '@anclora/connectors';
-import type { StoragePort } from '@anclora/core/server';
+import { summarizeRoyaltyLinesByFormat, type RoyaltyFormatSummary, type RoyaltyLine, type RoyaltyStatement, type StoragePort } from '@anclora/core/server';
 
 export interface ImportPreviewResponse {
   jobId: string;
   status: 'PREVIEW_READY';
   connector: 'shopify-csv' | 'shopify-orders-csv' | 'kdp-xlsx';
   evidence: { key: string; sha256: string; size: number; mimeType: string };
-  summary: { records: number; issues: number; orderIds: string[] };
+  summary: { records: number; issues: number; orderIds: string[]; royaltyByFormat?: RoyaltyFormatSummary[] };
   issues: Array<{ code: string; severity: string; message: string; row?: number }>;
+  royalty?: { statement: RoyaltyStatement; lines: RoyaltyLine[] };
 }
 
 const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -35,8 +36,14 @@ export async function previewImport(input: { tenantId: string; filename: string;
         status: 'PREVIEW_READY',
         connector: 'kdp-xlsx',
         evidence,
-        summary: { records: preview.rows.length, issues: preview.issues.length, orderIds: [...new Set(preview.rows.map((row) => row.isbnOrAsin))] },
+        summary: {
+          records: preview.rows.length,
+          issues: preview.issues.length,
+          orderIds: [...new Set(preview.rows.map((row) => row.isbnOrAsin))],
+          royaltyByFormat: summarizeRoyaltyLinesByFormat(preview.rows),
+        },
         issues: preview.issues,
+        royalty: { statement: preview.statement, lines: preview.rows },
       };
     }
   }

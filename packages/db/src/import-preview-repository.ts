@@ -33,6 +33,7 @@ export interface PersistImportPreviewInput {
 
 export interface PersistImportPreviewResult {
   jobId: string;
+  importFileId: string;
   duplicate: boolean;
 }
 
@@ -43,12 +44,12 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
 
   async persist(input: PersistImportPreviewInput): Promise<PersistImportPreviewResult> {
     const [existing] = await this.db
-      .select({ jobId: importFiles.importJobId })
+      .select({ jobId: importFiles.importJobId, importFileId: importFiles.id })
       .from(importFiles)
       .where(and(eq(importFiles.tenantId, input.tenantId), eq(importFiles.sha256, input.evidence.sha256)))
       .limit(1);
 
-    if (existing) return { jobId: existing.jobId, duplicate: true };
+    if (existing) return { jobId: existing.jobId, importFileId: existing.importFileId, duplicate: true };
 
     return this.db.transaction(async (transaction) => {
       await transaction.insert(importJobs).values({
@@ -98,7 +99,7 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
         metadata: { connectorId: input.connectorId, sha256: input.evidence.sha256 },
       });
 
-      return { jobId: input.jobId, duplicate: false };
+      return { jobId: input.jobId, importFileId: file.id, duplicate: false };
     });
   }
 }

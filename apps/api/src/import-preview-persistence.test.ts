@@ -30,4 +30,50 @@ describe('ImportPreviewPersistenceService', () => {
     expect(persisted.originalNameEncrypted).toMatch(/^v1:[^:]+:[^:]+:[^:]+$/);
     expect(persisted.originalNameEncrypted).not.toContain('clientes-2026.csv');
   });
+
+  it('persiste las líneas de regalías cuando el preview incluye datos KDP', async () => {
+    const persist = vi.fn().mockResolvedValue({ jobId: 'job-2', importFileId: 'file-2', duplicate: false });
+    const royaltyPersist = vi.fn().mockResolvedValue({ statementId: 'stmt-1', duplicate: false });
+    const service = new ImportPreviewPersistenceService(
+      { persist },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      { persist: royaltyPersist },
+    );
+    const statement = { hash: 'b'.repeat(64), sourceConnector: 'kdp' as const, currency: 'EUR', periods: ['2026-06'], totalRoyalties: 6.99, lineCount: 1 };
+    const lines = [{ businessKey: 'k1', classification: 'ebook' as const, status: 'RECOGNIZED' as const, period: '2026-06', isbnOrAsin: 'B1', amount: 6.99, currency: 'EUR', sourceSheet: 'Regalías de eBooks' }];
+    const preview = {
+      jobId: 'job-2',
+      status: 'PREVIEW_READY' as const,
+      connector: 'kdp-xlsx' as const,
+      evidence: { key: 'evidence/key', sha256: 'c'.repeat(64), size: 42, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      summary: { records: 1, issues: 0, orderIds: ['B1'] },
+      issues: [],
+      royalty: { statement, lines },
+    };
+
+    await service.persist('01977d43-75de-7000-8000-000000000010', 'kdp.xlsx', preview);
+    expect(royaltyPersist).toHaveBeenCalledWith({ tenantId: '01977d43-75de-7000-8000-000000000010', importFileId: 'file-2', statement, lines });
+  });
+
+  it('no persiste líneas de regalías cuando el archivo ya estaba registrado (duplicate)', async () => {
+    const persist = vi.fn().mockResolvedValue({ jobId: 'job-3', importFileId: 'file-3', duplicate: true });
+    const royaltyPersist = vi.fn();
+    const service = new ImportPreviewPersistenceService(
+      { persist },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      { persist: royaltyPersist },
+    );
+    const preview = {
+      jobId: 'job-3',
+      status: 'PREVIEW_READY' as const,
+      connector: 'kdp-xlsx' as const,
+      evidence: { key: 'evidence/key', sha256: 'd'.repeat(64), size: 42, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      summary: { records: 1, issues: 0, orderIds: ['B1'] },
+      issues: [],
+      royalty: { statement: { hash: 'd'.repeat(64), sourceConnector: 'kdp' as const, currency: 'EUR', periods: ['2026-06'], totalRoyalties: 6.99, lineCount: 1 }, lines: [] },
+    };
+
+    await service.persist('01977d43-75de-7000-8000-000000000010', 'kdp.xlsx', preview);
+    expect(royaltyPersist).not.toHaveBeenCalled();
+  });
 });

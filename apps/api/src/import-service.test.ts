@@ -24,6 +24,7 @@ describe('previewImport', () => {
     expect(result.connector).toBe('kdp-xlsx');
     expect(result.summary.orderIds).toContain('9798184523026');
     expect(result.issues).toContainEqual(expect.objectContaining({ code: 'KENP_PENDING_REVIEW' }));
+    expect(result.summary.royaltyByFormat).toContainEqual(expect.objectContaining({ format: 'impreso', orderCount: 1, averageUnitPrice: 14.99, averageProductionCost: 2.05, totalRoyalties: 27.76 }));
   });
 
   it('no custodia contenido que falle la validación estructural', async () => {
