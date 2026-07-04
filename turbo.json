@@ -32,7 +32,7 @@
     "dev": { "cache": false, "persistent": true },
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "@anclora/web#build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**"] },
-    "@anclora/api#build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "@anclora/api#build": { "dependsOn": ["^build"], "outputs": ["dist/**", "api/_handler.mjs", "api/_handler.mjs.map"] },
     "lint": { "dependsOn": ["^lint"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
     "test": { "dependsOn": ["^build", "^test"], "outputs": [] },
