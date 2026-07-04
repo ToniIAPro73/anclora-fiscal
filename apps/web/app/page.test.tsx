@@ -46,7 +46,8 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText('Todavía no hay importaciones')).toBeInTheDocument());
     expect(screen.getAllByText('0')).toHaveLength(4);
-    expect(screen.getByText('Sin operaciones')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('Sin operaciones todavía')).toBeInTheDocument();
   });
 
   it('renderiza las métricas reales cuando existen datos', async () => {

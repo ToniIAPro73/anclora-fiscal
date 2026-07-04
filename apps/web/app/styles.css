@@ -80,6 +80,10 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
 .metric-card strong { color: #e7b766; font: 600 clamp(2rem, 3vw, 3rem) var(--font-display), serif; line-height: 1; }
 
 .evidence-panel { display: grid; grid-template-columns: .72fr 1.45fr; gap: 5vw; padding-top: 30px; }
+.evidence-panel dl { display: grid; gap: 16px; margin: 0; align-content: center; }
+.evidence-panel dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; border-bottom: 1px solid rgb(243 236 223 / 10%); padding-bottom: 12px; }
+.evidence-panel dt { margin: 0; color: rgb(243 236 223 / 52%); font-size: .73rem; }
+.evidence-panel dd { margin: 0; color: #e7b766; font: 600 1.3rem var(--font-display), serif; }
 .evidence-thread { position: relative; list-style: none; margin: 0; padding: 0; }
 .evidence-thread::before { content: ''; position: absolute; left: 74px; top: 12px; bottom: 20px; width: 1px; background: linear-gradient(#e7b766, rgb(199 150 76 / 18%)); }
 .evidence-thread li { position: relative; display: grid; grid-template-columns: 60px 1fr auto; gap: 28px; align-items: start; padding: 0 0 30px; }

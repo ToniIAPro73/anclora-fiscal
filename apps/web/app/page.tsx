@@ -71,7 +71,7 @@ export default function Dashboard() {
       {!loading && !error && summary ? <section className="metrics" aria-label="Resumen operativo">
         <MetricCard label="Pendientes de revisión" value={String(summary.openIssuesCount)} detail="Incidencias abiertas" />
         <MetricCard label="Importaciones del mes" value={String(summary.importsThisMonthCount)} detail="Este mes" />
-        <MetricCard label="Conciliación" value={reconciliationPercentage !== undefined ? `${reconciliationPercentage} %` : 'Sin operaciones'} detail={`${summary.reconciliationStatus.total} operaciones`} />
+        <MetricCard label="Conciliación" value={reconciliationPercentage !== undefined ? `${reconciliationPercentage} %` : '—'} detail={summary.reconciliationStatus.total > 0 ? `${summary.reconciliationStatus.total} operaciones` : 'Sin operaciones todavía'} />
         <MetricCard label="Documentos emitidos" value={String(summary.documentsIssuedCount)} detail="Serie AF-2026" />
       </section> : null}
       {!loading && !error && summary ? <section className="evidence-panel" aria-label="Regalías (KDP)">
