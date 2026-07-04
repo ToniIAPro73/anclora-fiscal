@@ -90,4 +90,89 @@ describe('MatchingService', () => {
     expect(result).toEqual({ status: 'SKIPPED_ORDER_NOT_FOUND' });
     expect(findByOrderReference).not.toHaveBeenCalled();
   });
+
+  it('invoca la decisión fiscal después de persistir la operación canónica cuando se inyecta taxDecisionService', async () => {
+    const order = {
+      id: 'order-3',
+      sourceChannel: 'SHOPIFY',
+      externalOrderId: 'AI-3003',
+      checkoutReference: null,
+      customerCountry: 'ES',
+      customerType: 'B2C',
+      productNature: 'general',
+    };
+    const event = {
+      id: 'event-3',
+      eventType: 'charge',
+      checkoutReference: null,
+      amount: '121.00',
+      feeAmount: '3.50',
+      netAmount: '117.50',
+      currency: 'EUR',
+    };
+    const findById = vi.fn().mockResolvedValue(order);
+    const findByOrderReference = vi.fn().mockResolvedValue([event]);
+    const create = vi.fn().mockResolvedValue({ id: 'canonical-op-3' });
+    const createCandidates = vi.fn().mockResolvedValue(undefined);
+    const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({ status: 'DECIDED', taxDecisionStatus: 'DETERMINED' });
+
+    const service = new MatchingService({
+      commercialOrdersRepository: { findById },
+      financialEventsRepository: { findByOrderReference },
+      operationsRepository: { create },
+      reconciliationRepository: { createCandidates },
+      legalEntitiesRepository: { findFirstByTenant },
+      taxDecisionService: { runTaxDecisionForOperation },
+    });
+
+    const result = await service.runMatchingForOrder(tenantId, 'order-3');
+
+    expect(result).toEqual({ status: 'MATCHED', canonicalOperationId: 'canonical-op-3' });
+    expect(create).toHaveBeenCalledWith(tenantId, 'legal-entity-1', expect.objectContaining({
+      customerCountry: 'ES',
+      customerType: 'B2C',
+      productNature: 'general',
+    }));
+    expect(runTaxDecisionForOperation).toHaveBeenCalledWith(tenantId, 'canonical-op-3', expect.objectContaining({
+      id: 'canonical-op-3',
+      sourceChannel: 'SHOPIFY',
+      customerCountry: 'ES',
+      customerType: 'B2C',
+      productNature: 'general',
+    }));
+  });
+
+  it('no propaga un error de taxDecisionService fuera de runMatchingForOrder (llamada no fatal)', async () => {
+    const order = { id: 'order-4', sourceChannel: 'SHOPIFY', externalOrderId: 'AI-4004', checkoutReference: null };
+    const event = {
+      id: 'event-4',
+      eventType: 'charge',
+      checkoutReference: null,
+      amount: '50.00',
+      feeAmount: '1.00',
+      netAmount: '49.00',
+      currency: 'EUR',
+    };
+    const findById = vi.fn().mockResolvedValue(order);
+    const findByOrderReference = vi.fn().mockResolvedValue([event]);
+    const create = vi.fn().mockResolvedValue({ id: 'canonical-op-4' });
+    const createCandidates = vi.fn().mockResolvedValue(undefined);
+    const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
+    const runTaxDecisionForOperation = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const service = new MatchingService({
+      commercialOrdersRepository: { findById },
+      financialEventsRepository: { findByOrderReference },
+      operationsRepository: { create },
+      reconciliationRepository: { createCandidates },
+      legalEntitiesRepository: { findFirstByTenant },
+      taxDecisionService: { runTaxDecisionForOperation },
+    });
+
+    await expect(service.runMatchingForOrder(tenantId, 'order-4')).resolves.toEqual({
+      status: 'MATCHED',
+      canonicalOperationId: 'canonical-op-4',
+    });
+  });
 });

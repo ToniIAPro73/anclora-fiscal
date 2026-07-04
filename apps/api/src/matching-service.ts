@@ -1,12 +1,16 @@
 import { matchOrder } from '@anclora/core';
 import type { CommercialEvidence, FinancialEvidence } from '@anclora/core';
 import type { CanonicalOperationDraftInput } from '@anclora/db';
+import type { TaxDecisionCanonicalOperation } from './tax-decision-service.js';
 
 export interface MatchingCommercialOrder {
   id: string;
   sourceChannel: string;
   externalOrderId: string;
   checkoutReference: string | null;
+  customerCountry?: string | null;
+  customerType?: string | null;
+  productNature?: string | null;
 }
 
 export interface MatchingFinancialEvent {
@@ -42,12 +46,27 @@ export interface MatchingLegalEntitiesPort {
   findFirstByTenant(tenantId: string): Promise<{ id: string } | undefined>;
 }
 
+/**
+ * Optional dependency — invoked non-fatally right after a canonical
+ * operation is persisted so a matched import becomes invoiceable with zero
+ * extra user action (Phase 3 automatic-on-import trigger). Structurally
+ * typed so existing tests that don't pass one still pass unmodified.
+ */
+export interface MatchingTaxDecisionPort {
+  runTaxDecisionForOperation(
+    tenantId: string,
+    canonicalOperationId: string,
+    canonicalOperation: TaxDecisionCanonicalOperation,
+  ): Promise<unknown>;
+}
+
 export interface MatchingServiceDependencies {
   commercialOrdersRepository: MatchingCommercialOrdersPort;
   financialEventsRepository: MatchingFinancialEventsPort;
   operationsRepository: MatchingOperationsPort;
   reconciliationRepository: MatchingReconciliationPort;
   legalEntitiesRepository: MatchingLegalEntitiesPort;
+  taxDecisionService?: MatchingTaxDecisionPort | undefined;
 }
 
 export type MatchingResult =
@@ -111,6 +130,9 @@ export class MatchingService {
       netAmount: draft.netAmount,
       currency: draft.currency,
       anomalyFlags: draft.anomalyFlags,
+      customerCountry: order.customerCountry,
+      customerType: order.customerType,
+      productNature: order.productNature,
     });
 
     await this.dependencies.reconciliationRepository.createCandidates(
@@ -122,6 +144,28 @@ export class MatchingService {
         explanation: { signals: match.signals },
       })),
     );
+
+    if (this.dependencies.taxDecisionService) {
+      try {
+        await this.dependencies.taxDecisionService.runTaxDecisionForOperation(tenantId, operation.id, {
+          id: operation.id,
+          sourceChannel: order.sourceChannel,
+          operationType: 'SALE',
+          grossAmount: draft.grossAmount,
+          originalCurrency: draft.currency,
+          customerCountry: order.customerCountry,
+          customerType: order.customerType,
+          productNature: order.productNature,
+        });
+      } catch (error) {
+        // Non-fatal — a failed tax decision must not undo an otherwise
+        // successful match/import, same contract as the legal-entity skip.
+        console.warn(
+          `[matching-service] Falló la decisión fiscal para la operación ${operation.id} del tenant ${tenantId}; se continúa sin decisión fiscal`,
+          error,
+        );
+      }
+    }
 
     return { status: 'MATCHED', canonicalOperationId: operation.id };
   }

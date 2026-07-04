@@ -1,9 +1,10 @@
 import { FilesystemStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import { MatchingService } from './matching-service.js';
+import { TaxDecisionService } from './tax-decision-service.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import type { ReconciliationRepositoryPort } from './reconciliation-controller.js';
@@ -49,12 +50,18 @@ export async function createProductionApp() {
     const database = createRemoteDatabase(process.env.DATABASE_URL);
     const commercialOrdersRepositoryForMatching = new DrizzleCommercialOrdersRepository(database.db);
     const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
+    const legalEntitiesRepositoryForMatching = new DrizzleLegalEntitiesRepository(database.db);
+    const taxDecisionService = new TaxDecisionService({
+      legalEntitiesRepository: legalEntitiesRepositoryForMatching,
+      taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
+    });
     const matchingService = new MatchingService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
       operationsRepository: new DrizzleOperationsRepository(database.db),
       reconciliationRepository: new DrizzleReconciliationRepository(database.db),
-      legalEntitiesRepository: new DrizzleLegalEntitiesRepository(database.db),
+      legalEntitiesRepository: legalEntitiesRepositoryForMatching,
+      taxDecisionService,
     });
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
@@ -79,12 +86,18 @@ export async function createProductionApp() {
     await ensureDevelopmentTenant(database.db);
     const commercialOrdersRepositoryForMatching = new DrizzleCommercialOrdersRepository(database.db);
     const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
+    const legalEntitiesRepositoryForMatching = new DrizzleLegalEntitiesRepository(database.db);
+    const taxDecisionService = new TaxDecisionService({
+      legalEntitiesRepository: legalEntitiesRepositoryForMatching,
+      taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
+    });
     const matchingService = new MatchingService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
       operationsRepository: new DrizzleOperationsRepository(database.db),
       reconciliationRepository: new DrizzleReconciliationRepository(database.db),
-      legalEntitiesRepository: new DrizzleLegalEntitiesRepository(database.db),
+      legalEntitiesRepository: legalEntitiesRepositoryForMatching,
+      taxDecisionService,
     });
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),

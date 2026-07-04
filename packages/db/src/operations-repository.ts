@@ -38,6 +38,9 @@ export interface CanonicalOperationDraftInput {
   netAmount: number;
   currency?: string | undefined;
   anomalyFlags: string[];
+  customerCountry?: string | null | undefined;
+  customerType?: string | null | undefined;
+  productNature?: string | null | undefined;
 }
 
 export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> {
@@ -72,6 +75,9 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
       reconciliationStatus: draft.reconciliationStatus,
       verifactuStatus: 'PENDING',
       anomalyFlags: draft.anomalyFlags,
+      customerCountry: draft.customerCountry,
+      customerType: draft.customerType,
+      productNature: draft.productNature,
       updatedAt: new Date(),
     };
     const [row] = await this.db

@@ -7,6 +7,14 @@ export interface ShopifyOrderEvidence {
   quantity: number;
   hasBillingBlock: boolean;
   hasShippingBlock: boolean;
+  /**
+   * Real, already-present column data (Shipping Country, falling back to
+   * Billing Country) — not fabricated. `undefined` when neither column is
+   * present in the export (older/customized exports); the tax-decision
+   * pipeline downstream (Phase 3) treats that as missing evidence and
+   * correctly returns BLOCKED/MISSING_TAX_EVIDENCE rather than guessing.
+   */
+  customerCountry?: string;
   issues: Array<{ code: string; severity: 'HIGH' | 'BLOCKING'; message: string }>;
 }
 
@@ -39,12 +47,15 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
     if (record['Financial Status'] === 'refunded' && record['Fulfillment Status'] === 'fulfilled') {
       issues.push({ code: 'INCOHERENT_QUANTITY', severity: 'HIGH', message: 'Pedido cumplido con reembolso total; cantidad servida incoherente con el neto comercial' });
     }
+    const customerCountry = record['Shipping Country'] || record['Billing Country'] || undefined;
+
     return {
       orderId,
       ...(commercialDate ? { commercialDate } : {}),
       quantity,
       hasBillingBlock: Boolean(record['Billing Name']),
       hasShippingBlock: Boolean(record['Shipping Name']),
+      ...(customerCountry ? { customerCountry } : {}),
       issues,
     };
   });

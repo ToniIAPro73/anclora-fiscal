@@ -19,6 +19,7 @@
     "@anclora/core": "workspace:*",
     "@anclora/connectors": "workspace:*",
     "@anclora/db": "workspace:*",
+    "@anclora/tax-engine": "workspace:*",
     "@electric-sql/pglite": "^0.3.2",
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.1",

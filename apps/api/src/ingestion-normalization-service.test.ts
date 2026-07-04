@@ -24,6 +24,21 @@ describe('normalizeShopifyOrdersCsv', () => {
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.commercialDate).toBeUndefined();
   });
+
+  it('aplica customerCountry real y los valores por defecto documentados de customerType/productNature', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const orders = normalizeShopifyOrdersCsv(parsed);
+
+    expect(orders.every((order) => order.customerCountry === 'ES')).toBe(true);
+    expect(orders.every((order) => order.customerType === 'B2C')).toBe(true);
+    expect(orders.every((order) => order.productNature === 'general')).toBe(true);
+  });
+
+  it('deja customerCountry sin definir cuando el export no trae columnas de país', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const orders = normalizeShopifyOrdersCsv(parsed);
+    expect(orders[0]?.customerCountry).toBeUndefined();
+  });
 });
 
 describe('normalizeShopifyPaymentTransactions', () => {

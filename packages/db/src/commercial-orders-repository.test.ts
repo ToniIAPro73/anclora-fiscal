@@ -36,6 +36,32 @@ describe('DrizzleCommercialOrdersRepository', () => {
     expect(found?.id).toBe(created.id);
   });
 
+  it('persiste customerCountry, customerType y productNature al crear y al crear en lote', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenant(db, 'tenant-a');
+    const repository = new DrizzleCommercialOrdersRepository(db);
+
+    const created = await repository.create(tenantId, {
+      sourceChannel: 'SHOPIFY',
+      externalOrderId: 'order-evidence-1',
+      customerCountry: 'ES',
+      customerType: 'B2C',
+      productNature: 'general',
+    });
+    expect(created.customerCountry).toBe('ES');
+    expect(created.customerType).toBe('B2C');
+    expect(created.productNature).toBe('general');
+
+    const [createdMany] = await repository.createMany(tenantId, [
+      { sourceChannel: 'SHOPIFY', externalOrderId: 'order-evidence-2', customerType: 'B2C', productNature: 'general' },
+    ]);
+    expect(createdMany?.customerCountry).toBeFalsy();
+    expect(createdMany?.customerType).toBe('B2C');
+    expect(createdMany?.productNature).toBe('general');
+  });
+
   it('devuelve undefined si el pedido no existe para ese tenant', async () => {
     const { client, db } = createOfflineDatabase();
     clients.push(client);

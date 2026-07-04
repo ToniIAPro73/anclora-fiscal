@@ -17,6 +17,20 @@ export function normalizeShopifyOrdersCsv(evidence: ShopifyOrdersCsvEvidence): N
     sourceChannel: SOURCE_CHANNEL,
     externalOrderId: order.orderId,
     commercialDate: order.commercialDate ? new Date(order.commercialDate) : undefined,
+    // Real, already-present evidence (Shipping/Billing Country) — undefined
+    // when the export doesn't carry it, which is the honest signal that lets
+    // the tax-decision service (Phase 3) correctly return
+    // BLOCKED/MISSING_TAX_EVIDENCE instead of guessing a country.
+    customerCountry: order.customerCountry,
+    // Documented business-rule default, not fabricated per-row data: this
+    // connector processes a direct-to-consumer Shopify storefront export —
+    // there is no B2B/reseller distinction anywhere in the source data.
+    customerType: 'B2C',
+    // Documented known limitation: no product/SKU category data flows
+    // through the pipeline yet, so every order is treated as the coarsest
+    // possible "general" rate rather than a reduced rate (e.g. ebook).
+    // Revisit only if/when a product-catalog import is added.
+    productNature: 'general',
   }));
 }
 
