@@ -4,6 +4,9 @@ import type { CommercialEvidence, FinancialEvidence } from '@anclora/core';
 import { matchOrder } from '@anclora/core';
 import { StatusBadge } from '@anclora/ui';
 
+const statusLabels: Record<string, string> = { PENDING_TAX_REVIEW: 'Pendiente de revisión fiscal', PENDING_EVIDENCE: 'Pendiente de evidencia' };
+const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
+
 const order: CommercialEvidence = { orderId: 'AI-1001', checkoutId: '#68683485610367' };
 const events: FinancialEvidence[] = [
   { id: 'evt-charge-1', orderId: 'AI-1001', checkoutId: '#68683485610367', type: 'charge', amount: 6.99, fee: 0.35, net: 6.64, currency: 'EUR' },
@@ -17,8 +20,8 @@ export function OperationsTimeline() {
   return <section className="operations-timeline">
     <span className="section-index">Vista de demostración — caso de referencia AI-1001</span>
     <div className="timeline-summary">
-      <StatusBadge tone={draft.status === 'PENDING_TAX_REVIEW' ? 'warning' : 'info'}>{draft.status}</StatusBadge>
-      <StatusBadge tone={draft.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{draft.reconciliationStatus}</StatusBadge>
+      <StatusBadge tone={draft.status === 'PENDING_TAX_REVIEW' ? 'warning' : 'info'}>{statusLabels[draft.status] ?? draft.status}</StatusBadge>
+      <StatusBadge tone={draft.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{reconciliationLabels[draft.reconciliationStatus] ?? draft.reconciliationStatus}</StatusBadge>
       <dl>
         <div><dt>Bruto</dt><dd>{draft.grossAmount.toFixed(2)} EUR</dd></div>
         <div><dt>Comisión</dt><dd>{draft.platformFeeAmount.toFixed(2)} EUR</dd></div>

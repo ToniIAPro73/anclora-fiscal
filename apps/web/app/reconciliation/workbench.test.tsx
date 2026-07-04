@@ -12,8 +12,8 @@ describe('ReconciliationWorkbench', () => {
 
   it('renders distinct reconciliation states', () => {
     render(<ReconciliationWorkbench />);
-    expect(screen.getAllByText('MATCHED')).toHaveLength(2);
-    expect(screen.getByText('EXCEPCIÓN')).toBeInTheDocument();
+    expect(screen.getAllByText('Conciliado')).toHaveLength(2);
+    expect(screen.getByText('Excepción')).toBeInTheDocument();
   });
 
   it('renders each demo case label', () => {

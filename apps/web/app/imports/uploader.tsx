@@ -5,6 +5,8 @@ import { FieldLabel, StatusBadge } from '@anclora/ui';
 
 interface Preview { jobId: string; connector: string; status: string; summary: { records: number; issues: number; orderIds: string[] }; issues: Array<{ code: string; severity: string; message: string }> }
 
+const statusLabels: Record<string, string> = { PREVIEW_READY: 'Vista previa lista' };
+
 export function ImportUploader() {
   const [preview, setPreview] = useState<Preview>();
   const [error, setError] = useState('');
@@ -36,7 +38,7 @@ export function ImportUploader() {
       <span className="section-index">RESULTADO</span>
       {error ? <p className="import-error">{error}</p> : null}
       {!preview && !error ? <div className="empty-preview"><strong>Sin archivo analizado</strong><p>La importación no crea operaciones hasta que confirmes la vista previa.</p></div> : null}
-      {preview ? <><div className="preview-heading"><div><StatusBadge tone={preview.summary.issues ? 'warning' : 'info'}>{preview.status}</StatusBadge><h2>{preview.connector}</h2></div><strong>{preview.summary.records}<small> registros</small></strong></div><dl><div><dt>Pedidos detectados</dt><dd>{preview.summary.orderIds.join(', ')}</dd></div><div><dt>Incidencias</dt><dd>{preview.summary.issues}</dd></div></dl><ul>{preview.issues.map((issue) => <li key={`${issue.code}-${issue.message}`}><strong>{issue.code}</strong><span>{issue.message}</span></li>)}</ul></> : null}
+      {preview ? <><div className="preview-heading"><div><StatusBadge tone={preview.summary.issues ? 'warning' : 'info'}>{statusLabels[preview.status] ?? preview.status}</StatusBadge><h2>{preview.connector}</h2></div><strong>{preview.summary.records}<small> registros</small></strong></div><dl><div><dt>Pedidos detectados</dt><dd>{preview.summary.orderIds.join(', ')}</dd></div><div><dt>Incidencias</dt><dd>{preview.summary.issues}</dd></div></dl><ul>{preview.issues.map((issue) => <li key={`${issue.code}-${issue.message}`}><strong>{issue.code}</strong><span>{issue.message}</span></li>)}</ul></> : null}
     </section>
   </section>;
 }

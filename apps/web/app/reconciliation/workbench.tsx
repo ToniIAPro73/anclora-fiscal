@@ -32,6 +32,7 @@ const cases: DemoCase[] = [
 ];
 
 const stateTone = (status: string) => status === 'MATCHED' ? 'info' : status === 'PARTIALLY_MATCHED' ? 'warning' : 'blocking';
+const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
 
 export function ReconciliationWorkbench() {
   const rows = cases.map((demoCase) => ({ ...demoCase, draft: matchOrder(demoCase.order, demoCase.events) }));
@@ -50,7 +51,7 @@ export function ReconciliationWorkbench() {
             <td>{draft.grossAmount.toFixed(2)} EUR</td>
             <td>{draft.platformFeeAmount.toFixed(2)} EUR</td>
             <td>{draft.netAmount.toFixed(2)} EUR</td>
-            <td><StatusBadge tone={stateTone(draft.reconciliationStatus)}>{draft.reconciliationStatus === 'UNMATCHED' ? 'EXCEPCIÓN' : draft.reconciliationStatus}</StatusBadge></td>
+            <td><StatusBadge tone={stateTone(draft.reconciliationStatus)}>{reconciliationLabels[draft.reconciliationStatus] ?? draft.reconciliationStatus}</StatusBadge></td>
             <td>{(confidence * 100).toFixed(0)} %</td>
           </tr>;
         })}

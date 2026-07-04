@@ -10,8 +10,8 @@ describe('OperationsTimeline', () => {
 
   it('renders a status badge for the matching result', () => {
     render(<OperationsTimeline />);
-    expect(screen.getByText('PENDING_TAX_REVIEW')).toBeInTheDocument();
-    expect(screen.getByText('MATCHED')).toBeInTheDocument();
+    expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument();
+    expect(screen.getByText('Conciliado')).toBeInTheDocument();
   });
 
   it('shows the net-zero confirmation message', () => {

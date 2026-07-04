@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { StatusBadge } from '@anclora/ui';
 import { buildDemoDossier } from './demo';
 
+const statusLabels: Record<string, string> = { CLOSED: 'Cerrado' };
+
 const fileDescriptions: Record<string, string> = {
   'facturas.csv': 'Listado de facturas del periodo (CSV)',
   'facturas.xlsx': 'Listado de facturas del periodo (Excel)',
@@ -19,7 +21,7 @@ export default async function VatDossierPage() {
     </header>
     <section className="vat-dossier">
       <span className="section-index">Vista de demostración</span>
-      <StatusBadge tone="info">{dossier.status}</StatusBadge>
+      <StatusBadge tone="info">{statusLabels[dossier.status] ?? dossier.status}</StatusBadge>
       <h2>Periodo {dossier.period}</h2>
       <table>
         <thead><tr><th scope="col">Fichero</th><th scope="col">Descripción</th></tr></thead>

@@ -4,6 +4,7 @@ import { StatusBadge } from '@anclora/ui';
 import { buildDemoInvoices } from '../invoicing/demo';
 
 const formatShortDate = (iso: string) => new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: 'short' }).format(new Date(iso)).replace('.', '').toUpperCase();
+const submissionLabels: Record<string, string> = { ACCEPTED: 'Aceptada', REJECTED: 'Rechazada' };
 
 export default async function VerifactuPage() {
   const { original, rectified } = await buildDemoInvoices();
@@ -44,7 +45,7 @@ export default async function VerifactuPage() {
             <strong>{record.recordType} · {record.documentNumber}</strong>
             <p>hash {record.hash.slice(0, 16)}…{record.previousHash ? ` · anterior ${record.previousHash.slice(0, 16)}…` : ' · primer registro'}</p>
           </div>
-          <StatusBadge tone={submissions[index]?.status === 'ACCEPTED' ? 'info' : 'warning'}>{submissions[index]?.status}</StatusBadge>
+          <StatusBadge tone={submissions[index]?.status === 'ACCEPTED' ? 'info' : 'warning'}>{submissions[index] ? submissionLabels[submissions[index].status] ?? submissions[index].status : ''}</StatusBadge>
         </li>)}
       </ol>
     </section>
