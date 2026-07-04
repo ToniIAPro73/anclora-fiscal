@@ -34,11 +34,14 @@ export async function createProductionApp() {
     throw new Error('IMPORT_METADATA_SECRET es obligatorio en producción');
   }
   // Vercel serverless functions have a read-only filesystem outside `/tmp`,
-  // so FilesystemStorage only works for local/offline dev. BLOB_READ_WRITE_TOKEN
-  // is auto-injected by Vercel once a Blob store is connected to this project;
-  // its presence is what gates the switch, not NODE_ENV, since local dev never
-  // sets it.
-  const storage = process.env.BLOB_READ_WRITE_TOKEN
+  // so FilesystemStorage only works for local/offline dev. A connected Blob
+  // store auto-injects either BLOB_READ_WRITE_TOKEN (classic static-token
+  // connection) or BLOB_STORE_ID (newer OIDC-based "Connect" flow, paired
+  // with the auto-injected VERCEL_OIDC_TOKEN — the @vercel/blob SDK resolves
+  // both automatically with no explicit token/storeId needed). Either var's
+  // presence gates the switch, not NODE_ENV, since local dev never sets them.
+  const blobStoreConnected = Boolean(process.env.BLOB_READ_WRITE_TOKEN ?? process.env.BLOB_STORE_ID);
+  const storage = blobStoreConnected
     ? new VercelBlobStorage()
     : new FilesystemStorage(process.env.STORAGE_ROOT ?? resolve(process.cwd(), 'storage'));
 
