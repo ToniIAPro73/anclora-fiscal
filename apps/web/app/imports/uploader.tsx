@@ -17,7 +17,7 @@ export function ImportUploader() {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_ORIGIN ?? 'http://localhost:3001'}/api/v1/imports/preview`, {
         method: 'POST',
-        headers: { 'x-anclora-role': 'FISCAL_OPERATOR' },
+        credentials: 'include',
         body: formData,
       });
       if (!response.ok) throw new Error('El archivo no supera la validación estructural');

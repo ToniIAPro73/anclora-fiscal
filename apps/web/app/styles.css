@@ -132,6 +132,9 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
 .drop-panel p, .empty-preview p { color: rgb(243 236 223 / 52%); font-size: .73rem; line-height: 1.6; }
 .drop-panel button { margin-top: auto; min-height: 52px; border: 0; border-radius: 12px; background: linear-gradient(135deg, #e7b766, #c2913f); color: #1a1206; font-weight: 700; box-shadow: 0 6px 0 rgb(92 58 16 / 78%); cursor: pointer; }
 .drop-panel button:disabled { opacity: .55; cursor: wait; }
+.dossier-actions { display: flex; gap: 16px; margin-top: auto; }
+.dossier-actions button { margin-top: 0; flex: 1; }
+.dossier-actions button:disabled { cursor: not-allowed; }
 .empty-preview { display: grid; place-content: center; height: 320px; text-align: center; }
 .empty-preview strong { font: 600 1.5rem var(--font-display), serif; }
 .preview-heading { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 35px; }

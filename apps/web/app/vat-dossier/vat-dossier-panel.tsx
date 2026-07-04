@@ -78,7 +78,7 @@ export function VatDossierPanel() {
     >
       <FieldLabel htmlFor="vat-period" required>Periodo</FieldLabel>
       <input id="vat-period" name="period" placeholder="2026-T3" value={period} onChange={(event) => setPeriod(event.target.value)} required />
-      <div>
+      <div className="dossier-actions">
         <button disabled={busy || !period.trim()} type="submit">{busy ? 'Consultando…' : 'Consultar expediente'}</button>
         <button disabled={busy || !period.trim()} type="button" onClick={() => void generateDossier(period.trim())}>{busy ? 'Generando…' : 'Generar expediente'}</button>
       </div>
