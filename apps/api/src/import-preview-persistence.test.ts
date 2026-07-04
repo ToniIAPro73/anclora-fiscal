@@ -89,7 +89,7 @@ describe('ImportPreviewPersistenceService', () => {
       { createMany: financialEventsCreateMany },
     );
     const commercialOrders = [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001', commercialDate: new Date('2026-07-01') }];
-    const financialEvents = [{ sourceChannel: 'SHOPIFY', externalEventId: 'evt-1', eventType: 'charge', amount: 10, feeAmount: 1, netAmount: 9, currency: 'EUR', occurredAt: new Date('2026-07-01') }];
+    const financialEvents = [{ sourceChannel: 'SHOPIFY', externalEventId: 'evt-1', eventType: 'charge', amount: '10', feeAmount: '1', netAmount: '9', currency: 'EUR', occurredAt: new Date('2026-07-01') }];
     const preview = {
       jobId: 'job-4',
       status: 'PREVIEW_READY' as const,

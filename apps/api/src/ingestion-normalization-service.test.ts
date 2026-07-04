@@ -20,7 +20,7 @@ describe('normalizeShopifyOrdersCsv', () => {
 
   it('deja commercialDate sin definir cuando el pedido no trae fecha comercial válida', async () => {
     const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
-    parsed.orders[0]!.commercialDate = undefined;
+    delete parsed.orders[0]!.commercialDate;
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.commercialDate).toBeUndefined();
   });
