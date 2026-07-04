@@ -12,6 +12,7 @@ export interface ListFinancialEventsInput {
 }
 
 export type FinancialEvent = typeof financialEvents.$inferSelect;
+export type NewFinancialEvent = typeof financialEvents.$inferInsert;
 
 export interface PaginatedFinancialEvents {
   items: FinancialEvent[];
@@ -45,5 +46,19 @@ export class DrizzleFinancialEventsRepository<TQueryResult extends PgQueryResult
     ]);
 
     return { items, page: input.page, pageSize: input.pageSize, total: totalRow?.total ?? 0 };
+  }
+
+  /**
+   * Bulk-inserts financial events for the tenant. Duplicates (by the
+   * (tenantId, sourceChannel, externalEventId) unique constraint) are
+   * silently skipped so re-importing the same file is idempotent.
+   */
+  async createMany(tenantId: string, events: Array<Omit<NewFinancialEvent, 'tenantId'>>): Promise<FinancialEvent[]> {
+    if (events.length === 0) return [];
+    return this.db
+      .insert(financialEvents)
+      .values(events.map((event) => ({ ...event, tenantId })))
+      .onConflictDoNothing({ target: [financialEvents.tenantId, financialEvents.sourceChannel, financialEvents.externalEventId] })
+      .returning();
   }
 }

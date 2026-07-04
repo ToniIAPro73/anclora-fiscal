@@ -17,6 +17,24 @@ describe('previewImport', () => {
     expect(JSON.stringify(result)).not.toContain('@');
   });
 
+  it('normaliza las transacciones Shopify a financialEvents para persistencia posterior', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    expect(result.connector).toBe('shopify-csv');
+    expect(result.financialEvents).toHaveLength(result.summary.records);
+    expect(result.financialEvents?.every((event) => event.sourceChannel === 'SHOPIFY')).toBe(true);
+    expect(result.commercialOrders).toBeUndefined();
+  });
+
+  it('normaliza los pedidos Shopify a commercialOrders para persistencia posterior', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const result = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    expect(result.connector).toBe('shopify-orders-csv');
+    expect(result.commercialOrders).toHaveLength(result.summary.records);
+    expect(result.commercialOrders?.every((order) => order.sourceChannel === 'SHOPIFY')).toBe(true);
+    expect(result.financialEvents).toBeUndefined();
+  });
+
   it('detecta el XLSX de KDP por hoja conocida y devuelve la venta de 4 unidades pendiente de revisión KENP', async () => {
     const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/kdp-orders-anonymized.xlsx'));
     const result = await previewImport({ tenantId: 'test', filename: 'KDP_Orders.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes, storage: new FilesystemStorage(root) });

@@ -76,4 +76,61 @@ describe('ImportPreviewPersistenceService', () => {
     await service.persist('01977d43-75de-7000-8000-000000000010', 'kdp.xlsx', preview);
     expect(royaltyPersist).not.toHaveBeenCalled();
   });
+
+  it('persiste los pedidos comerciales y eventos financieros normalizados cuando el preview los incluye', async () => {
+    const persist = vi.fn().mockResolvedValue({ jobId: 'job-4', importFileId: 'file-4', duplicate: false });
+    const commercialOrdersCreateMany = vi.fn().mockResolvedValue([{ id: 'order-row-1' }]);
+    const financialEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-1' }]);
+    const service = new ImportPreviewPersistenceService(
+      { persist },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: commercialOrdersCreateMany },
+      { createMany: financialEventsCreateMany },
+    );
+    const commercialOrders = [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001', commercialDate: new Date('2026-07-01') }];
+    const financialEvents = [{ sourceChannel: 'SHOPIFY', externalEventId: 'evt-1', eventType: 'charge', amount: 10, feeAmount: 1, netAmount: 9, currency: 'EUR', occurredAt: new Date('2026-07-01') }];
+    const preview = {
+      jobId: 'job-4',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-orders-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'e'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 1, issues: 0, orderIds: ['AI-1001'] },
+      issues: [],
+      commercialOrders,
+      financialEvents,
+    };
+
+    await service.persist('01977d43-75de-7000-8000-000000000010', 'pedido-shopify.csv', preview);
+
+    expect(commercialOrdersCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', commercialOrders);
+    expect(financialEventsCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', financialEvents);
+  });
+
+  it('no persiste pedidos ni eventos cuando el archivo ya estaba registrado (duplicate)', async () => {
+    const persist = vi.fn().mockResolvedValue({ jobId: 'job-5', importFileId: 'file-5', duplicate: true });
+    const commercialOrdersCreateMany = vi.fn();
+    const financialEventsCreateMany = vi.fn();
+    const service = new ImportPreviewPersistenceService(
+      { persist },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: commercialOrdersCreateMany },
+      { createMany: financialEventsCreateMany },
+    );
+    const preview = {
+      jobId: 'job-5',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-orders-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'f'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 1, issues: 0, orderIds: ['AI-1001'] },
+      issues: [],
+      commercialOrders: [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001' }],
+    };
+
+    await service.persist('01977d43-75de-7000-8000-000000000010', 'pedido-shopify.csv', preview);
+
+    expect(commercialOrdersCreateMany).not.toHaveBeenCalled();
+    expect(financialEventsCreateMany).not.toHaveBeenCalled();
+  });
 });

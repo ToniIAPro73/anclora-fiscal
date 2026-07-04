@@ -26,3 +26,4 @@ export * from './fiscal-documents-repository.js';
 export * from './period-closes-repository.js';
 export * from './vat-dossiers-repository.js';
 export * from './royalty-repository.js';
+export * from './commercial-orders-repository.js';

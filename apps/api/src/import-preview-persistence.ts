@@ -23,6 +23,14 @@ export interface RoyaltyRepositoryPort {
   }): Promise<{ statementId: string; duplicate: boolean }>;
 }
 
+export interface CommercialOrdersRepositoryPort {
+  createMany(tenantId: string, orders: NonNullable<ImportPreviewResponse['commercialOrders']>): Promise<unknown[]>;
+}
+
+export interface FinancialEventsWriteRepositoryPort {
+  createMany(tenantId: string, events: NonNullable<ImportPreviewResponse['financialEvents']>): Promise<unknown[]>;
+}
+
 export interface ImportPreviewPersistencePort {
   persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }>;
 }
@@ -54,6 +62,8 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly repository: ImportPreviewRepositoryPort,
     private readonly cipher: ImportMetadataCipher,
     private readonly royaltyRepository?: RoyaltyRepositoryPort,
+    private readonly commercialOrdersRepository?: CommercialOrdersRepositoryPort,
+    private readonly financialEventsRepository?: FinancialEventsWriteRepositoryPort,
   ) {}
 
   async persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
@@ -68,13 +78,25 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       issues: preview.issues,
     });
 
-    if (this.royaltyRepository && preview.royalty && !result.duplicate) {
+    if (result.duplicate) {
+      return { jobId: result.jobId, duplicate: result.duplicate };
+    }
+
+    if (this.royaltyRepository && preview.royalty) {
       await this.royaltyRepository.persist({
         tenantId,
         importFileId: result.importFileId,
         statement: preview.royalty.statement,
         lines: preview.royalty.lines,
       });
+    }
+
+    if (this.commercialOrdersRepository && preview.commercialOrders) {
+      await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
+    }
+
+    if (this.financialEventsRepository && preview.financialEvents) {
+      await this.financialEventsRepository.createMany(tenantId, preview.financialEvents);
     }
 
     return { jobId: result.jobId, duplicate: result.duplicate };

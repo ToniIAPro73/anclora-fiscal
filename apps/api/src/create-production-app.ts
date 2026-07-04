@@ -1,5 +1,5 @@
 import { FilesystemStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
@@ -48,6 +48,8 @@ export async function createProductionApp() {
       new DrizzleImportPreviewRepository(database.db),
       new ImportMetadataCipher(metadataSecret),
       new DrizzleRoyaltyRepository(database.db),
+      new DrizzleCommercialOrdersRepository(database.db),
+      new DrizzleFinancialEventsRepository(database.db),
     );
     operationsRepository = new DrizzleOperationsRepository(database.db);
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
@@ -65,6 +67,8 @@ export async function createProductionApp() {
       new DrizzleImportPreviewRepository(database.db),
       new ImportMetadataCipher(metadataSecret),
       new DrizzleRoyaltyRepository(database.db),
+      new DrizzleCommercialOrdersRepository(database.db),
+      new DrizzleFinancialEventsRepository(database.db),
     );
     operationsRepository = new DrizzleOperationsRepository(database.db);
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
