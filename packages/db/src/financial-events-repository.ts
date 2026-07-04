@@ -49,6 +49,19 @@ export class DrizzleFinancialEventsRepository<TQueryResult extends PgQueryResult
   }
 
   /**
+   * Finds financial events for the tenant whose orderReference matches a
+   * commercial order's externalOrderId — the join key used by the matching
+   * service (see packages/db/src/schema.ts and the Phase 2 plan note on why
+   * checkoutReference is not usable for Shopify orders-CSV imports).
+   */
+  async findByOrderReference(tenantId: string, orderReference: string): Promise<FinancialEvent[]> {
+    return this.db
+      .select()
+      .from(financialEvents)
+      .where(and(eq(financialEvents.tenantId, tenantId), eq(financialEvents.orderReference, orderReference)));
+  }
+
+  /**
    * Bulk-inserts financial events for the tenant. Duplicates (by the
    * (tenantId, sourceChannel, externalEventId) unique constraint) are
    * silently skipped so re-importing the same file is idempotent.

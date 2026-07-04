@@ -23,12 +23,21 @@ export interface RoyaltyRepositoryPort {
   }): Promise<{ statementId: string; duplicate: boolean }>;
 }
 
+export interface PersistedCommercialOrder { id: string; externalOrderId: string; }
+export interface PersistedFinancialEvent { id: string; orderReference: string | null; }
+
 export interface CommercialOrdersRepositoryPort {
-  createMany(tenantId: string, orders: NonNullable<ImportPreviewResponse['commercialOrders']>): Promise<unknown[]>;
+  createMany(tenantId: string, orders: NonNullable<ImportPreviewResponse['commercialOrders']>): Promise<PersistedCommercialOrder[]>;
+  findByExternalOrderId?(tenantId: string, externalOrderId: string): Promise<{ id: string } | undefined>;
 }
 
 export interface FinancialEventsWriteRepositoryPort {
-  createMany(tenantId: string, events: NonNullable<ImportPreviewResponse['financialEvents']>): Promise<unknown[]>;
+  createMany(tenantId: string, events: NonNullable<ImportPreviewResponse['financialEvents']>): Promise<PersistedFinancialEvent[]>;
+  findByOrderReference?(tenantId: string, orderReference: string): Promise<unknown[]>;
+}
+
+export interface MatchingServicePort {
+  runMatchingForOrder(tenantId: string, commercialOrderId: string): Promise<unknown>;
 }
 
 export interface ImportPreviewPersistencePort {
@@ -64,6 +73,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly royaltyRepository?: RoyaltyRepositoryPort,
     private readonly commercialOrdersRepository?: CommercialOrdersRepositoryPort,
     private readonly financialEventsRepository?: FinancialEventsWriteRepositoryPort,
+    private readonly matchingService?: MatchingServicePort,
   ) {}
 
   async persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
@@ -92,13 +102,59 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     }
 
     if (this.commercialOrdersRepository && preview.commercialOrders) {
-      await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
+      const createdOrders = await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
+      await this.triggerMatchingForNewOrders(tenantId, createdOrders);
     }
 
     if (this.financialEventsRepository && preview.financialEvents) {
-      await this.financialEventsRepository.createMany(tenantId, preview.financialEvents);
+      const createdEvents = await this.financialEventsRepository.createMany(tenantId, preview.financialEvents);
+      await this.triggerMatchingForNewEvents(tenantId, createdEvents);
     }
 
     return { jobId: result.jobId, duplicate: result.duplicate };
+  }
+
+  /**
+   * Automatic-on-import trigger (orders-CSV imported first, or re-imported
+   * after a prior payment-transactions import already landed): for each
+   * newly-created commercial order, check whether a counterpart
+   * financial_events row already exists for the tenant by orderReference —
+   * if so, run matching now. Non-fatal: a matching failure must never break
+   * the import commit itself.
+   */
+  private async triggerMatchingForNewOrders(tenantId: string, createdOrders: PersistedCommercialOrder[]): Promise<void> {
+    if (!this.matchingService || !this.financialEventsRepository?.findByOrderReference) return;
+    for (const order of createdOrders) {
+      try {
+        const counterparts = await this.financialEventsRepository.findByOrderReference(tenantId, order.externalOrderId);
+        if (counterparts.length > 0) {
+          await this.matchingService.runMatchingForOrder(tenantId, order.id);
+        }
+      } catch (error) {
+        console.error(`[import-preview-persistence] Fallo al ejecutar el emparejamiento automático para el pedido ${order.id}`, error);
+      }
+    }
+  }
+
+  /**
+   * Symmetric case: payment-transactions CSV imported first (or re-imported
+   * after a prior orders-CSV import already landed) — for each newly-created
+   * financial event with an orderReference, check whether a matching
+   * commercial order already exists for the tenant, and run matching from
+   * that direction too. Non-fatal, same as triggerMatchingForNewOrders.
+   */
+  private async triggerMatchingForNewEvents(tenantId: string, createdEvents: PersistedFinancialEvent[]): Promise<void> {
+    if (!this.matchingService || !this.commercialOrdersRepository?.findByExternalOrderId) return;
+    for (const event of createdEvents) {
+      if (!event.orderReference) continue;
+      try {
+        const order = await this.commercialOrdersRepository.findByExternalOrderId(tenantId, event.orderReference);
+        if (order) {
+          await this.matchingService.runMatchingForOrder(tenantId, order.id);
+        }
+      } catch (error) {
+        console.error(`[import-preview-persistence] Fallo al ejecutar el emparejamiento automático para el evento ${event.id}`, error);
+      }
+    }
   }
 }

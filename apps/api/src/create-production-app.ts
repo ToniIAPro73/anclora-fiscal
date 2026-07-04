@@ -1,8 +1,9 @@
 import { FilesystemStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
+import { MatchingService } from './matching-service.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import type { ReconciliationRepositoryPort } from './reconciliation-controller.js';
@@ -44,12 +45,22 @@ export async function createProductionApp() {
 
   if (process.env.DATABASE_URL) {
     const database = createRemoteDatabase(process.env.DATABASE_URL);
+    const commercialOrdersRepositoryForMatching = new DrizzleCommercialOrdersRepository(database.db);
+    const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
+    const matchingService = new MatchingService({
+      commercialOrdersRepository: commercialOrdersRepositoryForMatching,
+      financialEventsRepository: financialEventsRepositoryForMatching,
+      operationsRepository: new DrizzleOperationsRepository(database.db),
+      reconciliationRepository: new DrizzleReconciliationRepository(database.db),
+      legalEntitiesRepository: new DrizzleLegalEntitiesRepository(database.db),
+    });
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
       new ImportMetadataCipher(metadataSecret),
       new DrizzleRoyaltyRepository(database.db),
-      new DrizzleCommercialOrdersRepository(database.db),
-      new DrizzleFinancialEventsRepository(database.db),
+      commercialOrdersRepositoryForMatching,
+      financialEventsRepositoryForMatching,
+      matchingService,
     );
     operationsRepository = new DrizzleOperationsRepository(database.db);
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
@@ -63,12 +74,22 @@ export async function createProductionApp() {
     const database = createOfflineDatabase(process.env.OFFLINE_DATABASE_PATH ?? resolve(process.cwd(), '.data/anclora-fiscal'));
     await migrateOfflineDatabase(database.client);
     await ensureDevelopmentTenant(database.db);
+    const commercialOrdersRepositoryForMatching = new DrizzleCommercialOrdersRepository(database.db);
+    const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
+    const matchingService = new MatchingService({
+      commercialOrdersRepository: commercialOrdersRepositoryForMatching,
+      financialEventsRepository: financialEventsRepositoryForMatching,
+      operationsRepository: new DrizzleOperationsRepository(database.db),
+      reconciliationRepository: new DrizzleReconciliationRepository(database.db),
+      legalEntitiesRepository: new DrizzleLegalEntitiesRepository(database.db),
+    });
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
       new ImportMetadataCipher(metadataSecret),
       new DrizzleRoyaltyRepository(database.db),
-      new DrizzleCommercialOrdersRepository(database.db),
-      new DrizzleFinancialEventsRepository(database.db),
+      commercialOrdersRepositoryForMatching,
+      financialEventsRepositoryForMatching,
+      matchingService,
     );
     operationsRepository = new DrizzleOperationsRepository(database.db);
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);

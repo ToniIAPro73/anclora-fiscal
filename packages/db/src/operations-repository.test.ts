@@ -68,4 +68,26 @@ describe('DrizzleOperationsRepository', () => {
     expect(tenantAPage.items.every((item) => item.tenantId === tenantAId)).toBe(true);
     expect(tenantAPage.items.some((item) => item.tenantId === tenantBId)).toBe(false);
   });
+
+  it('create() es idempotente: volver a matchear el mismo pedido actualiza la fila existente en lugar de duplicarla', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const [tenant] = await db.insert(tenants).values({ name: 'tenant-idempotent', slug: 'tenant-idempotent' }).returning({ id: tenants.id });
+    if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
+    const [legalEntity] = await db.insert(legalEntities).values({ tenantId: tenant.id, legalName: 'Idempotent SL', countryCode: 'ES' }).returning({ id: legalEntities.id });
+    if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
+    const repository = new DrizzleOperationsRepository(db);
+
+    const draft = { sourceChannel: 'SHOPIFY', sourceOrderId: 'AI-9001', operationType: 'SALE', operationStatus: 'PENDING_EVIDENCE', reconciliationStatus: 'UNMATCHED', grossAmount: 0, platformFeeAmount: 0, netAmount: 0, anomalyFlags: [] };
+    const first = await repository.create(tenant.id, legalEntity.id, draft);
+    const second = await repository.create(tenant.id, legalEntity.id, { ...draft, operationStatus: 'PENDING_TAX_REVIEW', reconciliationStatus: 'MATCHED', grossAmount: 6.99, platformFeeAmount: 0.35, netAmount: 6.64 });
+
+    expect(second.id).toBe(first.id);
+    expect(second.reconciliationStatus).toBe('MATCHED');
+    expect(second.grossAmount).toBe('6.990000');
+
+    const page = await repository.list({ tenantId: tenant.id, page: 1, pageSize: 10 });
+    expect(page.total).toBe(1);
+  });
 });

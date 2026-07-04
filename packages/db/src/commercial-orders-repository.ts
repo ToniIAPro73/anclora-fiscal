@@ -64,6 +64,15 @@ export class DrizzleCommercialOrdersRepository<TQueryResult extends PgQueryResul
     return row;
   }
 
+  async findById(tenantId: string, id: string): Promise<CommercialOrder | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(commercialOrders)
+      .where(and(eq(commercialOrders.tenantId, tenantId), eq(commercialOrders.id, id)))
+      .limit(1);
+    return row;
+  }
+
   async listByTenant(input: ListCommercialOrdersInput): Promise<PaginatedCommercialOrders> {
     const conditions = eq(commercialOrders.tenantId, input.tenantId);
 

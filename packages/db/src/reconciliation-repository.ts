@@ -29,10 +29,40 @@ export interface PaginatedReconciliationCandidates {
   total: number;
 }
 
+export interface NewMatchingCandidateInput {
+  commercialOrderId: string;
+  financialEventId: string;
+  confidence: number;
+  explanation: unknown;
+}
+
 export class DrizzleReconciliationRepository<TQueryResult extends PgQueryResultHKT> {
   constructor(
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
+
+  /**
+   * Bulk-inserts matching candidates for the tenant — one row per
+   * MatchExplanation produced by matchOrder() (packages/core/src/matching.ts).
+   * Matching can be re-triggered for the same order (e.g. a later event
+   * arriving after an earlier match), so a repeat run's candidates are
+   * deduped on (tenantId, commercialOrderId, financialEventId) rather than
+   * inserted again.
+   */
+  async createCandidates(tenantId: string, candidates: NewMatchingCandidateInput[]): Promise<void> {
+    if (candidates.length === 0) return;
+    await this.db.insert(matchingCandidates).values(
+      candidates.map((candidate) => ({
+        tenantId,
+        commercialOrderId: candidate.commercialOrderId,
+        financialEventId: candidate.financialEventId,
+        confidence: String(candidate.confidence),
+        explanation: candidate.explanation,
+      })),
+    ).onConflictDoNothing({
+      target: [matchingCandidates.tenantId, matchingCandidates.commercialOrderId, matchingCandidates.financialEventId],
+    });
+  }
 
   async list(input: ListReconciliationCandidatesInput): Promise<PaginatedReconciliationCandidates> {
     const conditions = input.accepted !== undefined

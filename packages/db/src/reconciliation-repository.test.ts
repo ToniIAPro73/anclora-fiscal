@@ -90,4 +90,24 @@ describe('DrizzleReconciliationRepository', () => {
     expect(tenantAPage.items.every((item) => item.tenantId === tenantAId)).toBe(true);
     expect(tenantAPage.items.some((item) => item.tenantId === tenantBId)).toBe(false);
   });
+
+  it('createCandidates() es idempotente: volver a matchear el mismo par pedido/evento no duplica la fila', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const [tenant] = await db.insert(tenants).values({ name: 'tenant-idempotent', slug: 'tenant-idempotent' }).returning({ id: tenants.id });
+    if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
+    const [order] = await db.insert(commercialOrders).values({ tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalOrderId: 'AI-9001' }).returning({ id: commercialOrders.id });
+    if (!order) throw new Error('No se pudo crear la orden de prueba');
+    const [event] = await db.insert(financialEvents).values({ tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalEventId: 'evt-9001', eventType: 'charge', amount: '6.99', feeAmount: '0.35', netAmount: '6.64', currency: 'EUR', occurredAt: new Date() }).returning({ id: financialEvents.id });
+    if (!event) throw new Error('No se pudo crear el evento financiero de prueba');
+    const repository = new DrizzleReconciliationRepository(db);
+
+    const candidate = { commercialOrderId: order.id, financialEventId: event.id, confidence: 1, explanation: { signals: ['Coincidencia exacta por número de pedido'] } };
+    await repository.createCandidates(tenant.id, [candidate]);
+    await repository.createCandidates(tenant.id, [candidate]);
+
+    const page = await repository.list({ tenantId: tenant.id, page: 1, pageSize: 10 });
+    expect(page.total).toBe(1);
+  });
 });
