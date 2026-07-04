@@ -42,7 +42,12 @@ export function createImportPreviewHandler(dependencies: {
       const persisted = await dependencies.persistence.persist(tenantId, file.filename, preview);
       return { ...preview, ...persisted };
     } catch (error) {
-      request.log.error({ error: error instanceof Error ? error.message : 'unknown' }, 'Import preview persistence failed');
+      // Drizzle wraps driver errors in a DrizzleQueryError whose own .message
+      // is just "Failed query: <sql>\nparams: <params>" — the real reason
+      // (timeout, constraint violation, connection drop) lives in .cause.
+      // Log both so a persistence failure is actually diagnosable from prod logs.
+      const cause = error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined;
+      request.log.error({ error: error instanceof Error ? error.message : 'unknown', cause }, 'Import preview persistence failed');
       return reply.code(503).send({ code: 'IMPORT_PERSISTENCE_FAILED', message: 'No se pudo guardar la previsualización' });
     }
   };
