@@ -45,12 +45,14 @@ describe('Dashboard', () => {
     mockFetchOnce(emptySummary);
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText('Todavía no hay importaciones')).toBeInTheDocument());
+    expect(screen.getAllByText('0')).toHaveLength(4);
+    expect(screen.getByText('Sin operaciones')).toBeInTheDocument();
   });
 
   it('renderiza las métricas reales cuando existen datos', async () => {
     mockFetchOnce(populatedSummary);
     render(<Dashboard />);
-    await waitFor(() => expect(screen.getByText('03')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument());
     expect(screen.getByText('50 %')).toBeInTheDocument();
     expect(screen.queryByText('Todavía no hay importaciones')).not.toBeInTheDocument();
   });

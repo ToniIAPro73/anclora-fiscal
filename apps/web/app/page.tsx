@@ -69,10 +69,10 @@ export default function Dashboard() {
         </div>
       </section> : null}
       {!loading && !error && summary ? <section className="metrics" aria-label="Resumen operativo">
-        <MetricCard label="Pendientes de revisión" value={String(summary.openIssuesCount).padStart(2, '0')} detail="Incidencias abiertas" />
-        <MetricCard label="Importaciones del mes" value={String(summary.importsThisMonthCount).padStart(2, '0')} detail="Este mes" />
-        <MetricCard label="Conciliación" value={reconciliationPercentage !== undefined ? `${reconciliationPercentage} %` : 'N/D'} detail={`${summary.reconciliationStatus.total} operaciones`} />
-        <MetricCard label="Documentos emitidos" value={String(summary.documentsIssuedCount).padStart(2, '0')} detail="Serie AF-2026" />
+        <MetricCard label="Pendientes de revisión" value={String(summary.openIssuesCount)} detail="Incidencias abiertas" />
+        <MetricCard label="Importaciones del mes" value={String(summary.importsThisMonthCount)} detail="Este mes" />
+        <MetricCard label="Conciliación" value={reconciliationPercentage !== undefined ? `${reconciliationPercentage} %` : 'Sin operaciones'} detail={`${summary.reconciliationStatus.total} operaciones`} />
+        <MetricCard label="Documentos emitidos" value={String(summary.documentsIssuedCount)} detail="Serie AF-2026" />
       </section> : null}
       {!loading && !error && summary ? <section className="evidence-panel" aria-label="Regalías (KDP)">
         <div><span className="section-index">REGALÍAS</span><h2>Regalías (KDP)</h2></div>
