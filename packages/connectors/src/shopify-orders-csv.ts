@@ -15,6 +15,17 @@ export interface ShopifyOrderEvidence {
    * correctly returns BLOCKED/MISSING_TAX_EVIDENCE rather than guessing.
    */
   customerCountry?: string;
+  /**
+   * Real customer name string (prefer Shipping Name, fallback Billing Name) —
+   * distinct from hasBillingBlock/hasShippingBlock, which only track presence.
+   * `undefined` when neither column carries a value; kept optional so exports
+   * without these columns still import successfully.
+   */
+  customerName?: string;
+  /** Parsed from the `Total` column, if present. Undefined when absent/unparseable. */
+  totalPrice?: number;
+  /** Parsed from the `Taxes` column, if present. Undefined when absent/unparseable. */
+  taxAmount?: number;
   issues: Array<{ code: string; severity: 'HIGH' | 'BLOCKING'; message: string }>;
 }
 
@@ -48,6 +59,9 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
       issues.push({ code: 'INCOHERENT_QUANTITY', severity: 'HIGH', message: 'Pedido cumplido con reembolso total; cantidad servida incoherente con el neto comercial' });
     }
     const customerCountry = record['Shipping Country'] || record['Billing Country'] || undefined;
+    const customerName = record['Shipping Name'] || record['Billing Name'] || undefined;
+    const totalPrice = record.Total !== undefined && record.Total !== '' ? Number(record.Total) : undefined;
+    const taxAmount = record.Taxes !== undefined && record.Taxes !== '' ? Number(record.Taxes) : undefined;
 
     return {
       orderId,
@@ -56,6 +70,9 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
       hasBillingBlock: Boolean(record['Billing Name']),
       hasShippingBlock: Boolean(record['Shipping Name']),
       ...(customerCountry ? { customerCountry } : {}),
+      ...(customerName ? { customerName } : {}),
+      ...(totalPrice !== undefined && Number.isFinite(totalPrice) ? { totalPrice } : {}),
+      ...(taxAmount !== undefined && Number.isFinite(taxAmount) ? { taxAmount } : {}),
       issues,
     };
   });

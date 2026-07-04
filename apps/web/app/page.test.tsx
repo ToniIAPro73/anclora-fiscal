@@ -29,7 +29,7 @@ const populatedSummary = {
   importsThisMonthCount: 3,
   reconciliationStatus: { matched: 1, unmatched: 1, total: 2 },
   documentsIssuedCount: 0,
-  royalties: { statementsCount: 1, totalThisPeriod: '42.50' },
+  royalties: { statementsCount: 1, totalThisPeriod: '42.50', period: '2026-07' },
 };
 
 const emptySummary = {
@@ -37,7 +37,7 @@ const emptySummary = {
   importsThisMonthCount: 0,
   reconciliationStatus: { matched: 0, unmatched: 0, total: 0 },
   documentsIssuedCount: 0,
-  royalties: { statementsCount: 0, totalThisPeriod: '0.00' },
+  royalties: { statementsCount: 0, totalThisPeriod: '0.00', period: '2026-07' },
 };
 
 describe('Dashboard', () => {
@@ -55,6 +55,7 @@ describe('Dashboard', () => {
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument());
     expect(screen.getByText('50 %')).toBeInTheDocument();
+    expect(screen.getByText('Periodo: julio 2026')).toBeInTheDocument();
     expect(screen.queryByText('Todavía no hay importaciones')).not.toBeInTheDocument();
   });
 

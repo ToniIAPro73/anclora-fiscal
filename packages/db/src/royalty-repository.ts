@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import type { RoyaltyLine, RoyaltyStatement } from '@anclora/core';
@@ -83,6 +83,22 @@ export class DrizzleRoyaltyRepository<TQueryResult extends PgQueryResultHKT> {
 
       return { statementId: statementRow.id, duplicate: false };
     });
+  }
+
+  /**
+   * Read-only existence check for import-preview-time dedup (Task 4.5).
+   * Returns the subset of `businessKeys` already recorded for the tenant —
+   * an empty Set for a tenant with no matching rows, never an error.
+   * Persist-time idempotency (persist()'s onConflictDoNothing) remains the
+   * source of truth; this is a preview-time filter layered on top.
+   */
+  async findExistingBusinessKeys(tenantId: string, businessKeys: string[]): Promise<Set<string>> {
+    if (businessKeys.length === 0) return new Set();
+    const rows = await this.db
+      .select({ businessKey: royaltyLines.businessKey })
+      .from(royaltyLines)
+      .where(and(eq(royaltyLines.tenantId, tenantId), inArray(royaltyLines.businessKey, businessKeys)));
+    return new Set(rows.map((row) => row.businessKey));
   }
 
   /**

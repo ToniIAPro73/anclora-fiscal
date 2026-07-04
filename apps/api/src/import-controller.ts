@@ -1,6 +1,7 @@
 import type { StoragePort } from '@anclora/core/server';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { previewImport } from './import-service.js';
+import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
 import type { ImportPreviewPersistencePort } from './import-preview-persistence.js';
 
 const ALLOWED_IMPORT_MIME_TYPES = new Set([
@@ -12,6 +13,9 @@ const ALLOWED_IMPORT_MIME_TYPES = new Set([
 export function createImportPreviewHandler(dependencies: {
   storage: StoragePort;
   persistence?: ImportPreviewPersistencePort | undefined;
+  commercialOrdersRepository?: CommercialOrdersDedupPort | undefined;
+  financialEventsRepository?: FinancialEventsDedupPort | undefined;
+  royaltyRepository?: RoyaltyDedupPort | undefined;
 }) {
   return async function importPreviewHandler(request: FastifyRequest, reply: FastifyReply) {
     const tenantId = request.authSession?.tenantId;
@@ -24,13 +28,20 @@ export function createImportPreviewHandler(dependencies: {
 
     let preview;
     try {
-      preview = await previewImport({
-        tenantId,
-        filename: file.filename,
-        mimeType: file.mimetype,
-        bytes: await file.toBuffer(),
-        storage: dependencies.storage,
-      });
+      preview = await previewImport(
+        {
+          tenantId,
+          filename: file.filename,
+          mimeType: file.mimetype,
+          bytes: await file.toBuffer(),
+          storage: dependencies.storage,
+        },
+        {
+          commercialOrdersRepository: dependencies.commercialOrdersRepository,
+          financialEventsRepository: dependencies.financialEventsRepository,
+          royaltyRepository: dependencies.royaltyRepository,
+        },
+      );
     } catch (error) {
       request.log.warn({ error: error instanceof Error ? error.message : 'unknown' }, 'Import preview rejected');
       return reply.code(422).send({ code: 'INVALID_IMPORT', message: 'El archivo no coincide con un formato admitido' });

@@ -1,4 +1,4 @@
-import { and, asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { commercialOrders } from './schema.js';
@@ -71,6 +71,27 @@ export class DrizzleCommercialOrdersRepository<TQueryResult extends PgQueryResul
       .where(and(eq(commercialOrders.tenantId, tenantId), eq(commercialOrders.id, id)))
       .limit(1);
     return row;
+  }
+
+  /**
+   * Read-only existence check for import-preview-time dedup (Task 4.5). Returns
+   * the subset of `externalOrderIds` that already exist for the tenant+channel
+   * — an empty Set for a tenant with no matching rows, never an error. This is
+   * a preview-time optimization layered on top of persist-time idempotency
+   * (the `onConflictDoNothing` unique constraint in createMany remains the
+   * source of truth for correctness).
+   */
+  async findExistingExternalOrderIds(tenantId: string, sourceChannel: string, externalOrderIds: string[]): Promise<Set<string>> {
+    if (externalOrderIds.length === 0) return new Set();
+    const rows = await this.db
+      .select({ externalOrderId: commercialOrders.externalOrderId })
+      .from(commercialOrders)
+      .where(and(
+        eq(commercialOrders.tenantId, tenantId),
+        eq(commercialOrders.sourceChannel, sourceChannel),
+        inArray(commercialOrders.externalOrderId, externalOrderIds),
+      ));
+    return new Set(rows.map((row) => row.externalOrderId));
   }
 
   async listByTenant(input: ListCommercialOrdersInput): Promise<PaginatedCommercialOrders> {

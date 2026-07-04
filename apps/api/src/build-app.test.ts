@@ -32,4 +32,13 @@ describe('API foundation', () => {
     expect(postResponse.statusCode).not.toBe(404);
     expect(postResponse.json()).not.toMatchObject({ error: 'Not Found' });
   });
+
+  it('registra la ruta GET /api/v1/reconciliation/unmatched-orders (Task 4.11)', async () => {
+    const app = await buildApp();
+    apps.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/reconciliation/unmatched-orders' });
+    expect(response.statusCode).not.toBe(404);
+    expect(response.json()).not.toMatchObject({ error: 'Not Found' });
+  });
 });

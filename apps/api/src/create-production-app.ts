@@ -13,6 +13,7 @@ import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controlle
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import type { DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
+import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
 
 // Reads env vars and wires storage/repositories/auth for production or the
 // local offline (PGlite) database, then builds the Fastify app. Shared by
@@ -55,12 +56,18 @@ export async function createProductionApp() {
   let periodClosesRepository: PeriodClosesRepositoryPort;
   let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
   let authService: AuthService;
+  let importDedup: {
+    commercialOrdersRepository: CommercialOrdersDedupPort;
+    financialEventsRepository: FinancialEventsDedupPort;
+    royaltyRepository: RoyaltyDedupPort;
+  };
 
   if (process.env.DATABASE_URL) {
     const database = createRemoteDatabase(process.env.DATABASE_URL);
     const commercialOrdersRepositoryForMatching = new DrizzleCommercialOrdersRepository(database.db);
     const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
     const legalEntitiesRepositoryForMatching = new DrizzleLegalEntitiesRepository(database.db);
+    const royaltyRepositoryForPersistence = new DrizzleRoyaltyRepository(database.db);
     const taxDecisionService = new TaxDecisionService({
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
@@ -76,11 +83,16 @@ export async function createProductionApp() {
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
       new ImportMetadataCipher(metadataSecret),
-      new DrizzleRoyaltyRepository(database.db),
+      royaltyRepositoryForPersistence,
       commercialOrdersRepositoryForMatching,
       financialEventsRepositoryForMatching,
       matchingService,
     );
+    importDedup = {
+      commercialOrdersRepository: commercialOrdersRepositoryForMatching,
+      financialEventsRepository: financialEventsRepositoryForMatching,
+      royaltyRepository: royaltyRepositoryForPersistence,
+    };
     operationsRepository = new DrizzleOperationsRepository(database.db);
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
     reconciliationRepository = new DrizzleReconciliationRepository(database.db);
@@ -97,6 +109,7 @@ export async function createProductionApp() {
     const commercialOrdersRepositoryForMatching = new DrizzleCommercialOrdersRepository(database.db);
     const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
     const legalEntitiesRepositoryForMatching = new DrizzleLegalEntitiesRepository(database.db);
+    const royaltyRepositoryForPersistence = new DrizzleRoyaltyRepository(database.db);
     const taxDecisionService = new TaxDecisionService({
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
@@ -112,11 +125,16 @@ export async function createProductionApp() {
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
       new ImportMetadataCipher(metadataSecret),
-      new DrizzleRoyaltyRepository(database.db),
+      royaltyRepositoryForPersistence,
       commercialOrdersRepositoryForMatching,
       financialEventsRepositoryForMatching,
       matchingService,
     );
+    importDedup = {
+      commercialOrdersRepository: commercialOrdersRepositoryForMatching,
+      financialEventsRepository: financialEventsRepositoryForMatching,
+      royaltyRepository: royaltyRepositoryForPersistence,
+    };
     operationsRepository = new DrizzleOperationsRepository(database.db);
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
     reconciliationRepository = new DrizzleReconciliationRepository(database.db);
@@ -128,7 +146,7 @@ export async function createProductionApp() {
     closeDatabase = () => database.client.close();
   }
 
-  const app = await buildApp({ storage, importPreviewPersistence, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, authService });
+  const app = await buildApp({ storage, importPreviewPersistence, importDedup, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, authService });
   app.addHook('onClose', closeDatabase);
   return app;
 }

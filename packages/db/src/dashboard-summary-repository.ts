@@ -16,7 +16,7 @@ export interface DashboardSummary {
   importsThisMonthCount: number;
   reconciliationStatus: ReconciliationStatusSummary;
   documentsIssuedCount: number;
-  royalties: RoyaltySummary;
+  royalties: RoyaltySummary & { period: string };
 }
 
 function startOfCurrentMonth(): Date {
@@ -48,8 +48,9 @@ export class DrizzleDashboardSummaryRepository<TQueryResult extends PgQueryResul
 
   async getSummary(tenantId: string): Promise<DashboardSummary> {
     const monthStart = startOfCurrentMonth();
+    const period = currentPeriodKey();
 
-    const [[openIssuesRow], [importsRow], reconciliationRows, [documentsRow], royalties] = await Promise.all([
+    const [[openIssuesRow], [importsRow], reconciliationRows, [documentsRow], royaltySummary] = await Promise.all([
       this.db
         .select({ total: count() })
         .from(issues)
@@ -67,7 +68,7 @@ export class DrizzleDashboardSummaryRepository<TQueryResult extends PgQueryResul
         .select({ total: count() })
         .from(fiscalDocuments)
         .where(eq(fiscalDocuments.tenantId, tenantId)),
-      this.royaltyRepository.getSummary(tenantId, currentPeriodKey()),
+      this.royaltyRepository.getSummary(tenantId, period),
     ]);
 
     const reconciliationStatus = reconciliationRows.reduce<ReconciliationStatusSummary>(
@@ -85,7 +86,7 @@ export class DrizzleDashboardSummaryRepository<TQueryResult extends PgQueryResul
       importsThisMonthCount: importsRow?.total ?? 0,
       reconciliationStatus,
       documentsIssuedCount: documentsRow?.total ?? 0,
-      royalties,
+      royalties: { ...royaltySummary, period },
     };
   }
 }

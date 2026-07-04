@@ -39,6 +39,23 @@ describe('normalizeShopifyOrdersCsv', () => {
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.customerCountry).toBeUndefined();
   });
+
+  it('mapea customerName, totalAmount y taxAmount reales como strings numéricos', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const orders = normalizeShopifyOrdersCsv(parsed);
+    const order = orders.find((entry) => entry.externalOrderId === 'AI-1001');
+
+    expect(order?.customerName).toBe('Cliente Demo AI-1001');
+    expect(order?.totalAmount).toBe('6.99');
+    expect(order?.taxAmount).toBe('0.27');
+  });
+
+  it('deja customerName, totalAmount y taxAmount sin definir cuando el export no trae Total/Taxes', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const orders = normalizeShopifyOrdersCsv(parsed);
+    expect(orders[0]?.totalAmount).toBeUndefined();
+    expect(orders[0]?.taxAmount).toBeUndefined();
+  });
 });
 
 describe('normalizeShopifyPaymentTransactions', () => {

@@ -5,14 +5,17 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
 import { resolve } from 'node:path';
 import { createImportPreviewHandler } from './import-controller.js';
+import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
 import type { ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import { createOperationsListHandler, type OperationsRepositoryPort } from './operations-controller.js';
 import { createFinancialEventsListHandler, type FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import { createReconciliationCandidatesListHandler, type ReconciliationRepositoryPort } from './reconciliation-controller.js';
+import { parsePagination } from './pagination.js';
+import type { Paginated } from './pagination.js';
 import { createIssueResolveHandler, createIssuesListHandler, type IssuesRepositoryPort } from './issues-controller.js';
 import { createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
@@ -22,12 +25,48 @@ import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 
+export interface UnmatchedOrder {
+  id: string;
+  externalOrderId: string;
+  sourceChannel: string;
+  commercialDate: Date | null;
+  [key: string]: unknown;
+}
+
+/**
+ * Read-only port for Task 4.11 (Item 5 of the plan) — commercial orders that
+ * never got a matching_candidates row at all, surfaced as a second, read-only
+ * section on the reconciliation workbench. Kept as a separate, optional
+ * interface (rather than extending ReconciliationRepositoryPort in
+ * reconciliation-controller.ts) so existing callers passing only `list()`
+ * still satisfy the type.
+ */
+export interface UnmatchedOrdersRepositoryPort {
+  listUnmatchedOrders(input: { tenantId: string; page: number; pageSize: number }): Promise<Paginated<UnmatchedOrder>>;
+}
+
+function createUnmatchedOrdersListHandler(dependencies: { repository?: (ReconciliationRepositoryPort & Partial<UnmatchedOrdersRepositoryPort>) | undefined }) {
+  return async function unmatchedOrdersListHandler(request: FastifyRequest, reply: FastifyReply) {
+    const tenantId = request.authSession?.tenantId;
+    if (!tenantId) return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Debe iniciar sesión' });
+    if (!dependencies.repository?.listUnmatchedOrders) return reply.code(503).send({ code: 'RECONCILIATION_REPOSITORY_UNAVAILABLE', message: 'El servicio de conciliación no está disponible' });
+
+    const { page, pageSize } = parsePagination(request.query);
+    return dependencies.repository.listUnmatchedOrders({ tenantId, page, pageSize });
+  };
+}
+
 export async function buildApp(options: {
   storage?: StoragePort;
   importPreviewPersistence?: ImportPreviewPersistencePort;
+  importDedup?: {
+    commercialOrdersRepository?: CommercialOrdersDedupPort | undefined;
+    financialEventsRepository?: FinancialEventsDedupPort | undefined;
+    royaltyRepository?: RoyaltyDedupPort | undefined;
+  } | undefined;
   operationsRepository?: OperationsRepositoryPort | undefined;
   financialEventsRepository?: FinancialEventsRepositoryPort | undefined;
-  reconciliationRepository?: ReconciliationRepositoryPort | undefined;
+  reconciliationRepository?: (ReconciliationRepositoryPort & Partial<UnmatchedOrdersRepositoryPort>) | undefined;
   issuesRepository?: IssuesRepositoryPort | undefined;
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
@@ -63,6 +102,9 @@ export async function buildApp(options: {
     createImportPreviewHandler({
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
       persistence: options.importPreviewPersistence,
+      commercialOrdersRepository: options.importDedup?.commercialOrdersRepository,
+      financialEventsRepository: options.importDedup?.financialEventsRepository,
+      royaltyRepository: options.importDedup?.royaltyRepository,
     }),
   );
   app.get(
@@ -79,6 +121,11 @@ export async function buildApp(options: {
     '/api/v1/reconciliation/candidates',
     { preHandler: requireRole(['reconciliation:read']) },
     createReconciliationCandidatesListHandler({ repository: options.reconciliationRepository }),
+  );
+  app.get(
+    '/api/v1/reconciliation/unmatched-orders',
+    { preHandler: requireRole(['reconciliation:read']) },
+    createUnmatchedOrdersListHandler({ repository: options.reconciliationRepository }),
   );
   app.get(
     '/api/v1/issues',

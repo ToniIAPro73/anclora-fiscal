@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { financialEvents } from './schema.js';
@@ -59,6 +59,26 @@ export class DrizzleFinancialEventsRepository<TQueryResult extends PgQueryResult
       .select()
       .from(financialEvents)
       .where(and(eq(financialEvents.tenantId, tenantId), eq(financialEvents.orderReference, orderReference)));
+  }
+
+  /**
+   * Read-only existence check for import-preview-time dedup (Task 4.5).
+   * Returns the subset of `externalEventIds` already recorded for the
+   * tenant+channel — an empty Set for a tenant with no matching rows, never
+   * an error. Persist-time idempotency (createMany's onConflictDoNothing)
+   * remains the source of truth; this is a preview-time filter layered on top.
+   */
+  async findExistingExternalEventIds(tenantId: string, sourceChannel: string, externalEventIds: string[]): Promise<Set<string>> {
+    if (externalEventIds.length === 0) return new Set();
+    const rows = await this.db
+      .select({ externalEventId: financialEvents.externalEventId })
+      .from(financialEvents)
+      .where(and(
+        eq(financialEvents.tenantId, tenantId),
+        eq(financialEvents.sourceChannel, sourceChannel),
+        inArray(financialEvents.externalEventId, externalEventIds),
+      ));
+    return new Set(rows.map((row) => row.externalEventId));
   }
 
   /**

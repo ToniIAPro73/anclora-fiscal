@@ -109,4 +109,35 @@ describe('DrizzleRoyaltyRepository', () => {
     const countRows = (await client.query<{ count: number }>('SELECT count(*)::int FROM royalty_lines')).rows;
     expect(countRows[0]?.count).toBe(2);
   });
+
+  it('findExistingBusinessKeys devuelve un Set vacío para un tenant sin líneas', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await ensureDevelopmentTenant(db);
+    const repository = new DrizzleRoyaltyRepository(db);
+
+    const existing = await repository.findExistingBusinessKeys(tenantId, ['key-1', 'key-2']);
+    expect(existing).toEqual(new Set());
+  });
+
+  it('findExistingBusinessKeys devuelve solo las businessKey ya registradas para ese tenant', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await ensureDevelopmentTenant(db);
+    const importFileId = await seedImportFile(db, tenantId);
+    const repository = new DrizzleRoyaltyRepository(db);
+
+    const statement: RoyaltyStatement = { hash: 'g'.repeat(64), sourceConnector: 'kdp', currency: 'EUR', periods: ['2026-06'], totalRoyalties: 13.98, lineCount: 2 };
+    await repository.persist({
+      tenantId,
+      importFileId,
+      statement,
+      lines: [line({ businessKey: 'existing-key-1' }), line({ businessKey: 'existing-key-2' })],
+    });
+
+    const existing = await repository.findExistingBusinessKeys(tenantId, ['existing-key-1', 'existing-key-2', 'missing-key']);
+    expect(existing).toEqual(new Set(['existing-key-1', 'existing-key-2']));
+  });
 });

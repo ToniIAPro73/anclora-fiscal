@@ -110,4 +110,53 @@ describe('DrizzleReconciliationRepository', () => {
     const page = await repository.list({ tenantId: tenant.id, page: 1, pageSize: 10 });
     expect(page.total).toBe(1);
   });
+
+  it('listUnmatchedOrders excluye un pedido con match ya intentado e incluye uno sin ningún intento de match', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const [tenant] = await db.insert(tenants).values({ name: 'tenant-unmatched', slug: 'tenant-unmatched' }).returning({ id: tenants.id });
+    if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
+
+    const [matchedOrder] = await db.insert(commercialOrders).values({
+      tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalOrderId: 'AI-MATCHED', commercialDate: new Date('2026-06-01'),
+    }).returning({ id: commercialOrders.id });
+    if (!matchedOrder) throw new Error('No se pudo crear la orden de prueba');
+    const [event] = await db.insert(financialEvents).values({
+      tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalEventId: 'evt-matched', eventType: 'charge', amount: '6.99', feeAmount: '0.35', netAmount: '6.64', currency: 'EUR', occurredAt: new Date(),
+    }).returning({ id: financialEvents.id });
+    if (!event) throw new Error('No se pudo crear el evento financiero de prueba');
+    await db.insert(matchingCandidates).values({
+      tenantId: tenant.id, commercialOrderId: matchedOrder.id, financialEventId: event.id, confidence: '0.9500', explanation: { rule: 'test' },
+    });
+
+    const [unmatchedOrder] = await db.insert(commercialOrders).values({
+      tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalOrderId: 'AI-UNMATCHED', commercialDate: new Date('2026-06-02'),
+    }).returning({ id: commercialOrders.id });
+    if (!unmatchedOrder) throw new Error('No se pudo crear la orden de prueba');
+
+    const repository = new DrizzleReconciliationRepository(db);
+    const result = await repository.listUnmatchedOrders({ tenantId: tenant.id, page: 1, pageSize: 10 });
+
+    expect(result.total).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.externalOrderId).toBe('AI-UNMATCHED');
+  });
+
+  it('listUnmatchedOrders nunca devuelve pedidos de otro tenant', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const [tenantA] = await db.insert(tenants).values({ name: 'tenant-a-unmatched', slug: 'tenant-a-unmatched' }).returning({ id: tenants.id });
+    const [tenantB] = await db.insert(tenants).values({ name: 'tenant-b-unmatched', slug: 'tenant-b-unmatched' }).returning({ id: tenants.id });
+    if (!tenantA || !tenantB) throw new Error('No se pudo crear los tenants de prueba');
+
+    await db.insert(commercialOrders).values({ tenantId: tenantB.id, sourceChannel: 'SHOPIFY', externalOrderId: 'B-ORDER-1' });
+
+    const repository = new DrizzleReconciliationRepository(db);
+    const result = await repository.listUnmatchedOrders({ tenantId: tenantA.id, page: 1, pageSize: 10 });
+
+    expect(result.total).toBe(0);
+    expect(result.items).toHaveLength(0);
+  });
 });

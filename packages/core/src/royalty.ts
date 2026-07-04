@@ -33,6 +33,15 @@ export interface RoyaltyLine {
   productionCost?: number;
   kenpPages?: number;
   sourceSheet: string;
+  /**
+   * The book's real format (ebook/impreso), captured BEFORE `classification`
+   * is overridden to 'reembolso' for returned-units rows. Kept independent of
+   * `classification` so a refund line still carries its true ebook/impreso
+   * format for grouping/netting purposes (see kdp-xlsx.ts's DETAIL_SHEETS loop).
+   */
+  format?: 'ebook' | 'impreso';
+  /** Full ISO date (YYYY-MM-DD) for the transaction, distinct from the month-level `period`. */
+  date?: string;
 }
 
 export interface RoyaltyStatement {

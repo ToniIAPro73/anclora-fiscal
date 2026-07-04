@@ -31,6 +31,14 @@ export function normalizeShopifyOrdersCsv(evidence: ShopifyOrdersCsvEvidence): N
     // possible "general" rate rather than a reduced rate (e.g. ebook).
     // Revisit only if/when a product-catalog import is added.
     productNature: 'general',
+    // Real, already-present evidence (Shipping/Billing Name, Total, Taxes
+    // columns) — undefined when the export doesn't carry them. Numeric
+    // columns are strings in Drizzle's insert shape (mirrors the
+    // amount/feeAmount/netAmount handling in normalizeShopifyPaymentTransactions
+    // below, where the connector already returns string values).
+    customerName: order.customerName,
+    totalAmount: order.totalPrice !== undefined ? String(order.totalPrice) : undefined,
+    taxAmount: order.taxAmount !== undefined ? String(order.taxAmount) : undefined,
   }));
 }
 

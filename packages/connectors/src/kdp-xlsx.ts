@@ -303,6 +303,8 @@ export function previewKdpXlsx(bytes: Uint8Array): KdpXlsxPreview {
         ...(shaped.averageUnitPrice !== undefined ? { averageUnitPrice: shaped.averageUnitPrice } : {}),
         ...(shaped.productionCost !== undefined ? { productionCost: shaped.productionCost } : {}),
         sourceSheet: sheetKey,
+        format,
+        date: shaped['Fecha de las regalías'],
       });
     });
   }
@@ -353,6 +355,8 @@ export function previewKdpXlsx(bytes: Uint8Array): KdpXlsxPreview {
         currency: 'EUR',
         kenpPages: row['Páginas KENP leídas'],
         sourceSheet: SHEET_KENP,
+        // KENP page-read lines have no book-format distinction.
+        date: row.Fecha,
       });
       issues.push({ sheet: SHEET_KENP, row: index + 2, code: 'KENP_PENDING_REVIEW', severity: 'INFO', message: `Lectura KENP (${row['Páginas KENP leídas']} páginas) pendiente de revisión fiscal` });
     });

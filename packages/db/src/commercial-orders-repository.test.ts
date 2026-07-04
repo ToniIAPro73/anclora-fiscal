@@ -62,6 +62,25 @@ describe('DrizzleCommercialOrdersRepository', () => {
     expect(createdMany?.productNature).toBe('general');
   });
 
+  it('persiste customerName, totalAmount y taxAmount al crear', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenant(db, 'tenant-a');
+    const repository = new DrizzleCommercialOrdersRepository(db);
+
+    const created = await repository.create(tenantId, {
+      sourceChannel: 'SHOPIFY',
+      externalOrderId: 'order-evidence-3',
+      customerName: 'Cliente Demo',
+      totalAmount: '6.99',
+      taxAmount: '0.27',
+    });
+    expect(created.customerName).toBe('Cliente Demo');
+    expect(created.totalAmount).toBe('6.990000');
+    expect(created.taxAmount).toBe('0.270000');
+  });
+
   it('devuelve undefined si el pedido no existe para ese tenant', async () => {
     const { client, db } = createOfflineDatabase();
     clients.push(client);
@@ -124,5 +143,32 @@ describe('DrizzleCommercialOrdersRepository', () => {
     const listForA = await repository.listByTenant({ tenantId: tenantAId, page: 1, pageSize: 10 });
     expect(listForA.total).toBe(1);
     expect(listForA.items.every((item) => item.tenantId === tenantAId)).toBe(true);
+  });
+
+  it('findExistingExternalOrderIds devuelve un Set vacío para un tenant sin pedidos', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenant(db, 'tenant-a');
+    const repository = new DrizzleCommercialOrdersRepository(db);
+
+    const existing = await repository.findExistingExternalOrderIds(tenantId, 'SHOPIFY', ['order-1', 'order-2']);
+    expect(existing).toEqual(new Set());
+  });
+
+  it('findExistingExternalOrderIds devuelve solo los externalOrderId ya importados para ese tenant+canal', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantAId = await seedTenant(db, 'tenant-a');
+    const tenantBId = await seedTenant(db, 'tenant-b');
+    const repository = new DrizzleCommercialOrdersRepository(db);
+
+    await repository.create(tenantAId, { sourceChannel: 'SHOPIFY', externalOrderId: 'order-1' });
+    await repository.create(tenantAId, { sourceChannel: 'SHOPIFY', externalOrderId: 'order-2' });
+    await repository.create(tenantBId, { sourceChannel: 'SHOPIFY', externalOrderId: 'order-3' });
+
+    const existing = await repository.findExistingExternalOrderIds(tenantAId, 'SHOPIFY', ['order-1', 'order-2', 'order-3', 'order-4']);
+    expect(existing).toEqual(new Set(['order-1', 'order-2']));
   });
 });

@@ -63,4 +63,30 @@ describe('DrizzleFinancialEventsRepository', () => {
     expect(tenantAPage.items.every((item) => item.tenantId === tenantAId)).toBe(true);
     expect(tenantAPage.items.some((item) => item.tenantId === tenantBId)).toBe(false);
   });
+
+  it('findExistingExternalEventIds devuelve un Set vacío para un tenant sin eventos', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenantWithEvents(db, 'tenant-a', []);
+    const repository = new DrizzleFinancialEventsRepository(db);
+
+    const existing = await repository.findExistingExternalEventIds(tenantId, 'STRIPE', ['tenant-a-evt-0']);
+    expect(existing).toEqual(new Set());
+  });
+
+  it('findExistingExternalEventIds devuelve solo los externalEventId ya importados para ese tenant+canal', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantAId = await seedTenantWithEvents(db, 'tenant-a', ['PAYMENT', 'PAYMENT']);
+    const tenantBId = await seedTenantWithEvents(db, 'tenant-b', ['PAYMENT']);
+    const repository = new DrizzleFinancialEventsRepository(db);
+
+    const existing = await repository.findExistingExternalEventIds(tenantAId, 'STRIPE', [
+      'tenant-a-evt-0', 'tenant-a-evt-1', 'tenant-a-evt-2', 'tenant-b-evt-0',
+    ]);
+    expect(existing).toEqual(new Set(['tenant-a-evt-0', 'tenant-a-evt-1']));
+    expect(tenantBId).toBeTruthy();
+  });
 });

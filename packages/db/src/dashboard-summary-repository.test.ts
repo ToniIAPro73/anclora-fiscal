@@ -36,7 +36,7 @@ describe('DrizzleDashboardSummaryRepository', () => {
       importsThisMonthCount: 0,
       reconciliationStatus: { matched: 0, unmatched: 0, total: 0 },
       documentsIssuedCount: 0,
-      royalties: { statementsCount: 0, totalThisPeriod: '0.00' },
+      royalties: { statementsCount: 0, totalThisPeriod: '0.00', period: currentPeriodKey() },
     });
   });
 
@@ -95,7 +95,19 @@ describe('DrizzleDashboardSummaryRepository', () => {
     expect(summary.importsThisMonthCount).toBe(2);
     expect(summary.reconciliationStatus).toEqual({ matched: 1, unmatched: 1, total: 2 });
     expect(summary.documentsIssuedCount).toBe(0);
-    expect(summary.royalties).toEqual({ statementsCount: 1, totalThisPeriod: '42.50' });
+    expect(summary.royalties).toEqual({ statementsCount: 1, totalThisPeriod: '42.50', period });
+  });
+
+  it('devuelve el period key del mes actual en royalties.period', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenant(db, 'tenant-periodo');
+
+    const repository = new DrizzleDashboardSummaryRepository(db);
+    const summary = await repository.getSummary(tenantId);
+
+    expect(summary.royalties.period).toBe(currentPeriodKey());
   });
 
   it('nunca mezcla datos de otro tenant en el resumen', async () => {

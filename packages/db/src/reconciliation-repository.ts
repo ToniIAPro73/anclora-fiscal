@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { commercialOrders, financialEvents, matchingCandidates } from './schema.js';
@@ -34,6 +34,26 @@ export interface NewMatchingCandidateInput {
   financialEventId: string;
   confidence: number;
   explanation: unknown;
+}
+
+export interface ListUnmatchedOrdersInput {
+  tenantId: string;
+  page: number;
+  pageSize: number;
+}
+
+export type UnmatchedOrder = {
+  id: string;
+  externalOrderId: string;
+  sourceChannel: string;
+  commercialDate: Date | null;
+};
+
+export interface PaginatedUnmatchedOrders {
+  items: UnmatchedOrder[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export class DrizzleReconciliationRepository<TQueryResult extends PgQueryResultHKT> {
@@ -93,6 +113,42 @@ export class DrizzleReconciliationRepository<TQueryResult extends PgQueryResultH
       this.db
         .select({ total: count() })
         .from(matchingCandidates)
+        .where(conditions),
+    ]);
+
+    return { items, page: input.page, pageSize: input.pageSize, total: totalRow?.total ?? 0 };
+  }
+
+  /**
+   * Read-only visibility for commercial orders that never got a
+   * matching_candidates row at all (Task 4.11, Item 5 of the plan) — an order
+   * imported with zero counterpart financial event is invisible on both the
+   * operations page (no canonical_operations row) and the existing
+   * candidates list (no matching_candidates row), so this surfaces it as a
+   * second, read-only section on the reconciliation workbench. No
+   * accept/reject actions here — explicitly deferred per the plan.
+   */
+  async listUnmatchedOrders(input: ListUnmatchedOrdersInput): Promise<PaginatedUnmatchedOrders> {
+    const conditions = and(eq(commercialOrders.tenantId, input.tenantId), isNull(matchingCandidates.id));
+
+    const [items, [totalRow]] = await Promise.all([
+      this.db
+        .select({
+          id: commercialOrders.id,
+          externalOrderId: commercialOrders.externalOrderId,
+          sourceChannel: commercialOrders.sourceChannel,
+          commercialDate: commercialOrders.commercialDate,
+        })
+        .from(commercialOrders)
+        .leftJoin(matchingCandidates, eq(matchingCandidates.commercialOrderId, commercialOrders.id))
+        .where(conditions)
+        .orderBy(desc(commercialOrders.commercialDate))
+        .limit(input.pageSize)
+        .offset((input.page - 1) * input.pageSize),
+      this.db
+        .select({ total: count() })
+        .from(commercialOrders)
+        .leftJoin(matchingCandidates, eq(matchingCandidates.commercialOrderId, commercialOrders.id))
         .where(conditions),
     ]);
 

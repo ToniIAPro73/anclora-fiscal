@@ -7,6 +7,7 @@ import { MetricCard, StatusBadge } from '@anclora/ui';
 import medal from '../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
 import tenantMedal from '../../../packages/ui/assets/brand/anclora-insights-medalla-oro-transparente.png';
 import { LogoutButton } from './logout-button';
+import { formatSpanishPeriod } from './lib/spanish-months';
 
 const nav = ['Centro de control', 'Importaciones', 'Operaciones', 'Conciliación', 'Facturación', 'VERI*FACTU', 'Motor fiscal', 'Expedientes IVA', 'Configuración'];
 const routes = ['/', '/imports', '/operations', '/reconciliation', '/invoicing', '/verifactu', '/tax-engine', '/vat-dossier', '/settings'];
@@ -16,7 +17,7 @@ interface DashboardSummary {
   importsThisMonthCount: number;
   reconciliationStatus: { matched: number; unmatched: number; total: number };
   documentsIssuedCount: number;
-  royalties: { statementsCount: number; totalThisPeriod: string };
+  royalties: { statementsCount: number; totalThisPeriod: string; period: string };
 }
 
 export default function Dashboard() {
@@ -76,6 +77,7 @@ export default function Dashboard() {
       </section> : null}
       {!loading && !error && summary ? <section className="evidence-panel" aria-label="Regalías (KDP)">
         <div><span className="section-index">REGALÍAS</span><h2>Regalías (KDP)</h2></div>
+        <p className="period-label">Periodo: {formatSpanishPeriod(summary.royalties.period)}</p>
         <dl>
           <div><dt>Estados importados</dt><dd>{summary.royalties.statementsCount}</dd></div>
           <div><dt>Total del periodo</dt><dd>{summary.royalties.totalThisPeriod} EUR</dd></div>

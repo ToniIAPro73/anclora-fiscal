@@ -45,6 +45,70 @@ describe('previewImport', () => {
     expect(result.summary.royaltyByFormat).toContainEqual(expect.objectContaining({ format: 'impreso', orderCount: 1, averageUnitPrice: 14.99, averageProductionCost: 2.05, totalRoyalties: 27.76 }));
   });
 
+  it('filtra pedidos Shopify ya importados cuando se provee el repositorio de dedup', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const baseline = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    const allOrderIds = baseline.summary.orderIds;
+    expect(allOrderIds.length).toBeGreaterThan(0);
+
+    const result = await previewImport(
+      { tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) },
+      { commercialOrdersRepository: { findExistingExternalOrderIds: async () => new Set(allOrderIds) } },
+    );
+
+    expect(result.commercialOrders).toEqual([]);
+    expect(result.summary.orderIds).toEqual([]);
+    expect(result.issues).toEqual([]);
+    expect(result.summary.alreadyImportedCount).toBe(allOrderIds.length);
+    expect(result.summary.allAlreadyImported).toBe(true);
+  });
+
+  it('deja pasar solo los pedidos Shopify nuevos con solapamiento parcial', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const baseline = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    const firstOrderId = baseline.summary.orderIds[0];
+    expect(firstOrderId).toBeDefined();
+
+    const result = await previewImport(
+      { tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) },
+      { commercialOrdersRepository: { findExistingExternalOrderIds: async () => new Set([firstOrderId!]) } },
+    );
+
+    expect(result.summary.orderIds).not.toContain(firstOrderId);
+    expect(result.commercialOrders?.every((order) => order.externalOrderId !== firstOrderId)).toBe(true);
+    expect(result.summary.alreadyImportedCount).toBe(1);
+    expect(result.summary.allAlreadyImported).toBe(false);
+  });
+
+  it('sin dependencia de dedup, el comportamiento es idéntico al actual', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const withoutDeps = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    const withEmptyDeps = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) }, {});
+
+    expect(withoutDeps.summary.alreadyImportedCount).toBeUndefined();
+    expect(withoutDeps.summary.allAlreadyImported).toBeUndefined();
+    expect(withEmptyDeps.summary.alreadyImportedCount).toBeUndefined();
+    expect(withEmptyDeps.summary.allAlreadyImported).toBeUndefined();
+    expect(withEmptyDeps.commercialOrders).toEqual(withoutDeps.commercialOrders);
+    expect(withEmptyDeps.summary.orderIds).toEqual(withoutDeps.summary.orderIds);
+  });
+
+  it('filtra líneas de royalty KDP ya importadas por businessKey', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/kdp-orders-anonymized.xlsx'));
+    const baseline = await previewImport({ tenantId: 'test', filename: 'KDP_Orders.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes, storage: new FilesystemStorage(root) });
+    const allBusinessKeys = baseline.royalty!.lines.map((line) => line.businessKey);
+    expect(allBusinessKeys.length).toBeGreaterThan(0);
+
+    const result = await previewImport(
+      { tenantId: 'test', filename: 'KDP_Orders.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes, storage: new FilesystemStorage(root) },
+      { royaltyRepository: { findExistingBusinessKeys: async () => new Set(allBusinessKeys) } },
+    );
+
+    expect(result.royalty?.lines).toEqual([]);
+    expect(result.summary.alreadyImportedCount).toBe(allBusinessKeys.length);
+    expect(result.summary.allAlreadyImported).toBe(true);
+  });
+
   it('no custodia contenido que falle la validación estructural', async () => {
     let writes = 0;
     await expect(previewImport({
