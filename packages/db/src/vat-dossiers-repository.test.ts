@@ -6,7 +6,7 @@ import { migrateOfflineDatabase } from './migrations';
 import { DrizzleFiscalDocumentsRepository } from './fiscal-documents-repository';
 import { DrizzlePeriodClosesRepository } from './period-closes-repository';
 import { DrizzleVatDossiersRepository } from './vat-dossiers-repository';
-import { auditEvents, canonicalOperations, legalEntities, taxDecisions, tenants, users } from './schema';
+import { auditEvents, canonicalOperations, invoiceSeries, legalEntities, productTaxProfiles, taxDecisions, tenants, users } from './schema';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
 
@@ -48,8 +48,12 @@ async function seedIssuedInvoice(db: ReturnType<typeof createOfflineDatabase>['d
     tenantId: tenant.id,
     legalName: `${slug} legal entity`,
     countryCode: 'ES',
+    address: 'Calle Fiscal 1',
+    configurationStatus: 'READY',
   }).returning({ id: legalEntities.id });
   if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
+  await db.insert(invoiceSeries).values({ tenantId: tenant.id, legalEntityId: legalEntity.id, code: 'FULL_INVOICE', fiscalYear: new Date().getFullYear(), documentType: 'FULL_INVOICE' });
+  await db.insert(productTaxProfiles).values({ tenantId: tenant.id, legalEntityId: legalEntity.id, selector: 'ebook-*', productNature: 'ebook', invoiceDescription: 'Libro electrónico', domesticTaxCode: 'ES_IVA_4', domesticTaxRate: '0.04', effectiveFrom: `${new Date().getFullYear()}-01-01` });
 
   const [operation] = await db.insert(canonicalOperations).values({
     tenantId: tenant.id,

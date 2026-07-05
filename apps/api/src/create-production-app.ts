@@ -1,5 +1,5 @@
 import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
@@ -15,6 +15,7 @@ import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import type { DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
+import type { FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
 
 // Reads env vars and wires storage/repositories/auth for production or the
 // local offline (PGlite) database, then builds the Fastify app. Shared by
@@ -57,6 +58,7 @@ export async function createProductionApp() {
   let periodClosesRepository: PeriodClosesRepositoryPort;
   let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
   let authService: AuthService;
+  let fiscalConfigurationRepository: FiscalConfigurationRepositoryPort;
   let importDedup: {
     commercialOrdersRepository: CommercialOrdersDedupPort;
     financialEventsRepository: FinancialEventsDedupPort;
@@ -69,9 +71,11 @@ export async function createProductionApp() {
     const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
     const legalEntitiesRepositoryForMatching = new DrizzleLegalEntitiesRepository(database.db);
     const royaltyRepositoryForPersistence = new DrizzleRoyaltyRepository(database.db);
+    const fiscalConfigurationRepositoryForTax = new DrizzleFiscalConfigurationRepository(database.db);
     const taxDecisionService = new TaxDecisionService({
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
+      taxConfigurationRepository: fiscalConfigurationRepositoryForTax,
     });
     const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
     const invoiceIssuanceService = new InvoiceIssuanceService({
@@ -108,6 +112,7 @@ export async function createProductionApp() {
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
+    fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
     closeDatabase = database.close;
   } else {
     const database = createOfflineDatabase(process.env.OFFLINE_DATABASE_PATH ?? resolve(process.cwd(), '.data/anclora-fiscal'));
@@ -117,9 +122,11 @@ export async function createProductionApp() {
     const financialEventsRepositoryForMatching = new DrizzleFinancialEventsRepository(database.db);
     const legalEntitiesRepositoryForMatching = new DrizzleLegalEntitiesRepository(database.db);
     const royaltyRepositoryForPersistence = new DrizzleRoyaltyRepository(database.db);
+    const fiscalConfigurationRepositoryForTax = new DrizzleFiscalConfigurationRepository(database.db);
     const taxDecisionService = new TaxDecisionService({
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
+      taxConfigurationRepository: fiscalConfigurationRepositoryForTax,
     });
     const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
     const invoiceIssuanceService = new InvoiceIssuanceService({
@@ -156,10 +163,11 @@ export async function createProductionApp() {
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
+    fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
     closeDatabase = () => database.client.close();
   }
 
-  const app = await buildApp({ storage, importPreviewPersistence, importDedup, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, authService });
+  const app = await buildApp({ storage, importPreviewPersistence, importDedup, operationsRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, fiscalConfigurationRepository, authService });
   app.addHook('onClose', closeDatabase);
   return app;
 }

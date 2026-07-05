@@ -32,7 +32,7 @@ export type Role = z.infer<typeof roleSchema>;
 
 export const permissions = {
   ADMIN: ['*'],
-  FISCAL_OPERATOR: ['imports:write', 'operations:write', 'operations:read', 'events:read', 'reconciliation:read', 'reconciliation:write', 'issues:read', 'documents:issue', 'documents:read', 'periods:read', 'dossier:read', 'dashboard:read'],
+  FISCAL_OPERATOR: ['imports:write', 'operations:write', 'operations:read', 'events:read', 'reconciliation:read', 'reconciliation:write', 'issues:read', 'documents:issue', 'documents:read', 'periods:read', 'dossier:read', 'dashboard:read', 'settings:read', 'settings:write'],
   REVIEWER: ['operations:read', 'operations:review', 'events:read', 'reconciliation:read', 'issues:read', 'issues:write', 'periods:close', 'periods:read', 'documents:rectify', 'documents:read', 'dossier:read', 'dossier:write', 'dashboard:read'],
   ADVISOR_READONLY: ['*:read'],
 } as const satisfies Record<Role, readonly string[]>;

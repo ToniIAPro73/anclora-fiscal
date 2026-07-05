@@ -125,3 +125,45 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   - Las reglas fiscales configurables, periodos por rango real y modelo `order_lines` pertenecen
     a FASE 02; esta fase no altera semántica fiscal ni habilita envíos VERI*FACTU.
 - **Siguiente fase:** FASE 02 — Modelo de dominio fiscal y contratos persistentes.
+
+---
+
+## FASE 02 — Fundaciones de datos y configuración fiscal mínima
+
+- **Objetivo:** disponer de configuración fiscal persistida y del modelo mínimo para clasificar
+  ventas y emitir documentos sin constantes demo en recorridos productivos.
+- **Archivos / migraciones:** migración aditiva
+  `packages/db/migrations/0011_fiscal_configuration_foundation.sql`; esquema y repositorio en
+  `packages/db/src/schema.ts` y `fiscal-configuration-repository.ts`; API GET/PUT en
+  `apps/api/src/fiscal-configuration-controller.ts`; wiring productivo en `build-app.ts` y
+  `create-production-app.ts`; readiness de emisión en `fiscal-documents-repository.ts`; carga de
+  reglas persistidas en `tax-decision-service.ts`; formulario accesible en
+  `apps/web/app/settings/`; permisos en `packages/core/src/index.ts`; pruebas unitarias y de
+  integración asociadas en core, db, api y web.
+- **Pruebas ejecutadas y resultado real:** `pnpm turbo lint typecheck test --force`:
+
+  ```text
+  Tasks:    26 successful, 26 total
+  Cached:    0 cached, 26 total
+  Time:    3m0.751s
+
+  @anclora/db:test — Test Files  16 passed (16) / Tests  70 passed (70)
+  @anclora/api:test — Test Files  21 passed (21) / Tests  124 passed (124)
+  @anclora/web:test — Test Files  21 passed (21) / Tests  53 passed (53)
+
+  WARNING  no output files found for task @anclora/tax-engine#build. Please check your `outputs` key in `turbo.json`
+  WARNING  no output files found for task @anclora/ui#build. Please check your `outputs` key in `turbo.json`
+  ```
+
+  La migración se verificó desde base limpia y en segunda ejecución idempotente. La validación
+  autenticada de `/settings` confirmó 18 controles etiquetados, estado de readiness honesto y
+  ausencia de overflow horizontal (`scrollWidth === clientWidth`, 1265 px).
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition`.
+- **Limitaciones abiertas:**
+  - `order_lines`, `tax_periods`, `payouts`, asignaciones y contrapartes quedan estructuralmente
+    preparados; su ingestión y flujos completos corresponden a FASE 04, 06 y 07.
+  - El simulador aislado de `/tax-rules` conserva `demoSpainConfig` como fixture explícita; los
+    servicios productivos cargan exclusivamente perfiles persistidos y bloquean si faltan.
+  - No se aplica la migración a producción en esta fase; requiere una petición explícita.
+- **Siguiente fase:** FASE 03 — Arquitectura de importación, preview y confirmación segura.

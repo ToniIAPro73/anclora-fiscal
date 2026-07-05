@@ -23,7 +23,7 @@ export interface FiscalDocument {
 
 export type IssueInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyIssued: boolean }
-  | { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' };
+  | { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE' };
 
 export type RectifyInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyRectified: boolean }
@@ -59,6 +59,9 @@ export function createInvoiceIssueHandler(dependencies: {
       if (result.reason === 'TAX_DECISION_MISSING') {
         return reply.code(422).send({ code: 'TAX_DECISION_MISSING', message: 'La operación no tiene una decisión fiscal registrada' });
       }
+      if (result.reason === 'FISCAL_CONFIGURATION_INCOMPLETE') {
+        return reply.code(422).send({ code: 'FISCAL_CONFIGURATION_INCOMPLETE', message: 'Complete emisor, serie y perfil fiscal antes de emitir' });
+      }
       return reply.code(500).send({ code: 'INVOICE_ISSUE_FAILED', message: 'No se pudo emitir la factura' });
     }
 
@@ -66,7 +69,7 @@ export function createInvoiceIssueHandler(dependencies: {
   };
 }
 
-function isIssueInvoiceError(r: IssueInvoiceResult): r is { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' } {
+function isIssueInvoiceError(r: IssueInvoiceResult): r is { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE' } {
   return !r.ok;
 }
 

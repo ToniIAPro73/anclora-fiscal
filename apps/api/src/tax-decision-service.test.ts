@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { TaxDecisionService } from './tax-decision-service';
 
 const tenantId = '01977d43-75de-7000-8000-000000000010';
+const persistedTaxConfig = { id: 'TENANT_CONFIG', version: '2026-01-01', effectiveFrom: '2026-01-01', issuerCountry: 'ES', rates: [{ id: 'ES_GENERAL_21', rate: 0.21, productNature: 'general', customerCountry: 'ES' }, { id: 'ES_EBOOK_4', rate: 0.04, productNature: 'ebook', customerCountry: 'ES' }], marketplaceRoyaltyExemptRate: 0, sources: [] };
+const taxConfigurationRepository = { getTaxEngineConfig: vi.fn().mockResolvedValue(persistedTaxConfig) };
 
 function baseOperation(overrides: Partial<Parameters<TaxDecisionService['runTaxDecisionForOperation']>[2]> = {}) {
   return {
@@ -24,6 +26,7 @@ describe('TaxDecisionService', () => {
     const service = new TaxDecisionService({
       legalEntitiesRepository: { findFirstByTenant },
       taxDecisionsRepository: { create },
+      taxConfigurationRepository,
     });
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-1', baseOperation());
@@ -42,6 +45,7 @@ describe('TaxDecisionService', () => {
     const service = new TaxDecisionService({
       legalEntitiesRepository: { findFirstByTenant },
       taxDecisionsRepository: { create },
+      taxConfigurationRepository,
     });
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-2', baseOperation({ customerCountry: 'FR' }));
@@ -56,6 +60,7 @@ describe('TaxDecisionService', () => {
     const service = new TaxDecisionService({
       legalEntitiesRepository: { findFirstByTenant },
       taxDecisionsRepository: { create },
+      taxConfigurationRepository,
     });
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-3', baseOperation({ customerCountry: undefined }));
@@ -70,6 +75,7 @@ describe('TaxDecisionService', () => {
     const service = new TaxDecisionService({
       legalEntitiesRepository: { findFirstByTenant },
       taxDecisionsRepository: { create },
+      taxConfigurationRepository,
     });
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-4', baseOperation());

@@ -1,5 +1,6 @@
-import { EmptyState, PageHeader } from '@anclora/ui';
+import { PageHeader } from '@anclora/ui';
 import { AppShell } from '../components/app-shell';
+import { FiscalConfigurationForm } from './fiscal-configuration-form';
 
 const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
@@ -20,13 +21,10 @@ export default function SettingsPage() {
     <PageHeader
       eyebrow="07 / CONFIGURACIÓN"
       title="Configuración"
-      description="La configuración fiscal editable todavía no está disponible."
+      description="Configura el emisor, la numeración, los perfiles fiscales y la política KDP del tenant."
       backHref="/"
     />
-    <EmptyState
-      title="Todavía no hay configuración fiscal editable"
-      description="Esta sección mostrará la configuración fiscal real del tenant en cuanto exista un endpoint de configuración. Por ahora, la simulación de reglas fiscales está disponible en Reglas fiscales."
-    />
+    <FiscalConfigurationForm />
     <section className="settings-config">
       <span className="section-index">Roles disponibles (/api/v1/session)</span>
       <ul className="role-list">{availableRoles.map((role) => <li key={role}><strong>{roleLabels[role]}</strong><span> ({role})</span></li>)}</ul>

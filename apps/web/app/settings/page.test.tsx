@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SettingsPage from './page';
 
 vi.mock('next/image', () => ({
@@ -11,10 +11,15 @@ vi.mock('next/image', () => ({
 vi.mock('next/navigation', () => ({ usePathname: () => '/settings' }));
 
 describe('SettingsPage', () => {
-  it('shows an honest empty state instead of the demo fiscal config', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ legalEntity: null, readiness: { ready: false, missing: ['ISSUER', 'INVOICE_SERIES', 'PRODUCT_TAX_PROFILE', 'KDP_POLICY'] } }) }));
+  });
+
+  it('shows the persisted fiscal configuration form instead of demo rules', () => {
     render(<SettingsPage />);
     expect(screen.getByRole('heading', { level: 1, name: 'Configuración' })).toBeInTheDocument();
-    expect(screen.getByText('Todavía no hay configuración fiscal editable')).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Nombre legal/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Tratamiento contable/)).toHaveValue('NET_ROYALTY_ONLY');
     expect(screen.queryByText(/versionadas/)).not.toBeInTheDocument();
   });
 
