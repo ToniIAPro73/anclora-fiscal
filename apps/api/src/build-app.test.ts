@@ -13,6 +13,20 @@ describe('API foundation', () => {
     expect(response.json()).toMatchObject({ status: 'ok', verifactuEnabled: false });
   });
 
+  // FASE 00: confirms not just the flag default but the actual absence of an
+  // active VERI*FACTU submission endpoint — see docs/adr/0005-verifactu-preparation-only.md.
+  // Fastify's printRoutes() dumps the full registered route tree as text; asserting
+  // it contains no submission-style path is the cheapest way to catch a future
+  // accidental registration without hardcoding the full route list here.
+  it('no registra ningún endpoint de envío VERI*FACTU (preparación, no integración activa)', async () => {
+    const app = await buildApp();
+    apps.push(app);
+    await app.ready();
+    const routes = app.printRoutes();
+    expect(routes).not.toMatch(/verifactu\/submit/i);
+    expect(routes).not.toMatch(/verifactu\/send/i);
+  });
+
   // Regression: the vat-dossier routes were defined in vat-dossier-controller.ts
   // but never registered in buildApp(), so both endpoints fell through to
   // Fastify's default "route not found" 404 handler regardless of auth state.
