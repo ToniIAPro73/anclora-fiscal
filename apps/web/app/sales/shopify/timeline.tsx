@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
 import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../../components/operation-filters';
+import { fetchAllPages } from '../../lib/fetch-all-pages';
 
 interface Operation {
   id: string;
@@ -20,8 +21,6 @@ interface Operation {
   createdAt: string;
 }
 
-interface OperationsPage { items: Operation[]; page: number; pageSize: number; total: number }
-
 interface CommercialOrder {
   id: string;
   externalOrderId: string;
@@ -30,8 +29,6 @@ interface CommercialOrder {
   totalAmount: string | null;
   taxAmount: string | null;
 }
-
-interface CommercialOrdersPage { items: CommercialOrder[]; page: number; pageSize: number; total: number }
 
 const statusLabels: Record<string, string> = { PENDING_TAX_REVIEW: 'Pendiente de revisión fiscal', PENDING_EVIDENCE: 'Pendiente de evidencia' };
 const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
@@ -48,18 +45,13 @@ export function OperationsTimeline() {
     let cancelled = false;
     async function load() {
       try {
-        const [ordersResponse, operationsResponse] = await Promise.all([
-          fetch('/api/v1/commercial-orders', { credentials: 'include' }),
-          fetch(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' }),
-        ]);
-        if (!ordersResponse.ok || !operationsResponse.ok) throw new Error('No se pudieron obtener las ventas Shopify');
-        const [ordersData, operationsData] = await Promise.all([
-          ordersResponse.json() as Promise<CommercialOrdersPage>,
-          operationsResponse.json() as Promise<OperationsPage>,
+        const [orderItems, operationItems] = await Promise.all([
+          fetchAllPages<CommercialOrder>('/api/v1/commercial-orders', { credentials: 'include' }, 'No se pudieron obtener las ventas Shopify'),
+          fetchAllPages<Operation>(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' }, 'No se pudieron obtener las ventas Shopify'),
         ]);
         if (!cancelled) {
-          setOrders(ordersData.items);
-          setOperations(operationsData.items);
+          setOrders(orderItems);
+          setOperations(operationItems);
         }
       } catch (reason) {
         if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las ventas Shopify');

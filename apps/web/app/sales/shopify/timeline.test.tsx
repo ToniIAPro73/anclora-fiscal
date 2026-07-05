@@ -25,7 +25,7 @@ describe('OperationsTimeline', () => {
     render(<OperationsTimeline />);
     await waitFor(() => expect(screen.getByText('No hay ventas Shopify importadas todavía.')).toBeInTheDocument());
     expect(screen.queryByLabelText('Plataforma')).not.toBeInTheDocument();
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/commercial-orders', { credentials: 'include' });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/commercial-orders?page=1&pageSize=100', { credentials: 'include' });
   });
 
   it('muestra un pedido Shopify importado aunque todavía no tenga operación conciliada', async () => {
@@ -77,5 +77,31 @@ describe('OperationsTimeline', () => {
     mockSalesFetch({}, {}, false);
     render(<OperationsTimeline />);
     await waitFor(() => expect(screen.getByText('No se pudieron obtener las ventas Shopify')).toBeInTheDocument());
+  });
+
+  it('recorre todas las páginas cuando hay más pedidos que el tamaño de página por defecto', async () => {
+    const totalOrders = 104;
+    const allOrders = Array.from({ length: totalOrders }, (_, index) => ({
+      id: `order-${index}`,
+      sourceChannel: 'SHOPIFY',
+      externalOrderId: `AI-${1000 + index}`,
+      commercialDate: '2026-07-01T00:00:00.000Z',
+      productNature: 'ebook',
+      totalAmount: '6.99',
+      taxAmount: '0.27',
+    }));
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url.includes('commercial-orders')) {
+        const page = Number(new URL(url, 'http://localhost').searchParams.get('page'));
+        const pageSize = 100;
+        const items = allOrders.slice((page - 1) * pageSize, page * pageSize);
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ items, page, pageSize, total: totalOrders }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [], page: 1, pageSize: 100, total: 0 }) });
+    }));
+    render(<OperationsTimeline />);
+    await waitFor(() => expect(screen.getByText('AI-1103')).toBeInTheDocument());
+    expect(screen.getByText('AI-1000')).toBeInTheDocument();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(expect.stringContaining('page=2'), { credentials: 'include' });
   });
 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
+import { fetchAllPages } from '../lib/fetch-all-pages';
 
 interface ReconciliationCandidate {
   id: string;
@@ -13,16 +14,12 @@ interface ReconciliationCandidate {
   financialEventExternalId: string;
 }
 
-interface CandidatesPage { items: ReconciliationCandidate[]; page: number; pageSize: number; total: number }
-
 interface UnmatchedOrder {
   id: string;
   externalOrderId: string;
   sourceChannel: string;
   commercialDate?: string;
 }
-
-interface UnmatchedOrdersPage { items: UnmatchedOrder[]; page: number; pageSize: number; total: number }
 
 export function ReconciliationWorkbench() {
   const [candidates, setCandidates] = useState<ReconciliationCandidate[]>();
@@ -33,10 +30,8 @@ export function ReconciliationWorkbench() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch('/api/v1/reconciliation/candidates', { credentials: 'include' });
-        if (!response.ok) throw new Error('No se pudieron obtener las candidaturas de conciliación');
-        const data = await response.json() as CandidatesPage;
-        if (!cancelled) setCandidates(data.items);
+        const items = await fetchAllPages<ReconciliationCandidate>('/api/v1/reconciliation/candidates', { credentials: 'include' }, 'No se pudieron obtener las candidaturas de conciliación');
+        if (!cancelled) setCandidates(items);
       } catch (reason) {
         if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las candidaturas de conciliación');
       } finally {
@@ -90,10 +85,8 @@ function UnmatchedOrdersSection() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch('/api/v1/reconciliation/unmatched-orders', { credentials: 'include' });
-        if (!response.ok) throw new Error('No se pudieron obtener los pedidos sin conciliar');
-        const data = await response.json() as UnmatchedOrdersPage;
-        if (!cancelled) setOrders(data.items);
+        const items = await fetchAllPages<UnmatchedOrder>('/api/v1/reconciliation/unmatched-orders', { credentials: 'include' }, 'No se pudieron obtener los pedidos sin conciliar');
+        if (!cancelled) setOrders(items);
       } catch (reason) {
         if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener los pedidos sin conciliar');
       } finally {
