@@ -1,11 +1,78 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { extractShopifyOrdersCsv } from './shopify-orders-csv.js';
+import { extractShopifyOrdersCsv, isShopifyOrdersCsvFile } from './shopify-orders-csv.js';
+import { isShopifyOrderTransactionsCsvFile } from './shopify-order-transactions-csv.js';
+import { isShopifyPaymentsLedgerCsvFile } from './shopify-payments-ledger-csv.js';
 
 const fixtures = resolve(import.meta.dirname, '../test/fixtures');
 
 describe('extractShopifyOrdersCsv', () => {
+  it('trata el export de pedidos como evidencia comercial e identifica la incoherencia de reembolso total', async () => {
+    const result = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
+    expect(result.orders.map((order) => order.orderId)).toEqual(['AI-1004', 'AI-1003', 'AI-1002', 'AI-1001']);
+    const incident = result.orders.find((order) => order.orderId === 'AI-1001');
+    expect(incident?.commercialDate).toBe('2026-07-01');
+    expect(incident?.issues).toContainEqual(expect.objectContaining({ code: 'INCOHERENT_QUANTITY' }));
+    expect(incident).not.toHaveProperty('amount');
+  });
+
+  it('acepta cabeceras reordenadas con una columna opcional extra, ignorando la columna desconocida', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-reordered-headers.csv')));
+    expect(parsed.orders).toHaveLength(1);
+    expect(parsed.orders[0]?.orderId).toBe('AI-1004');
+    expect(parsed.orders[0]?.customerCountry).toBe('ES');
+    expect(parsed.orders[0]).not.toHaveProperty('Extra Column');
+  });
+
+  it('lanza un error nombrando explícitamente la columna obligatoria ausente (Financial Status)', async () => {
+    const bytes = await readFile(resolve(fixtures, 'shopify-orders-missing-critical-header.csv'));
+    expect(() => extractShopifyOrdersCsv(bytes)).toThrowError(/Financial Status/);
+  });
+
+  it('procesa un fichero con BOM UTF-8 igual que su equivalente sin BOM (mismo recuento y forma de filas)', async () => {
+    const withBom = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-bom.csv')));
+    const withoutBom = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
+    expect(withBom.orders).toHaveLength(withoutBom.orders.length);
+    expect(withBom.orders.map((order) => order.orderId)).toEqual(withoutBom.orders.map((order) => order.orderId));
+  });
+
+  it('no rechaza un número de pedido sin prefijo AI (regresión — no existe regex de prefijo hoy)', async () => {
+    const bytes = await readFile(resolve(fixtures, 'shopify-orders-four.csv'));
+    const mutated = Buffer.from(bytes.toString('utf8').replaceAll('AI-1004', '1004'), 'utf8');
+    const parsed = extractShopifyOrdersCsv(mutated);
+    expect(parsed.orders.some((order) => order.orderId === '1004')).toBe(true);
+  });
+
+  it('genera el mismo hash de documento para los mismos bytes y uno distinto si cambia un campo', async () => {
+    const bytes = await readFile(resolve(fixtures, 'shopify-orders-four.csv'));
+    const first = extractShopifyOrdersCsv(bytes);
+    const second = extractShopifyOrdersCsv(bytes);
+    expect(first.hash).toBe(second.hash);
+    const mutated = Buffer.from(bytes.toString('utf8').replace('6.99,0.00', '7.99,0.00'), 'utf8');
+    const third = extractShopifyOrdersCsv(mutated);
+    expect(third.hash).not.toBe(first.hash);
+  });
+});
+
+describe('detectores Shopify — matriz de rechazo cruzado 3x3', () => {
+  it('isShopifyOrdersCsvFile rechaza Ledger y Order Transactions', async () => {
+    expect(isShopifyOrdersCsvFile(await readFile(resolve(fixtures, 'shopify-ledger-charge-refund.csv')))).toBe(false);
+    expect(isShopifyOrdersCsvFile(await readFile(resolve(fixtures, 'shopify-order-transactions.csv')))).toBe(false);
+  });
+
+  it('isShopifyOrderTransactionsCsvFile rechaza Orders y Ledger', async () => {
+    expect(isShopifyOrderTransactionsCsvFile(await readFile(resolve(fixtures, 'shopify-orders-four.csv')))).toBe(false);
+    expect(isShopifyOrderTransactionsCsvFile(await readFile(resolve(fixtures, 'shopify-ledger-charge-refund.csv')))).toBe(false);
+  });
+
+  it('isShopifyPaymentsLedgerCsvFile rechaza Orders y Order Transactions', async () => {
+    expect(isShopifyPaymentsLedgerCsvFile(await readFile(resolve(fixtures, 'shopify-orders-four.csv')))).toBe(false);
+    expect(isShopifyPaymentsLedgerCsvFile(await readFile(resolve(fixtures, 'shopify-order-transactions.csv')))).toBe(false);
+  });
+});
+
+describe('extractShopifyOrdersCsv — casos existentes', () => {
   it('captura customerCountry priorizando Shipping Country sobre Billing Country', async () => {
     const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
     expect(parsed.orders.every((order) => order.customerCountry === 'ES')).toBe(true);

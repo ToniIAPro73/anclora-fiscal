@@ -1,0 +1,2 @@
+Order,Name,Kind,Gateway,Created At,Status,Amount,Currency,Card Type,Payment Method
+9000000000002,AI-1002,refund,shopify_payments,2026-07-02 09:12:07 +0000,success,-6.99,EUR,visa,card

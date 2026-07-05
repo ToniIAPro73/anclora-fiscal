@@ -1,0 +1,2 @@
+Financial Status,Name,Extra Column,Created at,Fulfillment Status,Lineitem quantity,Billing Country,Total,Taxes,Email,Billing Address1,Billing City,Billing Zip,Billing Province,Lineitem requires shipping,Billing Name,Shipping Name
+paid,AI-1004,unused-value,2026-07-01 13:59:11 +0000,fulfilled,1,ES,6.99,0.00,cliente-ai-1004@ejemplo.com,Calle Ejemplo 4,Palma,'07015,PM,false,Cliente Demo AI-1004,

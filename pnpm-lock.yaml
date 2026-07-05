@@ -181,6 +181,9 @@ importers:
       '@anclora/core':
         specifier: workspace:*
         version: link:../core
+      '@anclora/db':
+        specifier: workspace:*
+        version: link:../db
       csv-parse:
         specifier: ^6.1.0
         version: 6.2.1

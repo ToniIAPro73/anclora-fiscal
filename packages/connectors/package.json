@@ -13,6 +13,7 @@
   "scripts": { "build": "tsc && node ../../scripts/postbuild-dist-extensionless.js dist", "lint": "eslint src", "typecheck": "tsc --noEmit", "test": "vitest run --passWithNoTests" },
   "dependencies": {
     "@anclora/core": "workspace:*",
+    "@anclora/db": "workspace:*",
     "csv-parse": "^6.1.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.64"

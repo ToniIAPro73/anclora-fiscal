@@ -14,11 +14,15 @@ export const IMPORT_ISSUE_CODES = [
   'ORDER_TOTAL_MISMATCH',
   'REFUND_EXCEEDS_ORIGINAL',
   'MAPPING_VERSION_UNSUPPORTED',
+  'GROSS_FEE_NET_MISMATCH',
+  'PLATFORM_VAT_ZERO_UNVALIDATED',
+  'ORDER_EVIDENCE_MISSING',
+  'ORDER_TRANSACTION_STATUS_UNSUPPORTED',
 ] as const;
 
 export type ImportIssueCode = (typeof IMPORT_ISSUE_CODES)[number];
 
-export const IMPORT_CONNECTOR_IDS = ['shopify-orders', 'shopify-payments', 'amazon-kdp-royalties'] as const;
+export const IMPORT_CONNECTOR_IDS = ['shopify-orders', 'shopify-order-transactions', 'shopify-payments', 'amazon-kdp-royalties'] as const;
 
 export type ImportConnectorId = (typeof IMPORT_CONNECTOR_IDS)[number];
 
@@ -32,6 +36,10 @@ export const IMPORT_ISSUE_CODE_CONNECTORS: Record<ImportIssueCode, readonly Impo
   ORDER_TOTAL_MISMATCH: ['shopify-orders'],
   REFUND_EXCEEDS_ORIGINAL: ['shopify-orders', 'amazon-kdp-royalties'],
   MAPPING_VERSION_UNSUPPORTED: ['shopify-orders', 'shopify-payments', 'amazon-kdp-royalties'],
+  GROSS_FEE_NET_MISMATCH: ['shopify-payments'],
+  PLATFORM_VAT_ZERO_UNVALIDATED: ['shopify-payments'],
+  ORDER_EVIDENCE_MISSING: ['shopify-order-transactions'],
+  ORDER_TRANSACTION_STATUS_UNSUPPORTED: ['shopify-order-transactions'],
 };
 
 export function isImportIssueCode(value: string): value is ImportIssueCode {

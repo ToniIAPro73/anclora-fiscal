@@ -1,0 +1,5 @@
+﻿Name,Financial Status,Fulfillment Status,Created at,Lineitem quantity,Billing Name,Shipping Name,Billing Country,Total,Taxes,Email,Billing Address1,Billing City,Billing Zip,Billing Province,Lineitem requires shipping
+AI-1004,paid,fulfilled,2026-07-01 13:59:11 +0000,1,Cliente Demo AI-1004,,ES,6.99,0.00,cliente-ai-1004@ejemplo.com,Calle Ejemplo 4,Palma,'07015,PM,false
+AI-1003,paid,fulfilled,2026-07-01 13:50:57 +0000,1,Cliente Demo AI-1003,,ES,6.99,0.00,cliente-ai-1003@ejemplo.com,Calle Ejemplo 3,Palma,'07015,PM,false
+AI-1002,paid,fulfilled,2026-07-01 08:05:06 +0000,1,Cliente Demo AI-1002,,ES,6.99,0.00,cliente-ai-1002@ejemplo.com,Calle Ejemplo 2,Palma,'07015,PM,false
+AI-1001,refunded,fulfilled,2026-07-01 07:33:11 +0000,1,Cliente Demo AI-1001,,ES,6.99,0.27,cliente-ai-1001@ejemplo.com,Calle Ejemplo 1,Palma,'07015,PM,false

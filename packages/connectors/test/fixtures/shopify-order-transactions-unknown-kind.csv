@@ -1,0 +1,2 @@
+Order,Name,Kind,Gateway,Created At,Status,Amount,Currency,Card Type,Payment Method
+9000000000003,AI-1003,store_credit,shopify_payments,2026-07-03 10:05:00 +0000,success,6.99,EUR,visa,card

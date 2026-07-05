@@ -55,10 +55,34 @@ export interface ShopifyOrdersCsvEvidence { hash: string; orders: ShopifyOrderEv
 
 const requiredHeaders = ['Name', 'Financial Status', 'Fulfillment Status', 'Created at', 'Lineitem quantity', 'Billing Name', 'Shipping Name'];
 
-export function isShopifyOrdersCsvFile(bytes: Uint8Array): boolean {
+// Columns that only appear in the Ledger or Order-Transactions exports \u2014
+// their presence signals the wrong file was fed to this connector, even if
+// it happens to also carry some of the Orders required columns.
+const ledgerOrTransactionsSignatureColumns = ['Checkout', 'Payout Status', 'Kind', 'Gateway'];
+
+function parseHeaderLine(bytes: Uint8Array): string[] {
   const firstLine = Buffer.from(bytes).toString('utf8').replace(/^\uFEFF/, '').split('\n')[0]?.replace(/\r$/, '') ?? '';
-  const headers = new Set(firstLine.split(','));
-  return requiredHeaders.every((header) => headers.has(header));
+  return firstLine.split(',');
+}
+
+/**
+ * Signature-based validator: reports exactly which required Orders columns
+ * are missing, and explicitly rejects Ledger/Order-Transactions exports
+ * (distinct column signatures) instead of returning a generic failure.
+ */
+export function validateShopifyOrdersCsvSignature(headers: string[]): { valid: true } | { valid: false; missing: string[]; message?: string } {
+  const headerSet = new Set(headers);
+  const looksLikeOtherStream = ledgerOrTransactionsSignatureColumns.some((column) => headerSet.has(column));
+  if (looksLikeOtherStream) {
+    return { valid: false, missing: [], message: 'CSV parece ser de Order Transactions/Ledger, no de Orders' };
+  }
+  const missing = requiredHeaders.filter((header) => !headerSet.has(header));
+  if (missing.length > 0) return { valid: false, missing };
+  return { valid: true };
+}
+
+export function isShopifyOrdersCsvFile(bytes: Uint8Array): boolean {
+  return validateShopifyOrdersCsvSignature(parseHeaderLine(bytes)).valid;
 }
 
 function buildAddressLine(record: Record<string, string>, prefix: 'Shipping' | 'Billing'): string | undefined {
@@ -69,10 +93,21 @@ function buildAddressLine(record: Record<string, string>, prefix: 'Shipping' | '
 }
 
 export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvidence {
+  // BOM handling verified present and correct (`.replace(/^\uFEFF/, '')` below,
+  // plus `bom: true` passed to csv-parse) \u2014 confirmed working, no change
+  // needed here (SHOPIFY-01 Task 2 step 4).
   const source = Buffer.from(bytes).toString('utf8').replace(/^\uFEFF/, '');
+  const signatureCheck = validateShopifyOrdersCsvSignature(source.slice(0, source.indexOf('\n')).replace(/\r$/, '').split(','));
+  if (!signatureCheck.valid) {
+    if (signatureCheck.message) throw new Error(signatureCheck.message);
+    throw new Error(`Faltan columnas obligatorias: ${signatureCheck.missing.join(', ')}`);
+  }
   const records = parse(source, { columns: true, bom: true, skip_empty_lines: true }) as Record<string, string>[];
   const orders = records.map((record): ShopifyOrderEvidence => {
     const orderId = record.Name;
+    // No order-number regex (e.g. AI-\d+) exists here today \u2014 verified during
+    // SHOPIFY-01; `orderId` remains a non-empty string with no prefix
+    // assumptions. Do not reintroduce one.
     if (!orderId) throw new Error('Fila de pedido sin identificador');
     const commercialDate = record['Created at']?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
     const quantity = Number(record['Lineitem quantity']);

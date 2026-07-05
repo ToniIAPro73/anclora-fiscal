@@ -21,6 +21,10 @@ export interface SourceConnector {
   getCapabilities(): ConnectorCapabilities;
 }
 
-export * from './shopify-csv.js';
+// shopify-csv.js is a deprecated re-export of shopify-payments-ledger-csv.js;
+// exporting only the latter here avoids a duplicate-member conflict while
+// direct imports from 'shopify-csv.js' keep working (backward compatibility).
+export * from './shopify-payments-ledger-csv.js';
 export * from './shopify-orders-csv.js';
+export * from './shopify-order-transactions-csv.js';
 export * from './kdp-xlsx.js';
