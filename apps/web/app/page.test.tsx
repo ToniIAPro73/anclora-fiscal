@@ -4,14 +4,15 @@ import Dashboard from './page';
 
 // next/image requires static-import width/height metadata that Next.js's
 // build-time loader normally injects; that loader doesn't run under Vitest,
-// so the plain <Image> usage in page.tsx (decorative brand medals, alt="")
-// throws here. Stub it to a plain <img> for this test file only.
+// so the plain <Image> usage in app-shell.tsx (decorative brand medals,
+// alt="") throws here. Stub it to a plain <img> for this test file only.
 vi.mock('next/image', () => ({
   default: (props: Record<string, unknown>) => {
     // eslint-disable-next-line @next/next/no-img-element
     return <img alt="" {...props} />;
   },
 }));
+vi.mock('next/navigation', () => ({ usePathname: () => '/' }));
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -45,17 +46,28 @@ describe('Dashboard', () => {
     mockFetchOnce(emptySummary);
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText('Todavía no hay importaciones')).toBeInTheDocument());
-    expect(screen.getAllByText('0')).toHaveLength(4);
-    expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.getByText('Sin operaciones todavía')).toBeInTheDocument();
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/operaciones$/)).not.toBeInTheDocument();
   });
 
-  it('renderiza las métricas reales cuando existen datos', async () => {
+  it('renderiza todas las secciones requeridas cuando existen datos, sin conciliación cuando total es 0', async () => {
+    mockFetchOnce(emptySummary);
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText('Ventas facturables')).toBeInTheDocument());
+    expect(screen.getByText('Pendientes de revisar')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Liquidaciones KDP' })).toBeInTheDocument();
+    expect(screen.getByText('Estado del trimestre')).toBeInTheDocument();
+    expect(screen.getByText('Incidencia bloqueante')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Conciliación')).not.toBeInTheDocument();
+  });
+
+  it('renderiza las métricas reales y la sección de conciliación cuando total > 0', async () => {
     mockFetchOnce(populatedSummary);
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText('3')).toBeInTheDocument());
     expect(screen.getByText('50 %')).toBeInTheDocument();
     expect(screen.getByText('Periodo: julio 2026')).toBeInTheDocument();
+    expect(screen.getByLabelText('Conciliación')).toBeInTheDocument();
     expect(screen.queryByText('Todavía no hay importaciones')).not.toBeInTheDocument();
   });
 

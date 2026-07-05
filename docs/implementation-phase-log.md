@@ -78,3 +78,50 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
     incumple la prohibición de afirmación falsa, pero es el patrón anti-objetivo señalado por el
     doc de redefinición). Acción recomendada para Fase 02.
 - **Siguiente fase:** FASE 01 — Shell de aplicación, navegación y sistema de diseño operativo.
+
+---
+
+## FASE 01 — Shell de aplicación, navegación y sistema de diseño operativo
+
+- **Objetivo:** convertir la aplicación en un espacio de trabajo fiscal coherente, navegable y
+  reutilizable, con jerarquía visual premium, controles accesibles y estados vacíos honestos.
+- **Archivos / migraciones:** ninguna migración. Se incorporaron el shell, mapa de navegación y
+  rutas canónicas en `apps/web/app/components/`, `apps/web/app/lib/navigation.ts`,
+  `apps/web/app/sales/shopify/`, `apps/web/app/tax-rules/` y `apps/web/app/tax-periods/`; se
+  adaptaron las páginas funcionales y rutas legacy bajo `apps/web/app/`; se consolidó el sistema
+  visual responsive en `apps/web/app/styles.css`; y se creó el kit compartido y sus pruebas en
+  `packages/ui/src/`, con configuración Vitest en `packages/ui/`. También se actualizaron
+  `apps/web/e2e/`, `packages/ui/package.json`, `packages/ui/tsconfig.json` y `pnpm-lock.yaml`.
+- **Pruebas ejecutadas y resultado real:** `pnpm turbo lint typecheck test --force`, ejecutado
+  literalmente desde la raíz del repositorio. Resultado real de terminal:
+
+  ```text
+  Tasks:    26 successful, 26 total
+  Cached:    0 cached, 26 total
+  Time:    2m54.741s
+
+  @anclora/ui:test — Test Files  11 passed (11) / Tests  29 passed (29)
+  @anclora/web:test — Test Files  21 passed (21) / Tests  53 passed (53)
+  @anclora/db:test — Test Files  15 passed (15) / Tests  67 passed (67)
+  @anclora/api:test — Test Files  20 passed (20) / Tests  122 passed (122)
+
+  WARNING  no output files found for task @anclora/tax-engine#build. Please check your `outputs` key in `turbo.json`
+  WARNING  no output files found for task @anclora/ui#build. Please check your `outputs` key in `turbo.json`
+  ```
+
+  Las dos advertencias de `outputs` son la limitación de caché ya registrada en FASE 00 y no
+  afectaron a las 26 tareas. La revisión manual autenticada con `agent-browser` cubrió `/`,
+  `/imports`, `/sales/shopify`, `/reconciliation`, `/invoicing`, `/verifactu`, `/tax-rules`,
+  `/tax-periods` y `/settings` en escritorio, además de `/imports` a 390 px; no se detectó
+  overflow horizontal (`scrollWidth === clientWidth`).
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition`.
+- **Limitaciones abiertas:**
+  - La navegación móvil prioriza marca, cierre de sesión y contenido; el menú completo requiere
+    un patrón desplegable en una fase futura si se exige navegación entre módulos sin volver al
+    centro de control.
+  - Los avisos React sobre el atributo `priority` aparecen exclusivamente por el mock de
+    `next/image` en pruebas y no afectan al runtime ni al resultado del pipeline.
+  - Las reglas fiscales configurables, periodos por rango real y modelo `order_lines` pertenecen
+    a FASE 02; esta fase no altera semántica fiscal ni habilita envíos VERI*FACTU.
+- **Siguiente fase:** FASE 02 — Modelo de dominio fiscal y contratos persistentes.

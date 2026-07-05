@@ -38,15 +38,20 @@ select:focus-visible,
 .brand-medal { width: 50px; height: 50px; }
 .tenant-medal { width: 44px; height: 44px; }
 .brand-medal img, .tenant-medal img { position: absolute; width: calc(100% + 6px); height: calc(100% + 6px); max-width: none; inset: -3px; object-fit: cover; }
-.sidebar nav { display: grid; gap: 5px; }
-.sidebar nav a { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; padding: 12px 11px; border: 1px solid transparent; color: rgb(243 236 223 / 62%); font-size: .78rem; font-weight: 550; text-decoration: none; transition: .2s ease; }
-.sidebar nav a span { color: rgb(199 150 76 / 68%); font-family: var(--font-editorial), serif; font-size: .7rem; }
+.sidebar nav { display: grid; gap: 2px; }
+.sidebar nav a { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 12px; border: 1px solid transparent; border-radius: 8px; color: rgb(243 236 223 / 62%); font-size: .78rem; font-weight: 550; text-decoration: none; transition: .2s ease; }
 .sidebar nav a:hover, .sidebar nav a.active { border-color: rgb(199 150 76 / 32%); background: linear-gradient(110deg, rgb(231 183 102 / 11%), transparent); color: #fffaf0; transform: translateX(4px); }
 .sidebar nav a.active { border-left-color: #e7b766; }
-.tenant { margin-top: auto; display: flex; align-items: center; gap: 11px; padding-top: 20px; border-top: 1px solid rgb(243 236 223 / 10%); }
+.nav-item-disabled { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; row-gap: 4px; gap: 10px; padding: 9px 12px; border-radius: 8px; color: rgb(243 236 223 / 38%); font-size: .78rem; font-weight: 550; cursor: not-allowed; }
+.nav-item-disabled > span:first-child { min-width: 0; }
+.nav-badge-soon { flex: 0 0 auto; padding: 2px 7px; border: 1px solid rgb(243 236 223 / 16%); border-radius: 999px; color: rgb(243 236 223 / 50%); font-size: .6rem; text-transform: uppercase; letter-spacing: .03em; white-space: nowrap; }
+.nav-badge { flex: 0 0 auto; padding: 1px 8px; border-radius: 999px; background: #e7b766; color: #1a1206; font-size: .68rem; font-weight: 700; }
+.tenant { margin-top: auto; display: flex; align-items: center; gap: 11px; padding-top: 20px; margin-bottom: 14px; border-top: 1px solid rgb(243 236 223 / 10%); }
 .tenant div { display: grid; gap: 2px; }
 .tenant strong { font: 600 .8rem var(--font-display), serif; color: #fffaf0; }
 .tenant small { color: rgb(243 236 223 / 48%); font-size: .64rem; }
+.logout-button { width: 100%; min-height: 40px; padding: 0 16px; border: 1px solid rgb(231 183 102 / 35%); border-radius: 10px; background: transparent; color: #e7b766; font-weight: 600; font-size: .78rem; cursor: pointer; transition: .2s ease; }
+.logout-button:hover { background: rgb(231 183 102 / 8%); }
 
 .workspace { padding: 0 4.5vw 70px; min-width: 0; background: radial-gradient(80% 45% at 75% 0%, rgb(231 183 102 / 8%), transparent 60%), #080d15; }
 .topbar { min-height: 142px; display: flex; align-items: center; justify-content: space-between; gap: 30px; border-bottom: 1px solid rgb(243 236 223 / 10%); }
@@ -56,7 +61,7 @@ h1 { margin: 9px 0 0; font-size: clamp(2rem, 3.5vw, 3.4rem); line-height: 1; fon
 h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1.05; font-weight: 580; }
 .topbar button { min-height: 52px; padding: 0 22px; border: 1px solid #e7b766; border-radius: 12px; background: linear-gradient(135deg, #e7b766, #c2913f); color: #1a1206; font-weight: 700; box-shadow: 0 6px 0 rgb(92 58 16 / 78%), 0 14px 30px rgb(194 145 63 / 24%); cursor: pointer; transition: .22s ease; }
 .topbar button:hover { transform: translateY(-4px); box-shadow: 0 10px 0 rgb(92 58 16 / 80%), 0 22px 38px rgb(194 145 63 / 34%); }
-.topbar-actions { display: flex; align-items: center; gap: 12px; }.topbar .logout-button { border-color: rgb(231 183 102 / 35%); background: transparent; color: #e7b766; box-shadow: none; }.topbar .logout-button:hover { transform: none; background: rgb(231 183 102 / 8%); box-shadow: none; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }.topbar .logout-button { width: auto; }
 
 .attention { display: grid; grid-template-columns: minmax(230px, .72fr) minmax(430px, 1.45fr); gap: 5vw; padding: 58px 0; border-bottom: 1px solid rgb(199 150 76 / 22%); }
 .attention > div:first-child p { max-width: 38ch; color: rgb(243 236 223 / 56%); line-height: 1.6; }
@@ -172,3 +177,274 @@ h2 { margin: 10px 0 8px; font-size: clamp(1.7rem, 2.6vw, 2.5rem); line-height: 1
 .verifactu-banner { margin-top: 24px; padding: 16px 20px; border: 1px solid rgb(231 183 102 / 40%); background: rgb(231 183 102 / 8%); color: #e7b766; font-size: .8rem; }
 .role-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .role-list li { color: rgb(243 236 223 / 75%); font-size: .82rem; }
+
+/* FASE 01 premium operating system — editorial luxury, restrained for a
+   regulated fiscal workspace. These rules intentionally consolidate the
+   shared package/ui class contract so native controls never leak through. */
+:root {
+  --fiscal-ink: #070c13;
+  --fiscal-midnight: #0c1624;
+  --fiscal-panel: #111e2e;
+  --fiscal-panel-raised: #152437;
+  --fiscal-ivory: #f5efe3;
+  --fiscal-muted: rgb(245 239 227 / 62%);
+  --fiscal-gold: #d7a957;
+  --fiscal-gold-soft: rgb(215 169 87 / 12%);
+  --fiscal-hairline: rgb(215 169 87 / 18%);
+  --fiscal-ease: cubic-bezier(.32, .72, 0, 1);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { width: 100%; margin: 0; overflow-x: clip; }
+
+body {
+  background:
+    radial-gradient(80% 52% at 72% -10%, rgb(215 169 87 / 10%), transparent 62%),
+    var(--fiscal-ink);
+  color: var(--fiscal-ivory);
+}
+
+.app-shell { grid-template-columns: 286px minmax(0, 1fr); background: transparent; }
+.sidebar {
+  width: 286px;
+  padding: 30px 24px 24px;
+  border-right-color: var(--fiscal-hairline);
+  background:
+    radial-gradient(circle at 22% 0%, rgb(215 169 87 / 11%), transparent 28%),
+    linear-gradient(180deg, #101c2b 0%, #0b1522 100%);
+  box-shadow: 24px 0 70px -48px rgb(0 0 0 / 80%);
+}
+.brand-lockup { margin-bottom: 30px; letter-spacing: -.015em; }
+.brand-medal { filter: drop-shadow(0 14px 24px rgb(0 0 0 / 35%)); }
+.sidebar nav { gap: 3px; }
+.sidebar nav a,
+.nav-item-disabled {
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 12px;
+  transition: transform 500ms var(--fiscal-ease), background-color 500ms var(--fiscal-ease), color 500ms var(--fiscal-ease);
+}
+.sidebar nav a:hover { background: rgb(245 239 227 / 5%); transform: translateX(3px); }
+.sidebar nav a.active {
+  border: 0;
+  background: linear-gradient(110deg, rgb(215 169 87 / 17%), rgb(215 169 87 / 5%));
+  box-shadow: inset 0 0 0 1px rgb(215 169 87 / 30%), inset 0 1px rgb(255 255 255 / 6%);
+  color: var(--fiscal-ivory);
+  transform: none;
+}
+.nav-badge-soon { border-color: rgb(245 239 227 / 12%); background: rgb(245 239 227 / 3%); }
+.tenant { margin-top: auto; padding: 18px 12px 0; }
+.logout-button {
+  border-color: rgb(215 169 87 / 28%);
+  border-radius: 999px;
+  transition: transform 500ms var(--fiscal-ease), background-color 500ms var(--fiscal-ease), border-color 500ms var(--fiscal-ease);
+}
+.logout-button:hover { border-color: rgb(215 169 87 / 55%); background: var(--fiscal-gold-soft); transform: translateY(-1px); }
+
+.workspace {
+  padding: 0 clamp(28px, 5vw, 82px) 96px;
+  background:
+    radial-gradient(70% 42% at 80% 0%, rgb(215 169 87 / 7%), transparent 68%),
+    transparent;
+}
+.imports-header {
+  min-height: 158px;
+  align-items: center;
+  padding: 34px 0;
+  border-bottom-color: var(--fiscal-hairline);
+}
+.imports-header p { max-width: 66ch; margin: 12px 0 0; line-height: 1.65; color: var(--fiscal-muted); }
+.imports-header h1 { letter-spacing: -.035em; }
+.eyebrow, .section-index { color: var(--fiscal-gold); }
+
+.btn,
+.imports-header .btn,
+.operation-filters .btn,
+.invoice-card button,
+.drop-panel button,
+.dossier-actions button {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  color: #1a1206;
+  background: linear-gradient(135deg, #e4ba70, #bd8532);
+  box-shadow: inset 0 1px rgb(255 255 255 / 32%), 0 14px 30px -20px rgb(215 169 87 / 72%);
+  font: 700 .76rem var(--font-ui), sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 600ms var(--fiscal-ease), box-shadow 600ms var(--fiscal-ease), background-color 600ms var(--fiscal-ease);
+}
+.btn > span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; background: rgb(7 12 19 / 12%); transition: transform 600ms var(--fiscal-ease); }
+.btn:hover,
+.invoice-card button:hover,
+.drop-panel button:hover,
+.dossier-actions button:hover { transform: translateY(-2px); box-shadow: inset 0 1px rgb(255 255 255 / 36%), 0 20px 38px -22px rgb(215 169 87 / 85%); }
+.btn:hover > span { transform: translate(2px, -1px); }
+.btn:active,
+.invoice-card button:active,
+.drop-panel button:active { transform: scale(.98); }
+.btn-secondary, .btn-ghost {
+  color: var(--fiscal-ivory);
+  background: rgb(245 239 227 / 5%);
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 12%), inset 0 1px rgb(255 255 255 / 7%);
+}
+.btn:disabled, .invoice-card button:disabled, .drop-panel button:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.metrics {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px;
+  padding: 6px;
+  border: 0;
+  border-radius: 26px;
+  background: rgb(245 239 227 / 3%);
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 6%);
+}
+.metric-card {
+  min-height: 148px;
+  border: 0;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgb(21 36 55 / 92%), rgb(13 23 36 / 88%));
+  box-shadow: inset 0 1px rgb(255 255 255 / 6%);
+}
+.metric-card strong { color: var(--fiscal-gold); letter-spacing: -.03em; }
+
+.empty-state,
+.evidence-panel,
+.attention,
+.tax-form,
+.tax-decision,
+.drop-panel,
+.preview-panel,
+.timeline-summary,
+.invoice-card,
+.settings-config,
+.vat-dossier,
+.reconciliation-workbench {
+  border: 0;
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgb(21 36 55 / 78%), rgb(10 18 29 / 82%));
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 7%), inset 0 1px rgb(255 255 255 / 6%), 0 30px 70px -52px rgb(0 0 0 / 90%);
+}
+.empty-state { margin: 24px 0; padding: clamp(28px, 4vw, 48px); }
+.empty-state h2 { margin-top: 0; letter-spacing: -.025em; }
+.empty-state p { max-width: 72ch; color: var(--fiscal-muted); line-height: 1.65; }
+.empty-state-action { margin-top: 20px; }
+.empty-state-action a { color: var(--fiscal-gold); text-underline-offset: 5px; }
+.evidence-panel { margin: 24px 0; padding: clamp(28px, 4vw, 48px); }
+.attention { margin-top: 38px; padding: clamp(30px, 4vw, 52px); border: 0; }
+
+.field { min-width: 0; display: grid; gap: 8px; }
+.field > label,
+.field-group-label { color: rgb(245 239 227 / 76%); font-size: .7rem; font-weight: 650; letter-spacing: .04em; }
+.field input,
+.field select,
+.tax-form input,
+.tax-form select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--fiscal-ivory);
+  background: rgb(7 12 19 / 66%);
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 11%), inset 0 1px rgb(255 255 255 / 4%);
+  color-scheme: dark;
+  transition: box-shadow 500ms var(--fiscal-ease), background-color 500ms var(--fiscal-ease);
+}
+.field input:hover, .field select:hover { box-shadow: inset 0 0 0 1px rgb(215 169 87 / 32%), inset 0 1px rgb(255 255 255 / 5%); }
+.field input:focus, .field select:focus { box-shadow: inset 0 0 0 1px var(--fiscal-gold), 0 0 0 4px rgb(215 169 87 / 10%); }
+.field-error { margin: 0; color: #ef9b9f; font-size: .68rem; }
+.date-range-inputs { display: grid; grid-template-columns: auto minmax(130px, 1fr) auto minmax(130px, 1fr); align-items: center; gap: 9px; }
+.operation-filters {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.45fr) minmax(180px, .72fr) minmax(170px, .72fr) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  background: rgb(245 239 227 / 3%);
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 7%);
+}
+.operations-timeline > p,
+.invoicing-documents > p,
+.reconciliation-workbench > p {
+  margin: 0;
+  padding: 30px;
+  border-radius: 20px;
+  color: var(--fiscal-muted);
+  background: linear-gradient(145deg, rgb(21 36 55 / 58%), rgb(10 18 29 / 62%));
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 7%);
+}
+.file-dropzone { min-height: 180px; display: grid; place-content: center; padding: 30px; border-radius: 18px; text-align: center; background: rgb(7 12 19 / 42%); box-shadow: inset 0 0 0 1px rgb(215 169 87 / 26%); cursor: pointer; }
+.file-dropzone-active { background: var(--fiscal-gold-soft); box-shadow: inset 0 0 0 2px var(--fiscal-gold); }
+.file-dropzone-input, .field .file-dropzone-input, .sr-only {
+  position: absolute;
+  width: 1px;
+  min-height: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.data-table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+.data-table th, .data-table td { padding: 15px 14px; border-bottom: 1px solid rgb(245 239 227 / 8%); text-align: left; }
+.data-table th { color: var(--fiscal-gold); font-size: .64rem; letter-spacing: .1em; text-transform: uppercase; }
+.step-indicator { display: flex; gap: 10px; padding: 0; list-style: none; }
+.step { display: flex; align-items: center; gap: 8px; color: var(--fiscal-muted); font-size: .72rem; }
+.step > span { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: rgb(245 239 227 / 5%); box-shadow: inset 0 0 0 1px rgb(245 239 227 / 10%); }
+.step-current > span, .step-done > span { background: var(--fiscal-gold); color: #171006; }
+.confirm-dialog { max-width: 520px; padding: 34px; border: 0; border-radius: 24px; color: var(--fiscal-ivory); background: var(--fiscal-panel); box-shadow: 0 40px 100px -30px rgb(0 0 0 / 80%); }
+.confirm-dialog::backdrop { background: rgb(2 6 11 / 78%); backdrop-filter: blur(10px); }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 28px; }
+
+@media (max-width: 1100px) {
+  .app-shell { grid-template-columns: 246px minmax(0, 1fr); }
+  .sidebar { width: 246px; padding-inline: 18px; }
+  .operation-filters { grid-template-columns: 1fr 1fr; }
+  .operation-filters .btn { width: 100%; }
+}
+
+@media (max-width: 1300px) {
+  .import-workbench { grid-template-columns: 1fr; }
+  .drop-panel, .preview-panel { min-width: 0; }
+}
+
+@media (max-width: 780px) {
+  .app-shell { display: block; }
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    border-right: 0;
+    border-bottom: 1px solid var(--fiscal-hairline);
+  }
+  .brand-lockup { width: auto; height: auto; margin: 0; overflow: visible; }
+  .brand-lockup > span:last-child { display: inline; }
+  .brand-medal { width: 42px; height: 42px; }
+  .sidebar nav, .tenant { display: none; }
+  .sidebar .logout-button { width: auto; min-height: 38px; padding-inline: 16px; }
+  .workspace { padding: 0 18px 64px; }
+  .imports-header { min-height: auto; align-items: flex-start; flex-direction: column; padding: 34px 0; }
+  .topbar-actions { width: 100%; }
+  .topbar-actions .btn { width: 100%; }
+  .metrics { grid-template-columns: 1fr; }
+  .operation-filters { grid-template-columns: 1fr; }
+  .date-range-inputs { grid-template-columns: 1fr; }
+  .date-range-inputs label { margin-top: 4px; }
+  .empty-state, .evidence-panel, .attention { border-radius: 20px; }
+  .drop-panel, .preview-panel { min-height: auto; padding: 24px; border-radius: 20px; }
+  .file-dropzone { min-width: 0; padding: 24px 18px; }
+}

@@ -3,12 +3,14 @@ import { expect, test } from '@playwright/test';
 const routes = [
   ['/', 'Centro de control'],
   ['/imports', 'Bandeja de importaciones'],
-  ['/operations', 'Operaciones'],
+  ['/sales/shopify', 'Ventas Shopify'],
   ['/reconciliation', 'Conciliación'],
   ['/invoicing', 'Facturación'],
   ['/verifactu', 'VERI*FACTU'],
-  ['/tax-engine', 'Simulador fiscal'],
-  ['/vat-dossier', 'Expedientes IVA'],
+  ['/tax-rules', 'Reglas fiscales'],
+  ['/tax-periods', 'Periodos fiscales'],
+  ['/settlements/kdp', 'Liquidaciones KDP'],
+  ['/registers', 'Registros'],
   ['/settings', 'Configuración'],
 ] as const;
 
