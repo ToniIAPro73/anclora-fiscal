@@ -22,11 +22,23 @@ interface Operation {
 
 interface OperationsPage { items: Operation[]; page: number; pageSize: number; total: number }
 
+interface CommercialOrder {
+  id: string;
+  externalOrderId: string;
+  commercialDate: string | null;
+  productNature: string | null;
+  totalAmount: string | null;
+  taxAmount: string | null;
+}
+
+interface CommercialOrdersPage { items: CommercialOrder[]; page: number; pageSize: number; total: number }
+
 const statusLabels: Record<string, string> = { PENDING_TAX_REVIEW: 'Pendiente de revisión fiscal', PENDING_EVIDENCE: 'Pendiente de evidencia' };
 const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
 
 export function OperationsTimeline() {
   const [operations, setOperations] = useState<Operation[]>();
+  const [orders, setOrders] = useState<CommercialOrder[]>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<OperationFilterValues>({ ...emptyOperationFilters, sourceChannel: 'SHOPIFY' });
@@ -36,12 +48,21 @@ export function OperationsTimeline() {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' });
-        if (!response.ok) throw new Error('No se pudieron obtener las operaciones');
-        const data = await response.json() as OperationsPage;
-        if (!cancelled) setOperations(data.items);
+        const [ordersResponse, operationsResponse] = await Promise.all([
+          fetch('/api/v1/commercial-orders', { credentials: 'include' }),
+          fetch(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' }),
+        ]);
+        if (!ordersResponse.ok || !operationsResponse.ok) throw new Error('No se pudieron obtener las ventas Shopify');
+        const [ordersData, operationsData] = await Promise.all([
+          ordersResponse.json() as Promise<CommercialOrdersPage>,
+          operationsResponse.json() as Promise<OperationsPage>,
+        ]);
+        if (!cancelled) {
+          setOrders(ordersData.items);
+          setOperations(operationsData.items);
+        }
       } catch (reason) {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las operaciones');
+        if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las ventas Shopify');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -50,28 +71,37 @@ export function OperationsTimeline() {
     return () => { cancelled = true; };
   }, [filters]);
 
+  const filteredOrders = orders?.filter((order) => {
+    const orderDate = order.commercialDate?.slice(0, 10) ?? '';
+    return (!filters.dateFrom || orderDate >= filters.dateFrom)
+      && (!filters.dateTo || orderDate <= filters.dateTo)
+      && (!filters.productNature || order.productNature === filters.productNature);
+  });
+  const operationsByOrder = new Map(operations?.map((operation) => [operation.sourceOrderId, operation]) ?? []);
+
   if (loading) return <section className="operations-timeline"><p aria-live="polite">Cargando operaciones…</p></section>;
   if (error) return <section className="operations-timeline"><p className="import-error">{error}</p></section>;
   return <section className="operations-timeline">
-    <span className="section-index">Operaciones</span>
+    <span className="section-index">Ventas importadas</span>
     <OperationFilters value={filters} onChange={setFilters} showPlatform={false} />
-    {!operations || operations.length === 0 ? <p>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
-    {operations && operations.length > 0 ?
+    {!filteredOrders || filteredOrders.length === 0 ? <p>{hasFilters ? 'No hay ventas para los filtros seleccionados.' : 'No hay ventas Shopify importadas todavía.'}</p> : null}
+    {filteredOrders && filteredOrders.length > 0 ?
     <ol className="evidence-thread">
-      {operations.map((operation) => {
-        const gross = operation.grossAmount !== null ? Number(operation.grossAmount).toFixed(2) : '—';
-        const fee = operation.platformFeeAmount !== null ? Number(operation.platformFeeAmount).toFixed(2) : '—';
-        const net = operation.netAmount !== null ? Number(operation.netAmount).toFixed(2) : '—';
-        const currency = operation.originalCurrency ?? 'EUR';
-        return <li key={operation.id}>
-          <time>{operation.sourceChannel}</time>
+      {filteredOrders.map((order) => {
+        const operation = operationsByOrder.get(order.externalOrderId);
+        const total = order.totalAmount !== null ? Number(order.totalAmount).toFixed(2) : '—';
+        const tax = order.taxAmount !== null ? Number(order.taxAmount).toFixed(2) : '—';
+        return <li key={order.id}>
+          <time>{order.commercialDate ? new Date(order.commercialDate).toLocaleDateString('es-ES') : 'Sin fecha'}</time>
           <div>
-            <strong>{operation.sourceOrderId ?? operation.id}</strong>
-            <p>Bruto {gross} {currency} · Comisión {fee} {currency} · Neto {net} {currency}</p>
+            <strong>{order.externalOrderId}</strong>
+            <p>Total {total} EUR · IVA {tax} EUR · {order.productNature === 'ebook' ? 'eBook' : 'Producto físico / general'}</p>
           </div>
           <div className="operation-status-group">
-            <StatusBadge tone={operation.reviewStatus === 'PENDING' ? 'warning' : 'info'}>{statusLabels[operation.reviewStatus] ?? operation.reviewStatus}</StatusBadge>
-            <StatusBadge tone={operation.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{reconciliationLabels[operation.reconciliationStatus] ?? operation.reconciliationStatus}</StatusBadge>
+            {operation ? <>
+              <StatusBadge tone={operation.reviewStatus === 'PENDING' ? 'warning' : 'info'}>{statusLabels[operation.reviewStatus] ?? operation.reviewStatus}</StatusBadge>
+              <StatusBadge tone={operation.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{reconciliationLabels[operation.reconciliationStatus] ?? operation.reconciliationStatus}</StatusBadge>
+            </> : <StatusBadge tone="warning">Pendiente de conciliación</StatusBadge>}
           </div>
         </li>;
       })}

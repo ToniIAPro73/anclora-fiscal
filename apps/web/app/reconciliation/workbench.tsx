@@ -51,7 +51,7 @@ export function ReconciliationWorkbench() {
   if (error) return <section className="reconciliation-workbench"><p className="workbench-notice workbench-notice-error">{error}</p></section>;
 
   return <section className="reconciliation-workbench">
-    {!candidates || candidates.length === 0 ? <p className="workbench-notice">No hay candidaturas de conciliación todavía.</p> : <>
+    {!candidates || candidates.length === 0 ? <p className="workbench-notice">Aún no hay coincidencias. Importa también el CSV de transacciones de Shopify Payments para cruzar cada cobro con su pedido.</p> : <>
       <span className="section-index">Candidaturas de conciliación</span>
       <div className="reconciliation-table-panel"><table>
         <thead>

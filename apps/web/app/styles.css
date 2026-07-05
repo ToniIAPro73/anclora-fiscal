@@ -373,7 +373,7 @@ body {
   box-shadow: inset 0 0 0 1px rgb(245 239 227 / 7%);
 }
 .operation-filters-compact { grid-template-columns: minmax(300px, 1.45fr) minmax(180px, .72fr) auto; }
-.reconciliation-workbench { padding: 0; background: none; box-shadow: none; }
+.reconciliation-workbench { padding: 34px 0 0; background: none; box-shadow: none; }
 .unmatched-orders { display: grid; gap: 18px; }
 .reconciliation-filters {
   display: grid;

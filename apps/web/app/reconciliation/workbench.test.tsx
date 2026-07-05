@@ -35,7 +35,7 @@ describe('ReconciliationWorkbench', () => {
   it('muestra el mensaje de vacío cuando no hay candidaturas', async () => {
     mockFetchByUrl({ candidates: { body: { items: [], page: 1, pageSize: 20, total: 0 } } });
     render(<ReconciliationWorkbench />);
-    await waitFor(() => expect(screen.getByText('No hay candidaturas de conciliación todavía.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Aún no hay coincidencias/)).toBeInTheDocument());
   });
 
   it('renderiza candidaturas reales como filas de tabla', async () => {

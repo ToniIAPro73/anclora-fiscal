@@ -25,6 +25,7 @@ import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 import { createFiscalConfigurationGetHandler, createFiscalConfigurationPutHandler, type FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
+import { createCommercialOrdersListHandler, type CommercialOrdersRepositoryPort } from './commercial-orders-controller.js';
 
 export interface UnmatchedOrder {
   id: string;
@@ -66,6 +67,7 @@ export async function buildApp(options: {
     royaltyRepository?: RoyaltyDedupPort | undefined;
   } | undefined;
   operationsRepository?: OperationsRepositoryPort | undefined;
+  commercialOrdersRepository?: CommercialOrdersRepositoryPort | undefined;
   financialEventsRepository?: FinancialEventsRepositoryPort | undefined;
   reconciliationRepository?: (ReconciliationRepositoryPort & Partial<UnmatchedOrdersRepositoryPort>) | undefined;
   issuesRepository?: IssuesRepositoryPort | undefined;
@@ -108,6 +110,11 @@ export async function buildApp(options: {
       financialEventsRepository: options.importDedup?.financialEventsRepository,
       royaltyRepository: options.importDedup?.royaltyRepository,
     }),
+  );
+  app.get(
+    '/api/v1/commercial-orders',
+    { preHandler: requireRole(['operations:read']) },
+    createCommercialOrdersListHandler({ repository: options.commercialOrdersRepository }),
   );
   app.get(
     '/api/v1/operations',
