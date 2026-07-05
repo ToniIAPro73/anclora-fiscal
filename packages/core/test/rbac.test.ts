@@ -32,6 +32,8 @@ describe('RBAC', () => {
     expect(can('FISCAL_OPERATOR', 'documents:read')).toBe(true);
     expect(can('FISCAL_OPERATOR', 'periods:read')).toBe(true);
     expect(can('FISCAL_OPERATOR', 'dossier:read')).toBe(true);
+    expect(can('FISCAL_OPERATOR', 'settings:read')).toBe(true);
+    expect(can('FISCAL_OPERATOR', 'settings:write')).toBe(true);
   });
 
   it('otorga los nuevos permisos de lectura/escritura a REVIEWER', () => {

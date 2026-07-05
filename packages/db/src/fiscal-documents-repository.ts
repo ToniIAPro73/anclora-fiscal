@@ -2,7 +2,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { createIntegrityRecord, InvoiceSequence, issueInvoice, rectifyInvoice, type StoragePort } from '@anclora/core/server';
-import { auditEvents, canonicalOperations, fiscalDocuments, integrityChainRecords, invoiceSeries, taxDecisions } from './schema.js';
+import { auditEvents, canonicalOperations, fiscalDocuments, integrityChainRecords, invoiceSeries, legalEntities, productTaxProfiles, taxDecisions } from './schema.js';
 import * as schema from './schema.js';
 
 export type FiscalDocument = typeof fiscalDocuments.$inferSelect;
@@ -23,7 +23,7 @@ export interface IssueInvoiceInput {
 
 export type IssueInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyIssued: boolean }
-  | { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' };
+  | { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE' };
 
 export interface RectifyInvoiceInput {
   tenantId: string;
@@ -83,6 +83,18 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .limit(1);
       if (!decision) return { ok: false, reason: 'TAX_DECISION_MISSING' };
 
+      const [issuer] = await transaction.select().from(legalEntities).where(and(
+        eq(legalEntities.tenantId, input.tenantId),
+        eq(legalEntities.id, operation.legalEntityId),
+        eq(legalEntities.configurationStatus, 'READY'),
+      )).limit(1);
+      const [productProfile] = await transaction.select().from(productTaxProfiles).where(and(
+        eq(productTaxProfiles.tenantId, input.tenantId),
+        eq(productTaxProfiles.legalEntityId, operation.legalEntityId),
+        eq(productTaxProfiles.active, true),
+      )).limit(1);
+      if (!issuer || !productProfile) return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
+
       const [existingSeries] = await transaction
         .select()
         .from(invoiceSeries)
@@ -93,17 +105,8 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         ))
         .limit(1);
 
-      const seriesRow = existingSeries ?? (await transaction
-        .insert(invoiceSeries)
-        .values({
-          tenantId: input.tenantId,
-          legalEntityId: operation.legalEntityId,
-          code: FULL_INVOICE_DOCUMENT_TYPE,
-          documentType: FULL_INVOICE_DOCUMENT_TYPE,
-          nextNumber: '1',
-        })
-        .returning())[0];
-      if (!seriesRow) throw new Error('No se pudo inicializar la serie de facturación');
+      const seriesRow = existingSeries;
+      if (!seriesRow) return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
 
       const issuedAt = new Date();
       const sequence = new InvoiceSequence(seriesRow.code, Number(seriesRow.nextNumber));

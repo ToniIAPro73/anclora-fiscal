@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
-import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../components/operation-filters';
+import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../../components/operation-filters';
 
 interface Operation {
   id: string;

@@ -1,16 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
-import { MetricCard, StatusBadge } from '@anclora/ui';
-import medal from '../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
-import tenantMedal from '../../../packages/ui/assets/brand/anclora-insights-medalla-oro-transparente.png';
-import { LogoutButton } from './logout-button';
+import { EmptyState, MetricCard, PageHeader, StatusBadge } from '@anclora/ui';
+import { AppShell } from './components/app-shell';
 import { formatSpanishPeriod } from './lib/spanish-months';
-
-const nav = ['Centro de control', 'Importaciones', 'Operaciones', 'Conciliación', 'Facturación', 'VERI*FACTU', 'Motor fiscal', 'Expedientes IVA', 'Configuración'];
-const routes = ['/', '/imports', '/operations', '/reconciliation', '/invoicing', '/verifactu', '/tax-engine', '/vat-dossier', '/settings'];
 
 interface DashboardSummary {
   openIssuesCount: number;
@@ -50,39 +44,62 @@ export default function Dashboard() {
     ? Math.round((summary.reconciliationStatus.matched / summary.reconciliationStatus.total) * 100)
     : undefined;
 
-  return <main className="app-shell">
-    <aside className="sidebar">
-      <div className="brand-lockup" aria-label="Anclora Fiscal">
-        <span className="brand-medal"><Image src={medal} alt="" priority /></span>
-        <span>Anclora <em>Fiscal</em></span>
+  return <AppShell pendingCounts={summary ? { openIssuesCount: summary.openIssuesCount, reconciliationTotal: summary.reconciliationStatus.total } : undefined}>
+    <PageHeader
+      eyebrow="Centro de control"
+      title="Centro de control"
+      actions={<Link className="btn btn-primary" href="/imports">Importar evidencias <span aria-hidden="true">↗</span></Link>}
+    />
+    {error ? <p className="import-error">{error}</p> : null}
+    {loading ? <p aria-live="polite">Cargando resumen…</p> : null}
+
+    {!loading && !error && isEmpty ? <section className="attention" aria-labelledby="attention-title">
+      <div><span className="section-index">EMPEZAR</span><h2 id="attention-title">Todavía no hay importaciones</h2><p>Importa tu primer archivo de evidencias (pedidos, pagos o regalías) para empezar a ver datos reales aquí.</p></div>
+      <div className="attention-list">
+        <article><StatusBadge tone="info">Primeros pasos</StatusBadge><div><strong>Sin datos todavía</strong><p>El panel se completará automáticamente en cuanto importes tu primera evidencia.</p></div><Link href="/imports">Importar →</Link></article>
       </div>
-      <nav aria-label="Navegación principal">{nav.map((item, index) => <a className={index === 0 ? 'active' : ''} href={routes[index]} key={item}><span>{String(index + 1).padStart(2, '0')}</span>{item}</a>)}</nav>
-      <div className="tenant"><span className="tenant-medal"><Image src={tenantMedal} alt="" /></span><div><strong>Anclora Insights</strong><small>Entidad activa · EUR</small></div></div>
-    </aside>
-    <section className="workspace">
-      <header className="topbar"><div><span className="eyebrow">Centro de control</span><h1>Centro de control</h1></div><div className="topbar-actions"><LogoutButton /><Link href="/imports"><button type="button">Importar evidencias</button></Link></div></header>
-      {error ? <p className="import-error">{error}</p> : null}
-      {loading ? <p aria-live="polite">Cargando resumen…</p> : null}
-      {!loading && !error && isEmpty ? <section className="attention" aria-labelledby="attention-title">
-        <div><span className="section-index">EMPEZAR</span><h2 id="attention-title">Todavía no hay importaciones</h2><p>Importa tu primer archivo de evidencias (pedidos, pagos o regalías) para empezar a ver datos reales aquí.</p></div>
-        <div className="attention-list">
-          <article><StatusBadge tone="info">Primeros pasos</StatusBadge><div><strong>Sin datos todavía</strong><p>El panel se completará automáticamente en cuanto importes tu primera evidencia.</p></div><Link href="/imports">Importar →</Link></article>
-        </div>
-      </section> : null}
-      {!loading && !error && summary ? <section className="metrics" aria-label="Resumen operativo">
-        <MetricCard label="Pendientes de revisión" value={String(summary.openIssuesCount)} detail="Incidencias abiertas" />
+    </section> : null}
+
+    {!loading && !error && summary ? <>
+      <section className="metrics" aria-label="Pendientes de revisar">
+        <MetricCard label="Pendientes de revisar" value={String(summary.openIssuesCount)} detail="Incidencias abiertas" />
         <MetricCard label="Importaciones del mes" value={String(summary.importsThisMonthCount)} detail="Este mes" />
-        <MetricCard label="Conciliación" value={reconciliationPercentage !== undefined ? `${reconciliationPercentage} %` : '—'} detail={summary.reconciliationStatus.total > 0 ? `${summary.reconciliationStatus.total} operaciones` : 'Sin operaciones todavía'} />
         <MetricCard label="Documentos emitidos" value={String(summary.documentsIssuedCount)} detail="Serie AF-2026" />
-      </section> : null}
-      {!loading && !error && summary ? <section className="evidence-panel" aria-label="Regalías (KDP)">
-        <div><span className="section-index">REGALÍAS</span><h2>Regalías (KDP)</h2></div>
+      </section>
+
+      <EmptyState
+        title="Ventas facturables"
+        description="Todavía no hay un contador agregado de ventas pendientes de facturar en el centro de control. Consulta el panel de facturación para ver las operaciones reales pendientes."
+        action={<Link href="/invoicing">Ir a facturación →</Link>}
+      />
+
+      <section className="evidence-panel" aria-label="Liquidaciones KDP">
+        <div><span className="section-index">REGALÍAS</span><h2>Liquidaciones KDP</h2></div>
         <p className="period-label">Periodo: {formatSpanishPeriod(summary.royalties.period)}</p>
         <dl>
           <div><dt>Estados importados</dt><dd>{summary.royalties.statementsCount}</dd></div>
           <div><dt>Total del periodo</dt><dd>{summary.royalties.totalThisPeriod} EUR</dd></div>
         </dl>
+      </section>
+
+      <EmptyState
+        title="Estado del trimestre"
+        description="Todavía no hay un indicador agregado del estado del trimestre fiscal en el centro de control. Consulta periodos fiscales para el detalle real del cierre."
+        action={<Link href="/tax-periods">Ir a periodos fiscales →</Link>}
+      />
+
+      <EmptyState
+        title="Incidencia bloqueante"
+        description="No hay ninguna incidencia bloqueante registrada todavía en esta vista agregada."
+      />
+
+      {summary.reconciliationStatus.total > 0 ? <section className="metrics" aria-label="Conciliación">
+        <MetricCard
+          label="Conciliación"
+          value={reconciliationPercentage !== undefined ? `${reconciliationPercentage} %` : '—'}
+          detail={`${summary.reconciliationStatus.total} operaciones`}
+        />
       </section> : null}
-    </section>
-  </main>;
+    </> : null}
+  </AppShell>;
 }

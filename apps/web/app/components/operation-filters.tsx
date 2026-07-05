@@ -1,6 +1,6 @@
 'use client';
 
-import { FieldLabel } from '@anclora/ui';
+import { Button, DateRangeField, SelectField } from '@anclora/ui';
 
 export interface OperationFilterValues {
   dateFrom: string;
@@ -25,36 +25,41 @@ export function operationFiltersQuery(filters: OperationFilterValues): string {
   return query ? `?${query}` : '';
 }
 
+const productNatureOptions = [
+  { value: 'ebook', label: 'eBook' },
+  { value: 'general', label: 'Tapa blanda / general' },
+];
+
+const sourceChannelOptions = [
+  { value: 'SHOPIFY', label: 'Shopify' },
+  { value: 'AMAZON_KDP', label: 'Amazon KDP' },
+];
+
 export function OperationFilters({ value, onChange }: { value: OperationFilterValues; onChange: (next: OperationFilterValues) => void }) {
   function set(field: keyof OperationFilterValues, fieldValue: string) {
     onChange({ ...value, [field]: fieldValue });
   }
 
-  return <div className="operation-filters" aria-label="Filtros de operaciones">
-    <div>
-      <FieldLabel htmlFor="filter-date-from">Fecha desde</FieldLabel>
-      <input id="filter-date-from" type="date" value={value.dateFrom} onChange={(event) => set('dateFrom', event.target.value)} />
-    </div>
-    <div>
-      <FieldLabel htmlFor="filter-date-to">Fecha hasta</FieldLabel>
-      <input id="filter-date-to" type="date" value={value.dateTo} onChange={(event) => set('dateTo', event.target.value)} />
-    </div>
-    <div>
-      <FieldLabel htmlFor="filter-product">Tipo de producto</FieldLabel>
-      <select id="filter-product" value={value.productNature} onChange={(event) => set('productNature', event.target.value)}>
-        <option value="">Todos</option>
-        <option value="ebook">eBook</option>
-        <option value="general">Tapa blanda / general</option>
-      </select>
-    </div>
-    <div>
-      <FieldLabel htmlFor="filter-platform">Plataforma</FieldLabel>
-      <select id="filter-platform" value={value.sourceChannel} onChange={(event) => set('sourceChannel', event.target.value)}>
-        <option value="">Todas</option>
-        <option value="SHOPIFY">Shopify</option>
-        <option value="AMAZON_KDP">Amazon KDP</option>
-      </select>
-    </div>
-    <button type="button" onClick={() => onChange(emptyOperationFilters)}>Limpiar filtros</button>
+  return <div className="operation-filters" role="group" aria-label="Filtros de operaciones">
+    <DateRangeField
+      label="Rango de fechas"
+      value={{ from: value.dateFrom, to: value.dateTo }}
+      onChange={(range) => onChange({ ...value, dateFrom: range.from, dateTo: range.to })}
+    />
+    <SelectField
+      label="Tipo de producto"
+      placeholder="Todos"
+      options={productNatureOptions}
+      value={value.productNature}
+      onChange={(event) => set('productNature', event.target.value)}
+    />
+    <SelectField
+      label="Plataforma"
+      placeholder="Todas"
+      options={sourceChannelOptions}
+      value={value.sourceChannel}
+      onChange={(event) => set('sourceChannel', event.target.value)}
+    />
+    <Button variant="secondary" onClick={() => onChange(emptyOperationFilters)}>Limpiar filtros</Button>
   </div>;
 }

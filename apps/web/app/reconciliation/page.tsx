@@ -1,12 +1,15 @@
-import Link from 'next/link';
+import { PageHeader } from '@anclora/ui';
+import { AppShell } from '../components/app-shell';
 import { ReconciliationWorkbench } from './workbench';
 
 export default function ReconciliationPage() {
-  return <main className="imports-page">
-    <header className="imports-header">
-      <div><span className="eyebrow">03 / CONCILIACIÓN</span><h1>Conciliación</h1><p>Compara evidencia comercial y financiera caso a caso.</p></div>
-      <Link href="/">Volver al centro de control</Link>
-    </header>
+  return <AppShell>
+    <PageHeader
+      eyebrow="03 / CONCILIACIÓN"
+      title="Conciliación"
+      description="Compara evidencia comercial y financiera caso a caso."
+      backHref="/"
+    />
     <ReconciliationWorkbench />
-  </main>;
+  </AppShell>;
 }

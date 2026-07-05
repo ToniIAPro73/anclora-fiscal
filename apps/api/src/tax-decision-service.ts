@@ -1,5 +1,5 @@
-import { VersionedTaxEngine, demoSpainConfig } from '@anclora/tax-engine';
-import type { TaxContext, TaxDecision } from '@anclora/tax-engine';
+import { VersionedTaxEngine } from '@anclora/tax-engine';
+import type { FiscalDemoConfig, TaxContext, TaxDecision } from '@anclora/tax-engine';
 
 /**
  * Minimal shape of a canonical operation as needed to build a TaxContext.
@@ -53,9 +53,14 @@ export interface TaxDecisionsRepositoryPort {
   create(tenantId: string, decision: NewTaxDecisionInput): Promise<{ id: string }>;
 }
 
+export interface TaxConfigurationPort {
+  getTaxEngineConfig(tenantId: string): Promise<FiscalDemoConfig | undefined>;
+}
+
 export interface TaxDecisionServiceDependencies {
   legalEntitiesRepository: TaxDecisionLegalEntitiesPort;
   taxDecisionsRepository: TaxDecisionsRepositoryPort;
+  taxConfigurationRepository: TaxConfigurationPort;
 }
 
 export type TaxDecisionResult =
@@ -102,7 +107,10 @@ export class TaxDecisionService {
     if (canonicalOperation.grossAmount != null) context.grossAmount = Number(canonicalOperation.grossAmount);
     if (canonicalOperation.originalCurrency) context.currency = canonicalOperation.originalCurrency;
 
-    const decision = new VersionedTaxEngine(demoSpainConfig).evaluate(context);
+    const taxConfiguration = await this.dependencies.taxConfigurationRepository.getTaxEngineConfig(tenantId);
+    const decision: TaxDecision = taxConfiguration
+      ? new VersionedTaxEngine(taxConfiguration).evaluate(context)
+      : { status: 'BLOCKED', explanation: ['No existe una configuración fiscal persistida aplicable'], blockingReason: 'FISCAL_CONFIGURATION_MISSING' };
 
     await this.dependencies.taxDecisionsRepository.create(tenantId, {
       canonicalOperationId,

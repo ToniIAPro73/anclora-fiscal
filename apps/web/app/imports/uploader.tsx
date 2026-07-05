@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FieldLabel, StatusBadge } from '@anclora/ui';
+import { FieldLabel, FileDropzone, StatusBadge } from '@anclora/ui';
 import { formatSpanishPeriodRange } from '../lib/spanish-months';
 
 interface RoyaltyLine {
@@ -77,9 +77,15 @@ export function ImportUploader() {
   return <section className="import-workbench">
     <form action={submit} className="drop-panel">
       <span className="section-index">NUEVA IMPORTACIÓN</span>
-      <FieldLabel htmlFor="evidence-files" required>Archivos de evidencia</FieldLabel>
-      <input id="evidence-files" name="file" type="file" accept=".csv,.pdf,.xlsx,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
-      <p>Shopify CSV/PDF o Amazon KDP XLSX · máximo 15 MB · el original validado se conserva con SHA-256.</p>
+      <FileDropzone
+        label="Archivos de evidencia"
+        name="file"
+        accept=".csv,.pdf,.xlsx,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        required
+        onFiles={() => undefined}
+        hint="Shopify CSV/PDF o Amazon KDP XLSX · máximo 15 MB"
+      />
+      <p>El original validado se conserva con huella SHA-256 y trazabilidad completa.</p>
       <button disabled={busy} type="submit">{busy ? 'Analizando…' : 'Generar vista previa'}</button>
     </form>
     <section className="preview-panel" aria-live="polite">

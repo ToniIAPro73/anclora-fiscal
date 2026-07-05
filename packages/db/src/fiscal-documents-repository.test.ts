@@ -4,7 +4,7 @@ import { verifyIntegrityChain, type IntegrityRecord, type StoragePort, type Stor
 import { createOfflineDatabase } from './index';
 import { migrateOfflineDatabase } from './migrations';
 import { DrizzleFiscalDocumentsRepository } from './fiscal-documents-repository';
-import { auditEvents, canonicalOperations, integrityChainRecords, legalEntities, taxDecisions, tenants, users } from './schema';
+import { auditEvents, canonicalOperations, integrityChainRecords, invoiceSeries, legalEntities, productTaxProfiles, taxDecisions, tenants, users } from './schema';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
 
@@ -33,7 +33,7 @@ class InMemoryStorage implements StoragePort {
 async function seedOperationWithDecision(
   db: ReturnType<typeof createOfflineDatabase>['db'],
   slug: string,
-  buyerInfo?: { customerAddress?: string; customerEmail?: string },
+  buyerInfo?: { customerAddress?: string; customerEmail?: string; skipFiscalConfiguration?: boolean },
 ) {
   const [tenant] = await db.insert(tenants).values({ name: slug, slug }).returning({ id: tenants.id });
   if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
@@ -50,8 +50,14 @@ async function seedOperationWithDecision(
     tenantId: tenant.id,
     legalName: `${slug} legal entity`,
     countryCode: 'ES',
+    address: buyerInfo?.skipFiscalConfiguration ? undefined : 'Calle Fiscal 1',
+    configurationStatus: buyerInfo?.skipFiscalConfiguration ? 'INCOMPLETE' : 'READY',
   }).returning({ id: legalEntities.id });
   if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
+  if (!buyerInfo?.skipFiscalConfiguration) {
+    await db.insert(invoiceSeries).values({ tenantId: tenant.id, legalEntityId: legalEntity.id, code: 'FULL_INVOICE', fiscalYear: new Date().getFullYear(), documentType: 'FULL_INVOICE' });
+    await db.insert(productTaxProfiles).values({ tenantId: tenant.id, legalEntityId: legalEntity.id, selector: 'ebook-*', productNature: 'ebook', invoiceDescription: 'Libro electrónico', domesticTaxCode: 'ES_IVA_4', domesticTaxRate: '0.04', effectiveFrom: `${new Date().getFullYear()}-01-01` });
+  }
 
   const [operation] = await db.insert(canonicalOperations).values({
     tenantId: tenant.id,
@@ -84,6 +90,12 @@ async function seedOperationWithDecision(
 
 describe('DrizzleFiscalDocumentsRepository', () => {
   describe('issue', () => {
+    it('bloquea la emisión cuando falta la configuración fiscal mínima', async () => {
+      const { client, db } = createOfflineDatabase(); clients.push(client); await migrateOfflineDatabase(client);
+      const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-incomplete', { skipFiscalConfiguration: true });
+      const result = await new DrizzleFiscalDocumentsRepository(db).issue({ tenantId, actorId, canonicalOperationId: operationId, storage: new InMemoryStorage() });
+      expect(result).toEqual({ ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' });
+    });
     it('emite una factura, escribe el PDF en storage y encadena el registro de integridad', async () => {
       const { client, db } = createOfflineDatabase();
       clients.push(client);

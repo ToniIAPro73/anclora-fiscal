@@ -20,7 +20,7 @@ export interface InvoiceIssuanceOperation {
 export interface InvoiceIssuanceIssueResult {
   ok: boolean;
   document?: { id: string };
-  reason?: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING';
+  reason?: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE';
   alreadyIssued?: boolean;
 }
 
@@ -44,7 +44,7 @@ export interface InvoiceIssuanceServiceDependencies {
 const FULL_REFUND_FLAG = 'FULL_REFUND_NET_ZERO';
 
 export type InvoiceIssuanceResult =
-  | { status: 'SKIPPED'; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' }
+  | { status: 'SKIPPED'; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE' }
   | {
       status: 'ISSUED' | 'ALREADY_ISSUED';
       documentId: string;

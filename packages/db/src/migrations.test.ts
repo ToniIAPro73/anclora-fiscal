@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las once migraciones en orden y puede repetirse', async () => {
+  it('aplica las doce migraciones en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -33,10 +33,11 @@ describe('migrateOfflineDatabase', () => {
       '0008_tax_decision_evidence.sql',
       '0009_commercial_order_evidence.sql',
       '0010_buyer_contact_evidence.sql',
+      '0011_fiscal_configuration_foundation.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
-      expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines']),
+      expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines', 'order_lines', 'product_tax_profiles', 'channel_fiscal_policies', 'fiscal_counterparties', 'tax_periods', 'payouts']),
     );
   });
 });

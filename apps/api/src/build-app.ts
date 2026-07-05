@@ -24,6 +24,7 @@ import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } fr
 import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
+import { createFiscalConfigurationGetHandler, createFiscalConfigurationPutHandler, type FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
 
 export interface UnmatchedOrder {
   id: string;
@@ -72,6 +73,7 @@ export async function buildApp(options: {
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
+  fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
   authService?: AuthService;
 } = {}) {
   const sessionSecret = process.env.SESSION_SECRET;
@@ -84,7 +86,7 @@ export async function buildApp(options: {
     secret: sessionSecret ?? 'development-only-secret-change-me',
     parseOptions: { sameSite: 'lax', httpOnly: true, path: '/' },
   });
-  await app.register(cors, { origin: process.env.APP_ORIGIN ?? 'http://localhost:3000', methods: ['GET', 'POST'], credentials: true });
+  await app.register(cors, { origin: process.env.APP_ORIGIN ?? 'http://localhost:3000', methods: ['GET', 'POST', 'PUT', 'PATCH'], credentials: true });
   await app.register(multipart, { limits: { files: 10, fileSize: 15 * 1024 * 1024 } });
   await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   await app.register(swagger, { openapi: { info: { title: 'Anclora Fiscal API', version: '0.1.0' }, servers: [{ url: '/api/v1' }] } });
@@ -181,5 +183,7 @@ export async function buildApp(options: {
     { preHandler: requireRole(['dashboard:read']) },
     createDashboardSummaryHandler({ repository: options.dashboardSummaryRepository }),
   );
+  app.get('/api/v1/fiscal-configuration', { preHandler: requireRole(['settings:read']) }, createFiscalConfigurationGetHandler(options.fiscalConfigurationRepository));
+  app.put('/api/v1/fiscal-configuration', { preHandler: requireRole(['settings:write']) }, createFiscalConfigurationPutHandler(options.fiscalConfigurationRepository));
   return app;
 }

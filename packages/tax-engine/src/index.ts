@@ -27,10 +27,10 @@ export interface TaxDecision {
 
 export interface TaxRateConfig { id: string; rate: number; productNature: string; customerCountry: string; }
 export interface FiscalDemoConfig {
-  id: 'DEMO_CONFIG';
+  id: string;
   version: string;
   effectiveFrom: string;
-  issuerCountry: 'ES';
+  issuerCountry: string;
   rates: TaxRateConfig[];
   marketplaceRoyaltyExemptRate: number;
   sources: Array<{ title: string; url: string; consultedAt: string }>;

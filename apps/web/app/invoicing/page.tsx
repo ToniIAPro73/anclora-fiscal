@@ -1,12 +1,15 @@
-import Link from 'next/link';
+import { PageHeader } from '@anclora/ui';
+import { AppShell } from '../components/app-shell';
 import { InvoicingPanel } from './invoicing-panel';
 
 export default function InvoicingPage() {
-  return <main className="imports-page">
-    <header className="imports-header">
-      <div><span className="eyebrow">04 / DOCUMENTO FISCAL</span><h1>Facturación</h1><p>Operaciones reales pendientes de facturar. La emisión requiere una decisión fiscal registrada.</p></div>
-      <Link href="/">Volver al centro de control</Link>
-    </header>
+  return <AppShell>
+    <PageHeader
+      eyebrow="04 / DOCUMENTO FISCAL"
+      title="Facturación"
+      description="Operaciones reales pendientes de facturar. La emisión requiere una decisión fiscal registrada."
+      backHref="/"
+    />
     <InvoicingPanel />
-  </main>;
+  </AppShell>;
 }

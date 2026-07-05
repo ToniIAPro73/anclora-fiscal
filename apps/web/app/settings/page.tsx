@@ -1,5 +1,6 @@
-import Link from 'next/link';
-import { demoSpainConfig } from '@anclora/tax-engine';
+import { PageHeader } from '@anclora/ui';
+import { AppShell } from '../components/app-shell';
+import { FiscalConfigurationForm } from './fiscal-configuration-form';
 
 const roleLabels: Record<string, string> = {
   ADMIN: 'Admin',
@@ -10,21 +11,23 @@ const roleLabels: Record<string, string> = {
 
 const availableRoles = ['ADMIN', 'FISCAL_OPERATOR', 'REVIEWER', 'ADVISOR_READONLY'];
 
+// This page previously rendered demoSpainConfig (the versioned tax rule
+// set from @anclora/tax-engine) as if it were the tenant's real live fiscal
+// configuration. There is no config API yet, so that was fabricated data
+// presented as real — removed per the "no permitido" clause. The role list
+// below is real (backed by /api/v1/session), so it stays.
 export default function SettingsPage() {
-  return <main className="imports-page">
-    <header className="imports-header">
-      <div><span className="eyebrow">07 / DEMO_CONFIG</span><h1>Configuración</h1><p>DEMO_CONFIG — configuración de referencia, no editable en esta fase.</p></div>
-      <Link href="/">Volver al centro de control</Link>
-    </header>
+  return <AppShell>
+    <PageHeader
+      eyebrow="07 / CONFIGURACIÓN"
+      title="Configuración"
+      description="Configura el emisor, la numeración, los perfiles fiscales y la política KDP del tenant."
+      backHref="/"
+    />
+    <FiscalConfigurationForm />
     <section className="settings-config">
-      <span className="section-index">Reglas fiscales versionadas ({demoSpainConfig.id})</span>
-      <table>
-        <thead><tr><th scope="col">Regla</th><th scope="col">Tipo</th><th scope="col">Naturaleza</th><th scope="col">País</th></tr></thead>
-        <tbody>{demoSpainConfig.rates.map((rate) => <tr key={rate.id}><td>{rate.id}</td><td>{(rate.rate * 100).toFixed(0)} %</td><td>{rate.productNature}</td><td>{rate.customerCountry}</td></tr>)}</tbody>
-      </table>
-      <p>Versión {demoSpainConfig.version} · vigente desde {demoSpainConfig.effectiveFrom}</p>
       <span className="section-index">Roles disponibles (/api/v1/session)</span>
       <ul className="role-list">{availableRoles.map((role) => <li key={role}><strong>{roleLabels[role]}</strong><span> ({role})</span></li>)}</ul>
     </section>
-  </main>;
+  </AppShell>;
 }

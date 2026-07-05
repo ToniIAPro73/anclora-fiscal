@@ -1,12 +1,7 @@
-import Link from 'next/link';
-import { VatDossierPanel } from './vat-dossier-panel';
+import { redirect } from 'next/navigation';
 
-export default function VatDossierPage() {
-  return <main className="imports-page">
-    <header className="imports-header">
-      <div><span className="eyebrow">06 / CIERRE DE PERIODO</span><h1>Expedientes IVA</h1><p>Consulta o genera el expediente de IVA real de un periodo cerrado.</p></div>
-      <Link href="/">Volver al centro de control</Link>
-    </header>
-    <VatDossierPanel />
-  </main>;
+// Legacy path — content moved to /tax-periods. Kept as a thin redirect so
+// bookmarks and external links to /vat-dossier keep working.
+export default function VatDossierLegacyPage() {
+  redirect('/tax-periods');
 }
