@@ -29,8 +29,8 @@ export function OperationsTimeline() {
   const [operations, setOperations] = useState<Operation[]>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<OperationFilterValues>(emptyOperationFilters);
-  const hasFilters = Object.values(filters).some(Boolean);
+  const [filters, setFilters] = useState<OperationFilterValues>({ ...emptyOperationFilters, sourceChannel: 'SHOPIFY' });
+  const hasFilters = Boolean(filters.dateFrom || filters.dateTo || filters.productNature);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,7 +54,7 @@ export function OperationsTimeline() {
   if (error) return <section className="operations-timeline"><p className="import-error">{error}</p></section>;
   return <section className="operations-timeline">
     <span className="section-index">Operaciones</span>
-    <OperationFilters value={filters} onChange={setFilters} />
+    <OperationFilters value={filters} onChange={setFilters} showPlatform={false} />
     {!operations || operations.length === 0 ? <p>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
     {operations && operations.length > 0 ?
     <ol className="evidence-thread">

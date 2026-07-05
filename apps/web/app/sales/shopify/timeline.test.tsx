@@ -24,6 +24,8 @@ describe('OperationsTimeline', () => {
     mockFetchOnce({ items: [], page: 1, pageSize: 20, total: 0 });
     render(<OperationsTimeline />);
     await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Plataforma')).not.toBeInTheDocument();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/operations?sourceChannel=SHOPIFY', { credentials: 'include' });
   });
 
   it('renderiza operaciones reales devueltas por la API', async () => {

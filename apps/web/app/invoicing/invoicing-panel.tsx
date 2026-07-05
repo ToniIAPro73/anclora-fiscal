@@ -46,8 +46,8 @@ export function InvoicingPanel() {
   const [loading, setLoading] = useState(true);
   const [issuing, setIssuing] = useState<Record<string, boolean>>({});
   const [outcomes, setOutcomes] = useState<Record<string, IssueOutcome>>({});
-  const [filters, setFilters] = useState<OperationFilterValues>(emptyOperationFilters);
-  const hasFilters = Object.values(filters).some(Boolean);
+  const [filters, setFilters] = useState<OperationFilterValues>({ ...emptyOperationFilters, sourceChannel: 'SHOPIFY' });
+  const hasFilters = Boolean(filters.dateFrom || filters.dateTo || filters.productNature);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,9 +98,9 @@ export function InvoicingPanel() {
   if (error) return <section className="invoicing-documents"><p className="import-error">{error}</p></section>;
   return <section className="invoicing-documents">
     <span className="section-index">Operaciones pendientes de facturar</span>
-    <OperationFilters value={filters} onChange={setFilters} />
-    {!operations || operations.length === 0 ? <p>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
-    {operations?.map((operation) => {
+    <OperationFilters value={filters} onChange={setFilters} showPlatform={false} />
+    {!operations || operations.length === 0 ? <p className="workbench-notice">{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
+    {operations && operations.length > 0 ? <div className="invoice-grid">{operations.map((operation) => {
       const outcome = outcomes[operation.id];
       const gross = operation.grossAmount !== null ? Number(operation.grossAmount).toFixed(2) : '—';
       const currency = operation.originalCurrency ?? 'EUR';
@@ -124,6 +124,6 @@ export function InvoicingPanel() {
           <div><dt>Total</dt><dd>{Number(outcome.document.totalAmount).toFixed(2)} {outcome.document.currency}</dd></div>
         </dl> : null}
       </article>;
-    })}
+    })}</div> : null}
   </section>;
 }

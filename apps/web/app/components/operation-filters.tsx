@@ -35,12 +35,22 @@ const sourceChannelOptions = [
   { value: 'AMAZON_KDP', label: 'Amazon KDP' },
 ];
 
-export function OperationFilters({ value, onChange }: { value: OperationFilterValues; onChange: (next: OperationFilterValues) => void }) {
+export function OperationFilters({
+  value,
+  onChange,
+  showPlatform = true,
+}: {
+  value: OperationFilterValues;
+  onChange: (next: OperationFilterValues) => void;
+  showPlatform?: boolean;
+}) {
   function set(field: keyof OperationFilterValues, fieldValue: string) {
     onChange({ ...value, [field]: fieldValue });
   }
 
-  return <div className="operation-filters" role="group" aria-label="Filtros de operaciones">
+  const clearedFilters = showPlatform ? emptyOperationFilters : { ...emptyOperationFilters, sourceChannel: value.sourceChannel };
+
+  return <div className={`operation-filters${showPlatform ? '' : ' operation-filters-compact'}`} role="group" aria-label="Filtros de operaciones">
     <DateRangeField
       label="Rango de fechas"
       value={{ from: value.dateFrom, to: value.dateTo }}
@@ -53,13 +63,13 @@ export function OperationFilters({ value, onChange }: { value: OperationFilterVa
       value={value.productNature}
       onChange={(event) => set('productNature', event.target.value)}
     />
-    <SelectField
+    {showPlatform ? <SelectField
       label="Plataforma"
       placeholder="Todas"
       options={sourceChannelOptions}
       value={value.sourceChannel}
       onChange={(event) => set('sourceChannel', event.target.value)}
-    />
-    <Button variant="secondary" onClick={() => onChange(emptyOperationFilters)}>Limpiar filtros</Button>
+    /> : null}
+    <Button variant="secondary" onClick={() => onChange(clearedFilters)}>Limpiar filtros</Button>
   </div>;
 }

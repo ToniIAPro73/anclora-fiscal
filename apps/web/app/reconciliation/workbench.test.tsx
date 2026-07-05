@@ -83,7 +83,8 @@ describe('ReconciliationWorkbench', () => {
     });
     render(<ReconciliationWorkbench />);
     await waitFor(() => expect(screen.getByText('AI-9001')).toBeInTheDocument());
-    expect(screen.getByText('shopify')).toBeInTheDocument();
+    expect(screen.getByText('Sin movimiento financiero')).toBeInTheDocument();
+    expect(screen.queryByText('shopify')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /aceptar|rechazar/i })).not.toBeInTheDocument();
   });
 

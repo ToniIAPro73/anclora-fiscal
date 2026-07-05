@@ -46,6 +46,8 @@ describe('InvoicingPanel', () => {
     mockFetchSequence([{ ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } }]);
     render(<InvoicingPanel />);
     await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+    expect(screen.queryByLabelText('Plataforma')).not.toBeInTheDocument();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/operations?sourceChannel=SHOPIFY', { credentials: 'include' });
   });
 
   it('muestra un mensaje de error cuando la petición de operaciones falla', async () => {

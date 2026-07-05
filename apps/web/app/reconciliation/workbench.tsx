@@ -47,13 +47,13 @@ export function ReconciliationWorkbench() {
     return () => { cancelled = true; };
   }, []);
 
-  if (loading) return <section className="reconciliation-workbench"><p aria-live="polite">Cargando candidaturas de conciliación…</p></section>;
-  if (error) return <section className="reconciliation-workbench"><p className="import-error">{error}</p></section>;
+  if (loading) return <section className="reconciliation-workbench"><p className="workbench-notice" aria-live="polite">Cargando candidaturas de conciliación…</p></section>;
+  if (error) return <section className="reconciliation-workbench"><p className="workbench-notice workbench-notice-error">{error}</p></section>;
 
   return <section className="reconciliation-workbench">
-    {!candidates || candidates.length === 0 ? <p>No hay candidaturas de conciliación todavía.</p> : <>
+    {!candidates || candidates.length === 0 ? <p className="workbench-notice">No hay candidaturas de conciliación todavía.</p> : <>
       <span className="section-index">Candidaturas de conciliación</span>
-      <table>
+      <div className="reconciliation-table-panel"><table>
         <thead>
           <tr><th scope="col">Pedido</th><th scope="col">Evento</th><th scope="col">Confianza</th><th scope="col">Estado</th></tr>
         </thead>
@@ -65,7 +65,7 @@ export function ReconciliationWorkbench() {
             <td><StatusBadge tone={candidate.accepted ? 'info' : 'warning'}>{candidate.accepted ? 'Aceptada' : 'Pendiente'}</StatusBadge></td>
           </tr>)}
         </tbody>
-      </table>
+      </table></div>
     </>}
     <UnmatchedOrdersSection />
   </section>;
@@ -82,6 +82,9 @@ function UnmatchedOrdersSection() {
   const [orders, setOrders] = useState<UnmatchedOrder[]>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -101,22 +104,45 @@ function UnmatchedOrdersSection() {
     return () => { cancelled = true; };
   }, []);
 
+  const filteredOrders = orders?.filter((order) => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('es');
+    const orderDate = order.commercialDate?.slice(0, 10) ?? '';
+    return (!normalizedQuery || order.externalOrderId.toLocaleLowerCase('es').includes(normalizedQuery))
+      && (!dateFrom || orderDate >= dateFrom)
+      && (!dateTo || orderDate <= dateTo);
+  });
   return <section className="unmatched-orders" aria-label="Pedidos importados sin conciliar">
     <span className="section-index">Pedidos importados sin conciliar</span>
-    {loading ? <p aria-live="polite">Cargando pedidos sin conciliar…</p> : null}
-    {!loading && error ? <p className="import-error">{error}</p> : null}
-    {!loading && !error && (!orders || orders.length === 0) ? <p>No hay pedidos pendientes de conciliar.</p> : null}
-    {!loading && !error && orders && orders.length > 0 ? <table>
+    <div className="reconciliation-filters" role="group" aria-label="Filtros de pedidos sin conciliar">
+      <div className="field">
+        <label htmlFor="reconciliation-order">Pedido</label>
+        <input id="reconciliation-order" type="search" placeholder="Buscar por referencia" value={query} onChange={(event) => setQuery(event.target.value)} />
+      </div>
+      <div className="field">
+        <label htmlFor="reconciliation-from">Desde</label>
+        <input id="reconciliation-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+      </div>
+      <div className="field">
+        <label htmlFor="reconciliation-to">Hasta</label>
+        <input id="reconciliation-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+      </div>
+      <button type="button" className="filter-clear" onClick={() => { setQuery(''); setDateFrom(''); setDateTo(''); }}>Limpiar filtros</button>
+    </div>
+    {loading ? <p className="workbench-notice" aria-live="polite">Cargando pedidos sin conciliar…</p> : null}
+    {!loading && error ? <p className="workbench-notice workbench-notice-error">{error}</p> : null}
+    {!loading && !error && (!orders || orders.length === 0) ? <p className="workbench-notice">No hay pedidos pendientes de conciliar.</p> : null}
+    {!loading && !error && orders && orders.length > 0 && filteredOrders?.length === 0 ? <p className="workbench-notice">No hay pedidos para los filtros seleccionados.</p> : null}
+    {!loading && !error && filteredOrders && filteredOrders.length > 0 ? <div className="reconciliation-table-panel"><table>
       <thead>
-        <tr><th scope="col">Pedido</th><th scope="col">Canal</th><th scope="col">Fecha</th></tr>
+        <tr><th scope="col">Pedido</th><th scope="col">Fecha del pedido</th><th scope="col">Situación</th></tr>
       </thead>
       <tbody>
-        {orders.map((order) => <tr key={order.id}>
-          <td>{order.externalOrderId}</td>
-          <td>{order.sourceChannel}</td>
-          <td>{order.commercialDate ? new Date(order.commercialDate).toLocaleDateString('es-ES') : '—'}</td>
+        {filteredOrders.map((order) => <tr key={order.id}>
+          <td><strong>{order.externalOrderId}</strong></td>
+          <td>{order.commercialDate ? new Date(order.commercialDate).toLocaleDateString('es-ES') : 'Sin fecha'}</td>
+          <td><StatusBadge tone="warning">Sin movimiento financiero</StatusBadge></td>
         </tr>)}
       </tbody>
-    </table> : null}
+    </table></div> : null}
   </section>;
 }
