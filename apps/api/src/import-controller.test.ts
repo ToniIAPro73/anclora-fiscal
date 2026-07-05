@@ -10,7 +10,7 @@ afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
 describe('POST /api/v1/imports/preview persistence', () => {
   it('persiste el preview validado y expone el resultado idempotente', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const persist = vi.fn().mockImplementation(async (_tenantId, _filename, preview) => ({ jobId: preview.jobId, duplicate: false }));
     const app = await buildApp({
       storage: {

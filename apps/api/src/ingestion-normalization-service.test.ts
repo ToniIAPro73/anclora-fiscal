@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { extractShopifyOrdersCsv, previewShopifyCsv } from '@anclora/connectors';
 import { normalizeShopifyOrdersCsv, normalizeShopifyPaymentTransactions } from './ingestion-normalization-service.js';
 
-const evidence = resolve(import.meta.dirname, '../../../.evidence');
+const fixtures = resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures');
 
 describe('normalizeShopifyOrdersCsv', () => {
   it('mapea filas de pedidos a commercial_orders con externalOrderId y fecha comercial', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
 
     expect(orders).toHaveLength(4);
@@ -19,14 +19,14 @@ describe('normalizeShopifyOrdersCsv', () => {
   });
 
   it('deja commercialDate sin definir cuando el pedido no trae fecha comercial válida', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
     delete parsed.orders[0]!.commercialDate;
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.commercialDate).toBeUndefined();
   });
 
   it('aplica customerCountry real y los valores por defecto documentados de customerType/productNature', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
 
     expect(orders.every((order) => order.customerCountry === 'ES')).toBe(true);
@@ -35,13 +35,13 @@ describe('normalizeShopifyOrdersCsv', () => {
   });
 
   it('deja customerCountry sin definir cuando el export no trae columnas de país', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-no-country.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.customerCountry).toBeUndefined();
   });
 
   it('mapea customerName, totalAmount y taxAmount reales como strings numéricos', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
     const order = orders.find((entry) => entry.externalOrderId === 'AI-1001');
 
@@ -51,14 +51,14 @@ describe('normalizeShopifyOrdersCsv', () => {
   });
 
   it('deja customerName, totalAmount y taxAmount sin definir cuando el export no trae Total/Taxes', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-no-country.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.totalAmount).toBeUndefined();
     expect(orders[0]?.taxAmount).toBeUndefined();
   });
 
   it('mapea customerEmail y customerAddress reales', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-four.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
     const order = orders.find((entry) => entry.externalOrderId === 'AI-1001');
     expect(order?.customerEmail).toBe('cliente-ai-1001@ejemplo.com');
@@ -66,7 +66,7 @@ describe('normalizeShopifyOrdersCsv', () => {
   });
 
   it('deja customerEmail y customerAddress sin definir cuando el export no trae esas columnas', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-no-country.csv')));
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.customerEmail).toBeUndefined();
     expect(orders[0]?.customerAddress).toBeUndefined();
@@ -75,7 +75,7 @@ describe('normalizeShopifyOrdersCsv', () => {
 
 describe('normalizeShopifyPaymentTransactions', () => {
   it('mapea filas de transacciones a financial_events con montos y referencia de checkout', async () => {
-    const preview = previewShopifyCsv(await readFile(resolve(evidence, 'payment_transactions_export_1.csv')));
+    const preview = previewShopifyCsv(await readFile(resolve(fixtures, 'shopify-ledger-charge-refund.csv')));
     const events = normalizeShopifyPaymentTransactions(preview);
 
     expect(events).toHaveLength(preview.rows.length);

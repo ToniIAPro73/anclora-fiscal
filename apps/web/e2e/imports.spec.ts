@@ -29,7 +29,7 @@ test.describe('importación — Shopify Pedidos: previsualizar y confirmar', () 
 
     await page.goto('/imports');
     const ordersCard = page.getByRole('article', { name: 'Shopify — Pedidos' });
-    await ordersCard.getByLabel('Archivo de pedidos Shopify').setInputFiles(resolve(repositoryRoot, '.evidence/payment_transactions_export_1.csv'));
+    await ordersCard.getByLabel('Archivo de pedidos Shopify').setInputFiles(resolve(repositoryRoot, 'packages/connectors/test/fixtures/shopify-orders-four.csv'));
     await ordersCard.getByRole('button', { name: 'Generar vista previa' }).click();
 
     await expect(ordersCard.getByText('AI-9001')).toBeVisible();

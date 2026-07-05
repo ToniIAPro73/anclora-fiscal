@@ -9,7 +9,7 @@ afterAll(() => rm(root, { recursive: true, force: true }));
 
 describe('previewImport', () => {
   it('custodia evidencia y devuelve preview CSV sin PII', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     expect(result.status).toBe('PREVIEW_READY');
     expect(result.summary).toMatchObject({ records: 2, orderIds: ['AI-1001'] });
@@ -18,7 +18,7 @@ describe('previewImport', () => {
   });
 
   it('normaliza las transacciones Shopify a financialEvents para persistencia posterior', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     expect(result.connector).toBe('shopify-csv');
     expect(result.financialEvents).toHaveLength(result.summary.records);
@@ -27,7 +27,7 @@ describe('previewImport', () => {
   });
 
   it('normaliza los pedidos Shopify a commercialOrders para persistencia posterior', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-orders-four.csv'));
     const result = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     expect(result.connector).toBe('shopify-orders-csv');
     expect(result.commercialOrders).toHaveLength(result.summary.records);
@@ -46,7 +46,7 @@ describe('previewImport', () => {
   });
 
   it('filtra pedidos Shopify ya importados cuando se provee el repositorio de dedup', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-orders-four.csv'));
     const baseline = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     const allOrderIds = baseline.summary.orderIds;
     expect(allOrderIds.length).toBeGreaterThan(0);
@@ -64,7 +64,7 @@ describe('previewImport', () => {
   });
 
   it('deja pasar solo los pedidos Shopify nuevos con solapamiento parcial', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-orders-four.csv'));
     const baseline = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     const firstOrderId = baseline.summary.orderIds[0];
     expect(firstOrderId).toBeDefined();
@@ -81,7 +81,7 @@ describe('previewImport', () => {
   });
 
   it('sin dependencia de dedup, el comportamiento es idéntico al actual', async () => {
-    const bytes = await readFile(resolve(import.meta.dirname, '../../../.evidence/pedido-shopify.csv'));
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-orders-four.csv'));
     const withoutDeps = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     const withEmptyDeps = await previewImport({ tenantId: 'test', filename: 'pedido-shopify.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) }, {});
 

@@ -50,7 +50,7 @@ describe('confirmImportJob', () => {
   });
 
   it('confirma con IMPORTED cuando no hay incidencias, regenera el preview y persiste los registros fiscales', async () => {
-    const csv = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const csv = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const confirm = vi.fn().mockResolvedValue(undefined);
     const storageGet = vi.fn().mockResolvedValue(csv);
     const persistFiscalRecords = vi.fn().mockResolvedValue({ createdRecordIds: { commercialOrders: ['o1'] } });
@@ -73,7 +73,7 @@ describe('confirmImportJob', () => {
   });
 
   it('confirma con IMPORTED_WITH_ISSUES cuando quedan incidencias no bloqueantes o ya reconocidas', async () => {
-    const csv = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const csv = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const confirm = vi.fn().mockResolvedValue(undefined);
     const result = await confirmImportJob(
       { tenantId: 't1', jobId: 'job-1', acknowledgedIssueIds: ['issue-1'] },
@@ -143,7 +143,7 @@ describe('retryImportJob', () => {
   });
 
   it('reanaliza el archivo custodiado sin volver a subir evidencia y registra el reintento', async () => {
-    const csv = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const csv = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const recordRetry = vi.fn().mockResolvedValue(undefined);
     const storageGet = vi.fn().mockResolvedValue(csv);
     const result = await retryImportJob(

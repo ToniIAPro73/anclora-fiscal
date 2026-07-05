@@ -68,7 +68,7 @@ describe('POST /api/v1/imports/:jobId/confirm', () => {
   });
 
   it('confirma y devuelve IMPORTED cuando no hay incidencias, reanalizando el archivo custodiado y persistiendo los registros fiscales', async () => {
-    const csv = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const csv = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const confirm = vi.fn().mockResolvedValue(undefined);
     const persistFiscalRecords = vi.fn().mockResolvedValue({ createdRecordIds: { commercialOrders: ['o1'] } });
     const { app, cookie } = await authenticatedApp(
@@ -151,7 +151,7 @@ describe('POST /api/v1/imports/:jobId/retry', () => {
 
   it('reanaliza el archivo y no duplica el job (idempotente)', async () => {
     const recordRetry = vi.fn().mockResolvedValue(undefined);
-    const csv = await readFile(resolve(import.meta.dirname, '../../../.evidence/payment_transactions_export_1.csv'));
+    const csv = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const { app, cookie } = await authenticatedApp(
       {
         findJob: vi.fn(),
