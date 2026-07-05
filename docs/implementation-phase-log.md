@@ -202,7 +202,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
 
   Los 12 fallos de fixture son defectos de base (archivos `.evidence/` faltantes desde commits
   previos), certificados como preexistentes y no causados por esta fase.
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** 54d9448.
 - **Rama remota:** `origin/main`.
 - **Limitaciones abiertas:**
   - Los 12 fallos de test por archivos de fixture faltantes (`.evidence/pedido-shopify.csv` y
