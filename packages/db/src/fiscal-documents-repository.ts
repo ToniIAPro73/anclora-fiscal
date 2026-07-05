@@ -9,7 +9,14 @@ export type FiscalDocument = typeof fiscalDocuments.$inferSelect;
 
 export interface IssueInvoiceInput {
   tenantId: string;
-  actorId: string;
+  /**
+   * `null` for automatic, non-user-triggered issuance (Phase 5b's
+   * InvoiceIssuanceService, chained from MatchingService). The authenticated
+   * manual-issuance controller (fiscal-documents-controller.ts) always
+   * passes a real `authSession.actorId` and is unaffected by this widening —
+   * the schema's audit_events.actorId column has always been nullable.
+   */
+  actorId: string | null;
   canonicalOperationId: string;
   storage: StoragePort;
 }
@@ -20,7 +27,8 @@ export type IssueInvoiceResult =
 
 export interface RectifyInvoiceInput {
   tenantId: string;
-  actorId: string;
+  /** See IssueInvoiceInput.actorId — `null` for automatic issuance. */
+  actorId: string | null;
   fiscalDocumentId: string;
   storage: StoragePort;
 }
@@ -102,6 +110,8 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
       const invoice = await issueInvoice(sequence, {
         operationId: operation.id,
         customerLabel: operation.sourceOrderId ? `Operación ${operation.sourceOrderId}` : `Operación ${operation.id}`,
+        ...(operation.customerAddress ? { customerAddress: operation.customerAddress } : {}),
+        ...(operation.customerEmail ? { customerEmail: operation.customerEmail } : {}),
         description: `Operación ${operation.operationType}`,
         taxBase: Number(decision.taxBase ?? 0),
         taxRate: Number(decision.taxRate ?? 0),
@@ -262,6 +272,8 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
           input: {
             operationId: operation.id,
             customerLabel: operation.sourceOrderId ? `Operación ${operation.sourceOrderId}` : `Operación ${operation.id}`,
+            ...(operation.customerAddress ? { customerAddress: operation.customerAddress } : {}),
+            ...(operation.customerEmail ? { customerEmail: operation.customerEmail } : {}),
             description: `Operación ${operation.operationType}`,
             taxBase: Number(original.taxBase),
             taxRate: Number(decision?.taxRate ?? 0),

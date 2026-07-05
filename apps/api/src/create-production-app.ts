@@ -5,6 +5,7 @@ import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import { MatchingService } from './matching-service.js';
 import { TaxDecisionService } from './tax-decision-service.js';
+import { InvoiceIssuanceService } from './invoice-issuance-service.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import type { ReconciliationRepositoryPort } from './reconciliation-controller.js';
@@ -72,6 +73,11 @@ export async function createProductionApp() {
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
     });
+    const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
+    const invoiceIssuanceService = new InvoiceIssuanceService({
+      fiscalDocumentsRepository: fiscalDocumentsRepositoryForMatching,
+      storage,
+    });
     const matchingService = new MatchingService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
@@ -79,6 +85,7 @@ export async function createProductionApp() {
       reconciliationRepository: new DrizzleReconciliationRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionService,
+      invoiceIssuanceService,
     });
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
@@ -97,7 +104,7 @@ export async function createProductionApp() {
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
     reconciliationRepository = new DrizzleReconciliationRepository(database.db);
     issuesRepository = new DrizzleIssuesRepository(database.db);
-    fiscalDocumentsRepository = new DrizzleFiscalDocumentsRepository(database.db);
+    fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
@@ -114,6 +121,11 @@ export async function createProductionApp() {
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
     });
+    const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
+    const invoiceIssuanceService = new InvoiceIssuanceService({
+      fiscalDocumentsRepository: fiscalDocumentsRepositoryForMatching,
+      storage,
+    });
     const matchingService = new MatchingService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
@@ -121,6 +133,7 @@ export async function createProductionApp() {
       reconciliationRepository: new DrizzleReconciliationRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionService,
+      invoiceIssuanceService,
     });
     importPreviewPersistence = new ImportPreviewPersistenceService(
       new DrizzleImportPreviewRepository(database.db),
@@ -139,7 +152,7 @@ export async function createProductionApp() {
     financialEventsRepository = new DrizzleFinancialEventsRepository(database.db);
     reconciliationRepository = new DrizzleReconciliationRepository(database.db);
     issuesRepository = new DrizzleIssuesRepository(database.db);
-    fiscalDocumentsRepository = new DrizzleFiscalDocumentsRepository(database.db);
+    fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));

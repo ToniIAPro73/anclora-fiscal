@@ -26,6 +26,28 @@ export interface ShopifyOrderEvidence {
   totalPrice?: number;
   /** Parsed from the `Taxes` column, if present. Undefined when absent/unparseable. */
   taxAmount?: number;
+  /**
+   * Real `Email` column, if present in the export. Standard Shopify
+   * orders-export column, not fabricated. `undefined` when the export
+   * doesn't carry it.
+   */
+  customerEmail?: string;
+  /**
+   * Single readable line built from real address columns — prefer
+   * `Shipping Address1/City/Zip/Province`, fall back to the equivalent
+   * `Billing *` columns. Mirrors the existing single-field customerName
+   * convention (rather than splitting into separate street/city/zip
+   * columns — YAGNI, no consumer needs the parts separately). `undefined`
+   * when neither shipping nor billing address columns carry any value.
+   *
+   * Note: no buyer tax ID (NIF/CIF) is captured anywhere in this connector
+   * — that is not a standard Shopify orders-export column. See the
+   * disclosed limitation comment at the invoice render site
+   * (packages/core/src/invoicing.ts).
+   */
+  customerAddress?: string;
+  /** Derived from Shopify's real `Lineitem requires shipping` column. */
+  productNature?: 'ebook' | 'general';
   issues: Array<{ code: string; severity: 'HIGH' | 'BLOCKING'; message: string }>;
 }
 
@@ -37,6 +59,13 @@ export function isShopifyOrdersCsvFile(bytes: Uint8Array): boolean {
   const firstLine = Buffer.from(bytes).toString('utf8').replace(/^\uFEFF/, '').split('\n')[0]?.replace(/\r$/, '') ?? '';
   const headers = new Set(firstLine.split(','));
   return requiredHeaders.every((header) => headers.has(header));
+}
+
+function buildAddressLine(record: Record<string, string>, prefix: 'Shipping' | 'Billing'): string | undefined {
+  const parts = [record[`${prefix} Address1`], record[`${prefix} City`], record[`${prefix} Zip`], record[`${prefix} Province`]]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(', ') : undefined;
 }
 
 export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvidence {
@@ -62,6 +91,10 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
     const customerName = record['Shipping Name'] || record['Billing Name'] || undefined;
     const totalPrice = record.Total !== undefined && record.Total !== '' ? Number(record.Total) : undefined;
     const taxAmount = record.Taxes !== undefined && record.Taxes !== '' ? Number(record.Taxes) : undefined;
+    const customerEmail = record.Email || undefined;
+    const customerAddress = buildAddressLine(record, 'Shipping') ?? buildAddressLine(record, 'Billing');
+    const requiresShipping = record['Lineitem requires shipping']?.trim().toLowerCase();
+    const productNature = requiresShipping === 'false' ? 'ebook' : requiresShipping === 'true' ? 'general' : undefined;
 
     return {
       orderId,
@@ -73,6 +106,9 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
       ...(customerName ? { customerName } : {}),
       ...(totalPrice !== undefined && Number.isFinite(totalPrice) ? { totalPrice } : {}),
       ...(taxAmount !== undefined && Number.isFinite(taxAmount) ? { taxAmount } : {}),
+      ...(customerEmail ? { customerEmail } : {}),
+      ...(customerAddress ? { customerAddress } : {}),
+      ...(productNature ? { productNature } : {}),
       issues,
     };
   });

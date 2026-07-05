@@ -175,4 +175,92 @@ describe('MatchingService', () => {
       canonicalOperationId: 'canonical-op-4',
     });
   });
+
+  it('invoca la emisión automática de factura después de la decisión fiscal cuando se inyecta invoiceIssuanceService', async () => {
+    const order = { id: 'order-5', sourceChannel: 'SHOPIFY', externalOrderId: 'AI-5005', checkoutReference: null };
+    const event = {
+      id: 'event-5',
+      eventType: 'charge',
+      checkoutReference: null,
+      amount: '30.00',
+      feeAmount: '1.00',
+      netAmount: '29.00',
+      currency: 'EUR',
+    };
+    const findById = vi.fn().mockResolvedValue(order);
+    const findByOrderReference = vi.fn().mockResolvedValue([event]);
+    const create = vi.fn().mockResolvedValue({ id: 'canonical-op-5' });
+    const createCandidates = vi.fn().mockResolvedValue(undefined);
+    const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({ status: 'DECIDED', taxDecisionStatus: 'DETERMINED' });
+    const runInvoiceIssuanceForOperation = vi.fn().mockResolvedValue({ status: 'ISSUED', documentId: 'doc-5' });
+
+    const service = new MatchingService({
+      commercialOrdersRepository: { findById },
+      financialEventsRepository: { findByOrderReference },
+      operationsRepository: { create },
+      reconciliationRepository: { createCandidates },
+      legalEntitiesRepository: { findFirstByTenant },
+      taxDecisionService: { runTaxDecisionForOperation },
+      invoiceIssuanceService: { runInvoiceIssuanceForOperation },
+    });
+
+    const result = await service.runMatchingForOrder(tenantId, 'order-5');
+
+    expect(result).toEqual({ status: 'MATCHED', canonicalOperationId: 'canonical-op-5' });
+    expect(runInvoiceIssuanceForOperation).toHaveBeenCalledWith(tenantId, { id: 'canonical-op-5', anomalyFlags: [] });
+  });
+
+  it('pasa anomalyFlags con FULL_REFUND_NET_ZERO al servicio de emisión cuando el evento neto es ~0 (reembolso total)', async () => {
+    const order = { id: 'order-6', sourceChannel: 'SHOPIFY', externalOrderId: 'AI-6006', checkoutReference: null };
+    const charge = { id: 'event-6a', eventType: 'charge', checkoutReference: null, amount: '10.00', feeAmount: '0.50', netAmount: '9.50', currency: 'EUR' };
+    const refund = { id: 'event-6b', eventType: 'refund', checkoutReference: null, amount: '-10.00', feeAmount: '0.00', netAmount: '-9.50', currency: 'EUR' };
+    const findById = vi.fn().mockResolvedValue(order);
+    const findByOrderReference = vi.fn().mockResolvedValue([charge, refund]);
+    const create = vi.fn().mockResolvedValue({ id: 'canonical-op-6' });
+    const createCandidates = vi.fn().mockResolvedValue(undefined);
+    const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
+    const runInvoiceIssuanceForOperation = vi.fn().mockResolvedValue({ status: 'ISSUED', documentId: 'doc-6', rectification: { status: 'RECTIFIED', documentId: 'doc-6-rect' } });
+
+    const service = new MatchingService({
+      commercialOrdersRepository: { findById },
+      financialEventsRepository: { findByOrderReference },
+      operationsRepository: { create },
+      reconciliationRepository: { createCandidates },
+      legalEntitiesRepository: { findFirstByTenant },
+      invoiceIssuanceService: { runInvoiceIssuanceForOperation },
+    });
+
+    await service.runMatchingForOrder(tenantId, 'order-6');
+
+    expect(runInvoiceIssuanceForOperation).toHaveBeenCalledWith(
+      tenantId,
+      expect.objectContaining({ id: 'canonical-op-6', anomalyFlags: expect.arrayContaining(['FULL_REFUND_NET_ZERO']) }),
+    );
+  });
+
+  it('no propaga un error de invoiceIssuanceService fuera de runMatchingForOrder (llamada no fatal)', async () => {
+    const order = { id: 'order-7', sourceChannel: 'SHOPIFY', externalOrderId: 'AI-7007', checkoutReference: null };
+    const event = { id: 'event-7', eventType: 'charge', checkoutReference: null, amount: '15.00', feeAmount: '0.50', netAmount: '14.50', currency: 'EUR' };
+    const findById = vi.fn().mockResolvedValue(order);
+    const findByOrderReference = vi.fn().mockResolvedValue([event]);
+    const create = vi.fn().mockResolvedValue({ id: 'canonical-op-7' });
+    const createCandidates = vi.fn().mockResolvedValue(undefined);
+    const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
+    const runInvoiceIssuanceForOperation = vi.fn().mockRejectedValue(new Error('boom'));
+
+    const service = new MatchingService({
+      commercialOrdersRepository: { findById },
+      financialEventsRepository: { findByOrderReference },
+      operationsRepository: { create },
+      reconciliationRepository: { createCandidates },
+      legalEntitiesRepository: { findFirstByTenant },
+      invoiceIssuanceService: { runInvoiceIssuanceForOperation },
+    });
+
+    await expect(service.runMatchingForOrder(tenantId, 'order-7')).resolves.toEqual({
+      status: 'MATCHED',
+      canonicalOperationId: 'canonical-op-7',
+    });
+  });
 });

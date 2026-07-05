@@ -75,4 +75,19 @@ describe('InvoicingPanel', () => {
     screen.getByRole('button', { name: 'Emitir factura' }).click();
     await waitFor(() => expect(screen.getByText('AF-2026-0001')).toBeInTheDocument());
   });
+
+  it('muestra la insignia de revisión recomendada cuando anomalyFlags incluye RECTIFICATION_REVIEW_REQUIRED', async () => {
+    mockFetchSequence([
+      { ok: true, body: { items: [{ ...sampleOperation, anomalyFlags: ['FULL_REFUND_NET_ZERO', 'RECTIFICATION_REVIEW_REQUIRED'] }], page: 1, pageSize: 20, total: 1 } },
+    ]);
+    render(<InvoicingPanel />);
+    await waitFor(() => expect(screen.getByText('Revisión recomendada: posible rectificación por reembolso')).toBeInTheDocument());
+  });
+
+  it('no muestra la insignia de revisión recomendada cuando la operación no tiene anomalyFlags', async () => {
+    mockFetchSequence([{ ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } }]);
+    render(<InvoicingPanel />);
+    await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
+    expect(screen.queryByText('Revisión recomendada: posible rectificación por reembolso')).not.toBeInTheDocument();
+  });
 });

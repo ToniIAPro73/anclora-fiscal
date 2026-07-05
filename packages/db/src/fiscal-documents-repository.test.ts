@@ -4,7 +4,7 @@ import { verifyIntegrityChain, type IntegrityRecord, type StoragePort, type Stor
 import { createOfflineDatabase } from './index';
 import { migrateOfflineDatabase } from './migrations';
 import { DrizzleFiscalDocumentsRepository } from './fiscal-documents-repository';
-import { canonicalOperations, integrityChainRecords, legalEntities, taxDecisions, tenants, users } from './schema';
+import { auditEvents, canonicalOperations, integrityChainRecords, legalEntities, taxDecisions, tenants, users } from './schema';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
 
@@ -30,7 +30,11 @@ class InMemoryStorage implements StoragePort {
   }
 }
 
-async function seedOperationWithDecision(db: ReturnType<typeof createOfflineDatabase>['db'], slug: string) {
+async function seedOperationWithDecision(
+  db: ReturnType<typeof createOfflineDatabase>['db'],
+  slug: string,
+  buyerInfo?: { customerAddress?: string; customerEmail?: string },
+) {
   const [tenant] = await db.insert(tenants).values({ name: slug, slug }).returning({ id: tenants.id });
   if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
 
@@ -59,6 +63,8 @@ async function seedOperationWithDecision(db: ReturnType<typeof createOfflineData
     reviewStatus: 'REVIEWED',
     reconciliationStatus: 'MATCHED',
     verifactuStatus: 'PENDING',
+    customerAddress: buyerInfo?.customerAddress,
+    customerEmail: buyerInfo?.customerEmail,
   }).returning({ id: canonicalOperations.id });
   if (!operation) throw new Error('No se pudo crear la operación de prueba');
 
@@ -152,6 +158,45 @@ describe('DrizzleFiscalDocumentsRepository', () => {
 
       const chainRecords = await db.select().from(integrityChainRecords).where(eq(integrityChainRecords.tenantId, tenantId));
       expect(chainRecords).toHaveLength(1);
+    });
+
+    it('acepta actorId null (emisión automática) y lo persiste correctamente en audit_events', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const { tenantId, operationId } = await seedOperationWithDecision(db, 'tenant-a');
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const result = await repository.issue({ tenantId, actorId: null, canonicalOperationId: operationId, storage });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected ok result');
+
+      const events = await db.select().from(auditEvents).where(eq(auditEvents.entityId, result.document.id));
+      expect(events).toHaveLength(1);
+      expect(events[0]?.actorId).toBeNull();
+    });
+
+    it('renderiza el PDF con customerAddress/customerEmail cuando la operación los tiene (comparado contra una sin datos de contacto)', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const withoutContact = await seedOperationWithDecision(db, 'tenant-sin-contacto');
+      const withContact = await seedOperationWithDecision(db, 'tenant-con-contacto', {
+        customerAddress: 'Calle Ejemplo 1, Palma',
+        customerEmail: 'cliente@ejemplo.com',
+      });
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const resultWithoutContact = await repository.issue({ tenantId: withoutContact.tenantId, actorId: withoutContact.actorId, canonicalOperationId: withoutContact.operationId, storage });
+      const resultWithContact = await repository.issue({ tenantId: withContact.tenantId, actorId: withContact.actorId, canonicalOperationId: withContact.operationId, storage });
+
+      expect(resultWithoutContact.ok).toBe(true);
+      expect(resultWithContact.ok).toBe(true);
+      if (!resultWithoutContact.ok || !resultWithContact.ok) throw new Error('expected ok results');
+      expect(resultWithContact.document.renderSha256).not.toBe(resultWithoutContact.document.renderSha256);
     });
   });
 

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createOfflineDatabase } from './index';
 import { migrateOfflineDatabase } from './migrations';
 import { DrizzleOperationsRepository } from './operations-repository';
-import { canonicalOperations, legalEntities, tenants } from './schema';
+import { canonicalOperations, commercialOrders, legalEntities, tenants } from './schema';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
 
@@ -69,6 +69,38 @@ describe('DrizzleOperationsRepository', () => {
     expect(tenantAPage.items.some((item) => item.tenantId === tenantBId)).toBe(false);
   });
 
+  it('filtra por fecha de pedido, tipo de producto y plataforma sin usar la fecha de importación', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const [tenant] = await db.insert(tenants).values({ name: 'tenant-filters', slug: 'tenant-filters' }).returning({ id: tenants.id });
+    if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
+    const [legalEntity] = await db.insert(legalEntities).values({ tenantId: tenant.id, legalName: 'Filters SL', countryCode: 'ES' }).returning({ id: legalEntities.id });
+    if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
+
+    await db.insert(commercialOrders).values([
+      { tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalOrderId: 'JULY-EBOOK', commercialDate: new Date('2026-07-10T12:00:00Z'), productNature: 'ebook' },
+      { tenantId: tenant.id, sourceChannel: 'SHOPIFY', externalOrderId: 'JUNE-PRINT', commercialDate: new Date('2026-06-10T12:00:00Z'), productNature: 'general' },
+    ]);
+    await db.insert(canonicalOperations).values([
+      { tenantId: tenant.id, legalEntityId: legalEntity.id, sourceChannel: 'SHOPIFY', sourceOrderId: 'JULY-EBOOK', operationType: 'SALE', operationStatus: 'READY', reviewStatus: 'PENDING', reconciliationStatus: 'MATCHED', verifactuStatus: 'PENDING', productNature: 'ebook' },
+      { tenantId: tenant.id, legalEntityId: legalEntity.id, sourceChannel: 'SHOPIFY', sourceOrderId: 'JUNE-PRINT', operationType: 'SALE', operationStatus: 'READY', reviewStatus: 'PENDING', reconciliationStatus: 'MATCHED', verifactuStatus: 'PENDING', productNature: 'general' },
+    ]);
+
+    const page = await new DrizzleOperationsRepository(db).list({
+      tenantId: tenant.id,
+      page: 1,
+      pageSize: 20,
+      dateFrom: new Date('2026-07-01T00:00:00Z'),
+      dateTo: new Date('2026-07-31T23:59:59.999Z'),
+      productNature: 'ebook',
+      sourceChannel: 'SHOPIFY',
+    });
+
+    expect(page.total).toBe(1);
+    expect(page.items[0]?.sourceOrderId).toBe('JULY-EBOOK');
+  });
+
   it('create() es idempotente: volver a matchear el mismo pedido actualiza la fila existente en lugar de duplicarla', async () => {
     const { client, db } = createOfflineDatabase();
     clients.push(client);
@@ -89,5 +121,33 @@ describe('DrizzleOperationsRepository', () => {
 
     const page = await repository.list({ tenantId: tenant.id, page: 1, pageSize: 10 });
     expect(page.total).toBe(1);
+  });
+
+  it('persiste customerEmail y customerAddress al crear (pass-through de evidencia real)', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const [tenant] = await db.insert(tenants).values({ name: 'tenant-buyer', slug: 'tenant-buyer' }).returning({ id: tenants.id });
+    if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
+    const [legalEntity] = await db.insert(legalEntities).values({ tenantId: tenant.id, legalName: 'Buyer SL', countryCode: 'ES' }).returning({ id: legalEntities.id });
+    if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
+    const repository = new DrizzleOperationsRepository(db);
+
+    const created = await repository.create(tenant.id, legalEntity.id, {
+      sourceChannel: 'SHOPIFY',
+      sourceOrderId: 'AI-9002',
+      operationType: 'SALE',
+      operationStatus: 'PENDING_TAX_REVIEW',
+      reconciliationStatus: 'MATCHED',
+      grossAmount: 6.99,
+      platformFeeAmount: 0.35,
+      netAmount: 6.64,
+      anomalyFlags: [],
+      customerEmail: 'cliente@ejemplo.com',
+      customerAddress: 'Calle Ejemplo 1, Palma',
+    });
+
+    expect(created.customerEmail).toBe('cliente@ejemplo.com');
+    expect(created.customerAddress).toBe('Calle Ejemplo 1, Palma');
   });
 });

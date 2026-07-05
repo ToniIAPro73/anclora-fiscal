@@ -26,11 +26,10 @@ export function normalizeShopifyOrdersCsv(evidence: ShopifyOrdersCsvEvidence): N
     // connector processes a direct-to-consumer Shopify storefront export —
     // there is no B2B/reseller distinction anywhere in the source data.
     customerType: 'B2C',
-    // Documented known limitation: no product/SKU category data flows
-    // through the pipeline yet, so every order is treated as the coarsest
-    // possible "general" rate rather than a reduced rate (e.g. ebook).
-    // Revisit only if/when a product-catalog import is added.
-    productNature: 'general',
+    // Shopify exports a real `Lineitem requires shipping` signal. The
+    // connector maps non-shipping products to ebook and shipping products
+    // to the conservative general category (which includes tapa blanda).
+    productNature: order.productNature ?? 'general',
     // Real, already-present evidence (Shipping/Billing Name, Total, Taxes
     // columns) — undefined when the export doesn't carry them. Numeric
     // columns are strings in Drizzle's insert shape (mirrors the
@@ -39,6 +38,11 @@ export function normalizeShopifyOrdersCsv(evidence: ShopifyOrdersCsvEvidence): N
     customerName: order.customerName,
     totalAmount: order.totalPrice !== undefined ? String(order.totalPrice) : undefined,
     taxAmount: order.taxAmount !== undefined ? String(order.taxAmount) : undefined,
+    // Real Email/address evidence (Phase 5b) — undefined when the export
+    // doesn't carry these columns. No buyer tax ID (NIF/CIF) is captured;
+    // see the disclosed limitation comment in packages/core/src/invoicing.ts.
+    customerEmail: order.customerEmail,
+    customerAddress: order.customerAddress,
   }));
 }
 

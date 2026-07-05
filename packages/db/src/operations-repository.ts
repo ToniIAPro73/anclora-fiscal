@@ -1,7 +1,7 @@
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, getTableColumns, gte, lte } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { canonicalOperations } from './schema.js';
+import { canonicalOperations, commercialOrders } from './schema.js';
 import * as schema from './schema.js';
 
 export interface ListOperationsInput {
@@ -9,6 +9,10 @@ export interface ListOperationsInput {
   page: number;
   pageSize: number;
   status?: string | undefined;
+  dateFrom?: Date | undefined;
+  dateTo?: Date | undefined;
+  productNature?: string | undefined;
+  sourceChannel?: string | undefined;
 }
 
 export type Operation = typeof canonicalOperations.$inferSelect;
@@ -41,6 +45,8 @@ export interface CanonicalOperationDraftInput {
   customerCountry?: string | null | undefined;
   customerType?: string | null | undefined;
   productNature?: string | null | undefined;
+  customerEmail?: string | null | undefined;
+  customerAddress?: string | null | undefined;
 }
 
 export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> {
@@ -78,6 +84,8 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
       customerCountry: draft.customerCountry,
       customerType: draft.customerType,
       productNature: draft.productNature,
+      customerEmail: draft.customerEmail,
+      customerAddress: draft.customerAddress,
       updatedAt: new Date(),
     };
     const [row] = await this.db
@@ -93,14 +101,24 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
   }
 
   async list(input: ListOperationsInput): Promise<PaginatedOperations> {
-    const conditions = input.status
-      ? and(eq(canonicalOperations.tenantId, input.tenantId), eq(canonicalOperations.operationStatus, input.status))
-      : eq(canonicalOperations.tenantId, input.tenantId);
+    const conditions = and(
+      eq(canonicalOperations.tenantId, input.tenantId),
+      input.status ? eq(canonicalOperations.operationStatus, input.status) : undefined,
+      input.productNature ? eq(canonicalOperations.productNature, input.productNature) : undefined,
+      input.sourceChannel ? eq(canonicalOperations.sourceChannel, input.sourceChannel) : undefined,
+      input.dateFrom ? gte(commercialOrders.commercialDate, input.dateFrom) : undefined,
+      input.dateTo ? lte(commercialOrders.commercialDate, input.dateTo) : undefined,
+    );
 
     const [items, [totalRow]] = await Promise.all([
       this.db
-        .select()
+        .select(getTableColumns(canonicalOperations))
         .from(canonicalOperations)
+        .leftJoin(commercialOrders, and(
+          eq(commercialOrders.tenantId, canonicalOperations.tenantId),
+          eq(commercialOrders.sourceChannel, canonicalOperations.sourceChannel),
+          eq(commercialOrders.externalOrderId, canonicalOperations.sourceOrderId),
+        ))
         .where(conditions)
         .orderBy(desc(canonicalOperations.createdAt))
         .limit(input.pageSize)
@@ -108,6 +126,11 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
       this.db
         .select({ total: count() })
         .from(canonicalOperations)
+        .leftJoin(commercialOrders, and(
+          eq(commercialOrders.tenantId, canonicalOperations.tenantId),
+          eq(commercialOrders.sourceChannel, canonicalOperations.sourceChannel),
+          eq(commercialOrders.externalOrderId, canonicalOperations.sourceOrderId),
+        ))
         .where(conditions),
     ]);
 

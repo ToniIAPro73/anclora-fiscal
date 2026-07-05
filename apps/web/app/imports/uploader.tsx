@@ -23,6 +23,7 @@ interface CommercialOrderPreview {
   customerName?: string;
   totalAmount?: string;
   taxAmount?: string;
+  productNature?: string;
 }
 
 interface Preview {
@@ -112,6 +113,9 @@ function ImportPreviewResult({ preview }: { preview: Preview }) {
 }
 
 function OrdersPreviewTable({ preview }: { preview: Preview }) {
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [productNature, setProductNature] = useState('');
   const issuesByOrder = new Map<string, string[]>();
   const generalIssues: string[] = [];
   for (const issue of preview.issues) {
@@ -128,8 +132,18 @@ function OrdersPreviewTable({ preview }: { preview: Preview }) {
   // strings for an older cached preview shape that predates Task 4.10.
   const rows: CommercialOrderPreview[] = preview.commercialOrders
     ?? preview.summary.orderIds.map((externalOrderId) => ({ externalOrderId }));
+  const filteredRows = rows.filter((order) =>
+    (!dateFrom || Boolean(order.commercialDate && order.commercialDate.slice(0, 10) >= dateFrom))
+    && (!dateTo || Boolean(order.commercialDate && order.commercialDate.slice(0, 10) <= dateTo))
+    && (!productNature || order.productNature === productNature));
 
   return <>
+    <div className="operation-filters" aria-label="Filtros de pedidos Shopify">
+      <div><FieldLabel htmlFor="shopify-date-from">Fecha desde</FieldLabel><input id="shopify-date-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
+      <div><FieldLabel htmlFor="shopify-date-to">Fecha hasta</FieldLabel><input id="shopify-date-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
+      <div><FieldLabel htmlFor="shopify-product">Tipo de producto</FieldLabel><select id="shopify-product" value={productNature} onChange={(event) => setProductNature(event.target.value)}><option value="">Todos</option><option value="ebook">eBook</option><option value="general">Tapa blanda / general</option></select></div>
+      <div><FieldLabel htmlFor="shopify-platform">Plataforma</FieldLabel><select id="shopify-platform" value="SHOPIFY" disabled><option value="SHOPIFY">Shopify</option></select></div>
+    </div>
     <table>
       <thead>
         <tr>
@@ -142,7 +156,7 @@ function OrdersPreviewTable({ preview }: { preview: Preview }) {
         </tr>
       </thead>
       <tbody>
-        {rows.map((order) => <tr key={order.externalOrderId}>
+        {filteredRows.map((order) => <tr key={order.externalOrderId}>
           <td>{order.externalOrderId}</td>
           <td>{order.commercialDate ? new Date(order.commercialDate).toLocaleDateString('es-ES') : '—'}</td>
           <td>{order.customerName ?? '—'}</td>
@@ -204,7 +218,13 @@ function groupRoyaltyLines(lines: RoyaltyLine[]): RoyaltyGroup[] {
 }
 
 function KdpPreviewTable({ preview }: { preview: Preview }) {
-  const lines = preview.royalty?.lines ?? [];
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [format, setFormat] = useState('');
+  const lines = (preview.royalty?.lines ?? []).filter((line) =>
+    (!dateFrom || Boolean(line.date && line.date >= dateFrom))
+    && (!dateTo || Boolean(line.date && line.date <= dateTo))
+    && (!format || line.format === format));
   const groups = groupRoyaltyLines(lines);
   const periods = preview.royalty?.statement.periods ?? [];
   // KDP issues reference a spreadsheet sheet/row, not an ISBN/ASIN, so they
@@ -215,6 +235,12 @@ function KdpPreviewTable({ preview }: { preview: Preview }) {
 
   return <>
     {periods.length > 0 ? <h3 className="period-header">{formatSpanishPeriodRange(periods)}</h3> : null}
+    <div className="operation-filters" aria-label="Filtros de regalías KDP">
+      <div><FieldLabel htmlFor="kdp-date-from">Fecha desde</FieldLabel><input id="kdp-date-from" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></div>
+      <div><FieldLabel htmlFor="kdp-date-to">Fecha hasta</FieldLabel><input id="kdp-date-to" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></div>
+      <div><FieldLabel htmlFor="kdp-format">Tipo de producto</FieldLabel><select id="kdp-format" value={format} onChange={(event) => setFormat(event.target.value)}><option value="">Todos</option><option value="ebook">eBook</option><option value="impreso">Tapa blanda</option></select></div>
+      <div><FieldLabel htmlFor="kdp-platform">Plataforma</FieldLabel><select id="kdp-platform" value="AMAZON_KDP" disabled><option value="AMAZON_KDP">Amazon KDP</option></select></div>
+    </div>
     <table>
       <thead><tr><th scope="col">Título</th><th scope="col">ISBN/ASIN</th><th scope="col">Formato</th><th scope="col">Unidades</th><th scope="col">Importe</th></tr></thead>
       <tbody>

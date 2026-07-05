@@ -34,4 +34,25 @@ describe('extractShopifyOrdersCsv', () => {
     expect(order?.totalPrice).toBeUndefined();
     expect(order?.taxAmount).toBeUndefined();
   });
+
+  it('captura customerEmail y customerAddress reales, con Billing Address1/City/Zip/Province como respaldo de Shipping', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const order = parsed.orders.find((entry) => entry.orderId === 'AI-1001');
+    expect(order?.customerEmail).toBe('cliente-ai-1001@ejemplo.com');
+    // El fixture real no trae Shipping Address1 relleno, así que se usa el
+    // respaldo de columnas Billing (Address1/City/Zip/Province).
+    expect(order?.customerAddress).toBe("Calle Ejemplo 1, Palma, '07015, PM");
+  });
+
+  it('clasifica el formato mediante Lineitem requires shipping sin inferirlo por el título', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    expect(parsed.orders.every((order) => order.productNature === 'ebook')).toBe(true);
+  });
+
+  it('deja customerEmail y customerAddress sin definir cuando el export no trae esas columnas (honesto, no fabricado)', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const order = parsed.orders[0];
+    expect(order?.customerEmail).toBeUndefined();
+    expect(order?.customerAddress).toBeUndefined();
+  });
 });

@@ -11,6 +11,8 @@ export interface MatchingCommercialOrder {
   customerCountry?: string | null;
   customerType?: string | null;
   productNature?: string | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
 }
 
 export interface MatchingFinancialEvent {
@@ -60,6 +62,20 @@ export interface MatchingTaxDecisionPort {
   ): Promise<unknown>;
 }
 
+/**
+ * Optional dependency — invoked non-fatally right after a tax decision is
+ * persisted so a matched/tax-decided import becomes an issued (and, for full
+ * refunds, rectified) invoice with zero extra user action (Phase 5b
+ * automatic trigger). Structurally typed so existing tests that don't pass
+ * one still pass unmodified, same pattern as MatchingTaxDecisionPort.
+ */
+export interface MatchingInvoiceIssuancePort {
+  runInvoiceIssuanceForOperation(
+    tenantId: string,
+    operation: { id: string; anomalyFlags: string[] },
+  ): Promise<unknown>;
+}
+
 export interface MatchingServiceDependencies {
   commercialOrdersRepository: MatchingCommercialOrdersPort;
   financialEventsRepository: MatchingFinancialEventsPort;
@@ -67,6 +83,7 @@ export interface MatchingServiceDependencies {
   reconciliationRepository: MatchingReconciliationPort;
   legalEntitiesRepository: MatchingLegalEntitiesPort;
   taxDecisionService?: MatchingTaxDecisionPort | undefined;
+  invoiceIssuanceService?: MatchingInvoiceIssuancePort | undefined;
 }
 
 export type MatchingResult =
@@ -133,6 +150,8 @@ export class MatchingService {
       customerCountry: order.customerCountry,
       customerType: order.customerType,
       productNature: order.productNature,
+      customerEmail: order.customerEmail,
+      customerAddress: order.customerAddress,
     });
 
     await this.dependencies.reconciliationRepository.createCandidates(
@@ -162,6 +181,25 @@ export class MatchingService {
         // successful match/import, same contract as the legal-entity skip.
         console.warn(
           `[matching-service] Falló la decisión fiscal para la operación ${operation.id} del tenant ${tenantId}; se continúa sin decisión fiscal`,
+          error,
+        );
+      }
+    }
+
+    if (this.dependencies.invoiceIssuanceService) {
+      try {
+        // Always attempt issue() first (idempotent, safe on every
+        // (re-)match); the service itself conditionally rectifies when
+        // draft.anomalyFlags includes FULL_REFUND_NET_ZERO. A failure here
+        // must not undo the match/tax-decision that already persisted —
+        // same non-fatal contract as taxDecisionService above.
+        await this.dependencies.invoiceIssuanceService.runInvoiceIssuanceForOperation(tenantId, {
+          id: operation.id,
+          anomalyFlags: draft.anomalyFlags,
+        });
+      } catch (error) {
+        console.warn(
+          `[matching-service] Falló la emisión automática de factura para la operación ${operation.id} del tenant ${tenantId}; se continúa sin documento fiscal`,
           error,
         );
       }

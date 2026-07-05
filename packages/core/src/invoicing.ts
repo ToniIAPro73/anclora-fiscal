@@ -1,7 +1,22 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-export interface InvoiceInput { operationId: string; customerLabel: string; description: string; taxBase: number; taxRate: number; taxAmount: number; totalAmount: number; currency: 'EUR'; issuedAt: string; }
+/**
+ * customerAddress/customerEmail are optional, real buyer-contact evidence
+ * captured from standard Shopify export columns (Phase 5b) — omitted from
+ * the rendered "FACTURAR A" block when genuinely absent rather than
+ * printing an empty line. No buyer tax ID (NIF/CIF) field exists here: a
+ * Shopify order export does not carry one (not a standard export column;
+ * would require a custom checkout field this connector has no way to
+ * read). Spanish "factura simplificada" rules do not require buyer
+ * NIF/full address for ordinary B2C retail sales, which matches this
+ * connector's current B2C-only assumption — so invoices issued under that
+ * assumption are very likely legally sufficient without a NIF. If the
+ * tenant later sells B2B, intra-EU, or needs a "factura completa", NIF
+ * capture becomes a real requirement and a different data source: a human
+ * decision to make later, not silently worked around here.
+ */
+export interface InvoiceInput { operationId: string; customerLabel: string; customerAddress?: string; customerEmail?: string; description: string; taxBase: number; taxRate: number; taxAmount: number; totalAmount: number; currency: 'EUR'; issuedAt: string; }
 export interface FiscalDocument { readonly id: string; readonly number: string; readonly type: 'FULL_INVOICE' | 'RECTIFYING_INVOICE'; readonly originalDocumentId?: string; readonly input: Readonly<InvoiceInput>; readonly pdfBytes: Uint8Array; readonly sha256: string; readonly status: 'ISSUED'; }
 
 export class InvoiceSequence {
@@ -30,7 +45,10 @@ export async function renderInvoicePdf(number: string, type: FiscalDocument['typ
   page.drawText(`Fecha: ${input.issuedAt}`, { x: 390, y: 645, size: 10, font: ui, color: midnight });
   page.drawText('FACTURAR A', { x: 48, y: 590, size: 8, font: ui, color: gold });
   page.drawText(input.customerLabel, { x: 48, y: 568, size: 13, font: display, color: midnight });
-  if (originalNumber) page.drawText(`Rectifica el documento ${originalNumber}`, { x: 48, y: 535, size: 10, font: ui, color: midnight });
+  let buyerBlockY = 550;
+  if (input.customerAddress) { page.drawText(input.customerAddress, { x: 48, y: buyerBlockY, size: 10, font: ui, color: midnight }); buyerBlockY -= 15; }
+  if (input.customerEmail) { page.drawText(input.customerEmail, { x: 48, y: buyerBlockY, size: 10, font: ui, color: midnight }); buyerBlockY -= 15; }
+  if (originalNumber) page.drawText(`Rectifica el documento ${originalNumber}`, { x: 48, y: buyerBlockY, size: 10, font: ui, color: midnight });
   page.drawRectangle({ x: 48, y: 430, width: 499, height: 54, color: midnight });
   page.drawText('CONCEPTO', { x: 62, y: 452, size: 8, font: ui, color: ivory });
   page.drawText('BASE', { x: 330, y: 452, size: 8, font: ui, color: ivory }); page.drawText('IVA', { x: 415, y: 452, size: 8, font: ui, color: ivory }); page.drawText('TOTAL', { x: 478, y: 452, size: 8, font: ui, color: ivory });

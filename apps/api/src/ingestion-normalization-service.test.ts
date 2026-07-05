@@ -31,7 +31,7 @@ describe('normalizeShopifyOrdersCsv', () => {
 
     expect(orders.every((order) => order.customerCountry === 'ES')).toBe(true);
     expect(orders.every((order) => order.customerType === 'B2C')).toBe(true);
-    expect(orders.every((order) => order.productNature === 'general')).toBe(true);
+    expect(orders.every((order) => order.productNature === 'ebook')).toBe(true);
   });
 
   it('deja customerCountry sin definir cuando el export no trae columnas de país', async () => {
@@ -55,6 +55,21 @@ describe('normalizeShopifyOrdersCsv', () => {
     const orders = normalizeShopifyOrdersCsv(parsed);
     expect(orders[0]?.totalAmount).toBeUndefined();
     expect(orders[0]?.taxAmount).toBeUndefined();
+  });
+
+  it('mapea customerEmail y customerAddress reales', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const orders = normalizeShopifyOrdersCsv(parsed);
+    const order = orders.find((entry) => entry.externalOrderId === 'AI-1001');
+    expect(order?.customerEmail).toBe('cliente-ai-1001@ejemplo.com');
+    expect(order?.customerAddress).toBe("Calle Ejemplo 1, Palma, '07015, PM");
+  });
+
+  it('deja customerEmail y customerAddress sin definir cuando el export no trae esas columnas', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const orders = normalizeShopifyOrdersCsv(parsed);
+    expect(orders[0]?.customerEmail).toBeUndefined();
+    expect(orders[0]?.customerAddress).toBeUndefined();
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
+import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../components/operation-filters';
 
 interface Operation {
   id: string;
@@ -28,12 +29,14 @@ export function OperationsTimeline() {
   const [operations, setOperations] = useState<Operation[]>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState<OperationFilterValues>(emptyOperationFilters);
+  const hasFilters = Object.values(filters).some(Boolean);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch('/api/v1/operations', { credentials: 'include' });
+        const response = await fetch(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' });
         if (!response.ok) throw new Error('No se pudieron obtener las operaciones');
         const data = await response.json() as OperationsPage;
         if (!cancelled) setOperations(data.items);
@@ -45,14 +48,15 @@ export function OperationsTimeline() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [filters]);
 
   if (loading) return <section className="operations-timeline"><p aria-live="polite">Cargando operaciones…</p></section>;
   if (error) return <section className="operations-timeline"><p className="import-error">{error}</p></section>;
-  if (!operations || operations.length === 0) return <section className="operations-timeline"><p>No hay operaciones todavía.</p></section>;
-
   return <section className="operations-timeline">
     <span className="section-index">Operaciones</span>
+    <OperationFilters value={filters} onChange={setFilters} />
+    {!operations || operations.length === 0 ? <p>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
+    {operations && operations.length > 0 ?
     <ol className="evidence-thread">
       {operations.map((operation) => {
         const gross = operation.grossAmount !== null ? Number(operation.grossAmount).toFixed(2) : '—';
@@ -71,6 +75,6 @@ export function OperationsTimeline() {
           </div>
         </li>;
       })}
-    </ol>
+    </ol> : null}
   </section>;
 }

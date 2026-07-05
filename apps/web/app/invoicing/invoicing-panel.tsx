@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
+import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../components/operation-filters';
 
 interface Operation {
   id: string;
@@ -17,7 +18,10 @@ interface Operation {
   netAmount: string | null;
   originalCurrency: string | null;
   createdAt: string;
+  anomalyFlags?: string[];
 }
+
+const RECTIFICATION_REVIEW_FLAG = 'RECTIFICATION_REVIEW_REQUIRED';
 
 interface OperationsPage { items: Operation[]; page: number; pageSize: number; total: number }
 
@@ -42,12 +46,14 @@ export function InvoicingPanel() {
   const [loading, setLoading] = useState(true);
   const [issuing, setIssuing] = useState<Record<string, boolean>>({});
   const [outcomes, setOutcomes] = useState<Record<string, IssueOutcome>>({});
+  const [filters, setFilters] = useState<OperationFilterValues>(emptyOperationFilters);
+  const hasFilters = Object.values(filters).some(Boolean);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const response = await fetch('/api/v1/operations', { credentials: 'include' });
+        const response = await fetch(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' });
         if (!response.ok) throw new Error('No se pudieron obtener las operaciones');
         const data = await response.json() as OperationsPage;
         if (!cancelled) setOperations(data.items);
@@ -59,7 +65,7 @@ export function InvoicingPanel() {
     }
     void load();
     return () => { cancelled = true; };
-  }, []);
+  }, [filters]);
 
   async function issueInvoiceFor(operationId: string) {
     setIssuing((current) => ({ ...current, [operationId]: true }));
@@ -90,16 +96,18 @@ export function InvoicingPanel() {
 
   if (loading) return <section className="invoicing-documents"><p aria-live="polite">Cargando operaciones…</p></section>;
   if (error) return <section className="invoicing-documents"><p className="import-error">{error}</p></section>;
-  if (!operations || operations.length === 0) return <section className="invoicing-documents"><p>No hay operaciones todavía.</p></section>;
-
   return <section className="invoicing-documents">
     <span className="section-index">Operaciones pendientes de facturar</span>
-    {operations.map((operation) => {
+    <OperationFilters value={filters} onChange={setFilters} />
+    {!operations || operations.length === 0 ? <p>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
+    {operations?.map((operation) => {
       const outcome = outcomes[operation.id];
       const gross = operation.grossAmount !== null ? Number(operation.grossAmount).toFixed(2) : '—';
       const currency = operation.originalCurrency ?? 'EUR';
+      const needsReview = Boolean(operation.anomalyFlags?.includes(RECTIFICATION_REVIEW_FLAG));
       return <article key={operation.id} className="invoice-card">
         <StatusBadge tone="info">{operation.sourceOrderId ?? operation.id}</StatusBadge>
+        {needsReview ? <StatusBadge tone="warning">Revisión recomendada: posible rectificación por reembolso</StatusBadge> : null}
         <h2>{operation.sourceChannel}</h2>
         <dl>
           <div><dt>Bruto</dt><dd>{gross} {currency}</dd></div>

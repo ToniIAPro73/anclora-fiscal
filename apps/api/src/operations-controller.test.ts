@@ -41,11 +41,20 @@ describe('GET /api/v1/operations', () => {
   it('pasa tenantId y paginación al repositorio y devuelve el resultado paginado', async () => {
     const list = vi.fn().mockResolvedValue({ items: [], page: 2, pageSize: 10, total: 0 });
     const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { list });
-    const response = await app.inject({ method: 'GET', url: '/api/v1/operations?page=2&pageSize=10&status=DRAFT', headers: { cookie } });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/operations?page=2&pageSize=10&status=DRAFT&dateFrom=2026-07-01&dateTo=2026-07-31&productNature=ebook&sourceChannel=AMAZON_KDP', headers: { cookie } });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ items: [], page: 2, pageSize: 10, total: 0 });
-    expect(list).toHaveBeenCalledWith({ tenantId: '01977d43-75de-7000-8000-000000000010', page: 2, pageSize: 10, status: 'DRAFT' });
+    expect(list).toHaveBeenCalledWith({
+      tenantId: '01977d43-75de-7000-8000-000000000010',
+      page: 2,
+      pageSize: 10,
+      status: 'DRAFT',
+      dateFrom: new Date('2026-07-01T00:00:00.000Z'),
+      dateTo: new Date('2026-07-31T23:59:59.999Z'),
+      productNature: 'ebook',
+      sourceChannel: 'AMAZON_KDP',
+    });
   });
 
   it('devuelve 503 cuando no se ha inyectado un repositorio de operaciones', async () => {

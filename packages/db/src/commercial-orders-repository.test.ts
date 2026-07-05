@@ -81,6 +81,23 @@ describe('DrizzleCommercialOrdersRepository', () => {
     expect(created.taxAmount).toBe('0.270000');
   });
 
+  it('persiste customerEmail y customerAddress al crear', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenant(db, 'tenant-a');
+    const repository = new DrizzleCommercialOrdersRepository(db);
+
+    const created = await repository.create(tenantId, {
+      sourceChannel: 'SHOPIFY',
+      externalOrderId: 'order-evidence-4',
+      customerEmail: 'cliente@ejemplo.com',
+      customerAddress: 'Calle Ejemplo 1, Palma',
+    });
+    expect(created.customerEmail).toBe('cliente@ejemplo.com');
+    expect(created.customerAddress).toBe('Calle Ejemplo 1, Palma');
+  });
+
   it('devuelve undefined si el pedido no existe para ese tenant', async () => {
     const { client, db } = createOfflineDatabase();
     clients.push(client);
