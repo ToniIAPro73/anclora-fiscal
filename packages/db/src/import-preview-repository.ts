@@ -11,6 +11,29 @@ import {
 } from './schema.js';
 import * as schema from './schema.js';
 
+export interface ImportJobRecord {
+  id: string;
+  tenantId: string;
+  status: string;
+  connectorId: string | null;
+  mappingVersion: string | null;
+  summary: Record<string, unknown>;
+}
+
+export interface ImportJobWithFileRecord extends ImportJobRecord {
+  importFileId: string;
+  storageKey: string;
+  sha256: string;
+  mimeType: string;
+}
+
+export interface ImportIssueRecord {
+  id: string;
+  code: string;
+  severity: string;
+  blocking: boolean;
+}
+
 export interface PersistImportPreviewInput {
   tenantId: string;
   jobId: string;
@@ -55,7 +78,7 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
       await transaction.insert(importJobs).values({
         id: input.jobId,
         tenantId: input.tenantId,
-        status: 'PREVIEW_READY',
+        status: 'ANALYZED',
         connectorId: input.connectorId,
         mappingVersion: input.importerVersion,
         summary: input.summary,
@@ -100,6 +123,104 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
       });
 
       return { jobId: input.jobId, importFileId: file.id, duplicate: false };
+    });
+  }
+
+  async findJob(tenantId: string, jobId: string): Promise<ImportJobRecord | undefined> {
+    const [job] = await this.db
+      .select({ id: importJobs.id, tenantId: importJobs.tenantId, status: importJobs.status, connectorId: importJobs.connectorId, mappingVersion: importJobs.mappingVersion, summary: importJobs.summary })
+      .from(importJobs)
+      .where(and(eq(importJobs.tenantId, tenantId), eq(importJobs.id, jobId)))
+      .limit(1);
+    return job as ImportJobRecord | undefined;
+  }
+
+  async findJobWithFile(tenantId: string, jobId: string): Promise<ImportJobWithFileRecord | undefined> {
+    const [row] = await this.db
+      .select({
+        id: importJobs.id,
+        tenantId: importJobs.tenantId,
+        status: importJobs.status,
+        connectorId: importJobs.connectorId,
+        mappingVersion: importJobs.mappingVersion,
+        summary: importJobs.summary,
+        importFileId: importFiles.id,
+        storageKey: importFiles.storageKey,
+        sha256: importFiles.sha256,
+        mimeType: importFiles.mimeType,
+      })
+      .from(importJobs)
+      .innerJoin(importFiles, eq(importFiles.importJobId, importJobs.id))
+      .where(and(eq(importJobs.tenantId, tenantId), eq(importJobs.id, jobId)))
+      .limit(1);
+    return row as ImportJobWithFileRecord | undefined;
+  }
+
+  async listIssues(tenantId: string, jobId: string): Promise<ImportIssueRecord[]> {
+    return this.db
+      .select({ id: importErrors.id, code: importErrors.code, severity: importErrors.severity, blocking: importErrors.blocking })
+      .from(importErrors)
+      .where(and(eq(importErrors.tenantId, tenantId), eq(importErrors.importJobId, jobId)));
+  }
+
+  /**
+   * FASE 03: pure status transition + audit write. The actual
+   * commercial_orders/financial_events/royalty_lines records are created by
+   * ImportPreviewPersistenceService.persistFiscalRecords, orchestrated by
+   * confirmImportJob (apps/api/src/import-lifecycle-service.ts) before this
+   * method is called -- never by this repository.
+   */
+  async confirm(tenantId: string, jobId: string, status: 'IMPORTED' | 'IMPORTED_WITH_ISSUES'): Promise<void> {
+    await this.db.transaction(async (transaction) => {
+      await transaction.update(importJobs).set({ status, updatedAt: new Date() }).where(and(eq(importJobs.tenantId, tenantId), eq(importJobs.id, jobId)));
+      await transaction.insert(auditEvents).values({ tenantId, action: 'IMPORT_JOB_CONFIRMED', entityType: 'ImportJob', entityId: jobId, metadata: { status } });
+    });
+  }
+
+  async reject(tenantId: string, jobId: string, reason: string | undefined): Promise<void> {
+    await this.db.transaction(async (transaction) => {
+      await transaction.update(importJobs).set({ status: 'REJECTED', updatedAt: new Date() }).where(and(eq(importJobs.tenantId, tenantId), eq(importJobs.id, jobId)));
+      await transaction.insert(auditEvents).values({ tenantId, action: 'IMPORT_JOB_REJECTED', entityType: 'ImportJob', entityId: jobId, metadata: { reason: reason ?? null } });
+    });
+  }
+
+  async recordRetry(input: {
+    tenantId: string;
+    jobId: string;
+    actorId?: string | undefined;
+    reason?: string | undefined;
+    status: 'ANALYZED' | 'FAILED';
+    summary: Record<string, unknown>;
+    issues: Array<{ code: string; severity: string; message: string }>;
+  }): Promise<void> {
+    await this.db.transaction(async (transaction) => {
+      const [existingJob] = await transaction
+        .select({ summary: importJobs.summary })
+        .from(importJobs)
+        .where(and(eq(importJobs.tenantId, input.tenantId), eq(importJobs.id, input.jobId)))
+        .limit(1);
+      const retryHistory = Array.isArray((existingJob?.summary as { retryHistory?: unknown[] } | undefined)?.retryHistory)
+        ? [...((existingJob!.summary as { retryHistory: unknown[] }).retryHistory)]
+        : [];
+      retryHistory.push({ retriedBy: input.actorId ?? null, retriedAt: new Date().toISOString(), reason: input.reason ?? null, resultStatus: input.status });
+
+      await transaction
+        .update(importJobs)
+        .set({ status: input.status, summary: { ...input.summary, retryHistory }, updatedAt: new Date() })
+        .where(and(eq(importJobs.tenantId, input.tenantId), eq(importJobs.id, input.jobId)));
+
+      await transaction.delete(importErrors).where(and(eq(importErrors.tenantId, input.tenantId), eq(importErrors.importJobId, input.jobId)));
+      if (input.issues.length > 0) {
+        await transaction.insert(importErrors).values(input.issues.map((issue) => ({
+          tenantId: input.tenantId,
+          importJobId: input.jobId,
+          code: issue.code,
+          severity: issue.severity,
+          message: issue.message,
+          blocking: issue.severity === 'BLOCKING',
+        })));
+      }
+      await transaction.insert(auditEvents).values({ tenantId: input.tenantId, action: 'IMPORT_JOB_RETRIED', entityType: 'ImportJob', entityId: input.jobId, metadata: { status: input.status, retriedBy: input.actorId ?? null, reason: input.reason ?? null } });
     });
   }
 }

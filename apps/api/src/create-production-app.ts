@@ -2,7 +2,7 @@ import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
 import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
-import { ImportMetadataCipher, ImportPreviewPersistenceService, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
+import { ImportMetadataCipher, ImportPreviewPersistenceService, type FiscalPersistencePort, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import { MatchingService } from './matching-service.js';
 import { TaxDecisionService } from './tax-decision-service.js';
 import { InvoiceIssuanceService } from './invoice-issuance-service.js';
@@ -13,6 +13,7 @@ import type { IssuesRepositoryPort } from './issues-controller.js';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import type { DashboardSummaryRepositoryPort } from './dashboard-controller.js';
+import type { ImportLifecycleRepositoryPort } from './import-lifecycle-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
 import type { FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
@@ -50,7 +51,7 @@ export async function createProductionApp() {
     : new FilesystemStorage(process.env.STORAGE_ROOT ?? resolve(process.cwd(), 'storage'));
 
   let closeDatabase: () => Promise<unknown>;
-  let importPreviewPersistence: ImportPreviewPersistencePort;
+  let importPreviewPersistence: ImportPreviewPersistencePort & FiscalPersistencePort;
   let operationsRepository: OperationsRepositoryPort;
   let commercialOrdersRepository: CommercialOrdersRepositoryPort;
   let financialEventsRepository: FinancialEventsRepositoryPort;
@@ -59,6 +60,7 @@ export async function createProductionApp() {
   let fiscalDocumentsRepository: FiscalDocumentsRepositoryPort;
   let periodClosesRepository: PeriodClosesRepositoryPort;
   let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
+  let importLifecycleRepository: ImportLifecycleRepositoryPort;
   let authService: AuthService;
   let fiscalConfigurationRepository: FiscalConfigurationRepositoryPort;
   let importDedup: {
@@ -93,14 +95,16 @@ export async function createProductionApp() {
       taxDecisionService,
       invoiceIssuanceService,
     });
+    const importPreviewRepository = new DrizzleImportPreviewRepository(database.db);
     importPreviewPersistence = new ImportPreviewPersistenceService(
-      new DrizzleImportPreviewRepository(database.db),
+      importPreviewRepository,
       new ImportMetadataCipher(metadataSecret),
       royaltyRepositoryForPersistence,
       commercialOrdersRepositoryForMatching,
       financialEventsRepositoryForMatching,
       matchingService,
     );
+    importLifecycleRepository = importPreviewRepository;
     importDedup = {
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
@@ -145,14 +149,16 @@ export async function createProductionApp() {
       taxDecisionService,
       invoiceIssuanceService,
     });
+    const importPreviewRepository = new DrizzleImportPreviewRepository(database.db);
     importPreviewPersistence = new ImportPreviewPersistenceService(
-      new DrizzleImportPreviewRepository(database.db),
+      importPreviewRepository,
       new ImportMetadataCipher(metadataSecret),
       royaltyRepositoryForPersistence,
       commercialOrdersRepositoryForMatching,
       financialEventsRepositoryForMatching,
       matchingService,
     );
+    importLifecycleRepository = importPreviewRepository;
     importDedup = {
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
@@ -171,7 +177,7 @@ export async function createProductionApp() {
     closeDatabase = () => database.client.close();
   }
 
-  const app = await buildApp({ storage, importPreviewPersistence, importDedup, operationsRepository, commercialOrdersRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, fiscalConfigurationRepository, authService });
+  const app = await buildApp({ storage, importPreviewPersistence, fiscalPersistence: importPreviewPersistence, importDedup, importLifecycleRepository, operationsRepository, commercialOrdersRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, fiscalConfigurationRepository, authService });
   app.addHook('onClose', closeDatabase);
   return app;
 }

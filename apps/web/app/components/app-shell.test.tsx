@@ -46,13 +46,13 @@ describe('AppShell', () => {
 
   it('shows the pending-count badge for items with pendingCountKey data', () => {
     mockPathname = '/';
-    render(<AppShell pendingCounts={{ reconciliationTotal: 4 }}>content</AppShell>);
+    render(<AppShell pendingCounts={{ reconciliationTotal: 4 }} hasPayoutData>content</AppShell>);
     expect(screen.getByLabelText('4 pendientes')).toBeInTheDocument();
   });
 
   it('omits the badge when there is no pending count', () => {
     mockPathname = '/';
-    render(<AppShell>content</AppShell>);
+    render(<AppShell hasPayoutData>content</AppShell>);
     expect(screen.queryByLabelText(/pendientes/)).not.toBeInTheDocument();
   });
 
@@ -60,5 +60,29 @@ describe('AppShell', () => {
     mockPathname = '/';
     render(<AppShell><p>Panel content</p></AppShell>);
     expect(screen.getByText('Panel content')).toBeInTheDocument();
+  });
+
+  it('hides Conciliación when hasPayoutData is false', () => {
+    mockPathname = '/';
+    render(<AppShell hasPayoutData={false}>content</AppShell>);
+    expect(screen.queryByRole('link', { name: /Conciliación/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Conciliación')).not.toBeInTheDocument();
+  });
+
+  it('shows Conciliación when hasPayoutData is true', () => {
+    mockPathname = '/';
+    render(<AppShell hasPayoutData>content</AppShell>);
+    expect(screen.getByRole('link', { name: /Conciliación/ })).toHaveAttribute('href', '/reconciliation');
+  });
+
+  it('defaults to hiding Conciliación and fetches the summary when hasPayoutData is not provided', async () => {
+    mockPathname = '/';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ hasPayoutData: true }),
+    }));
+    render(<AppShell>content</AppShell>);
+    expect(await screen.findByRole('link', { name: /Conciliación/ })).toHaveAttribute('href', '/reconciliation');
+    vi.unstubAllGlobals();
   });
 });

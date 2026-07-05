@@ -44,6 +44,16 @@ export interface ImportPreviewPersistencePort {
   persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }>;
 }
 
+/**
+ * FASE 03: the fiscal-record-creation step (commercial_orders/financial_events/
+ * royalty_lines + the matching trigger) is confirm-exclusive -- it must never
+ * run at preview/analysis time. This port is what import-lifecycle-service.ts's
+ * confirmImportJob calls once a job has passed blocking-issue gating.
+ */
+export interface FiscalPersistencePort {
+  persistFiscalRecords(tenantId: string, importFileId: string, preview: ImportPreviewResponse): Promise<{ createdRecordIds: Record<string, string[]> }>;
+}
+
 export class ImportMetadataCipher {
   private readonly key: Buffer;
 
@@ -66,7 +76,7 @@ const IMPORTER_VERSIONS: Record<ImportPreviewResponse['connector'], string> = {
   'kdp-xlsx': 'kdp-xlsx@0.1.0',
 };
 
-export class ImportPreviewPersistenceService implements ImportPreviewPersistencePort {
+export class ImportPreviewPersistenceService implements ImportPreviewPersistencePort, FiscalPersistencePort {
   constructor(
     private readonly repository: ImportPreviewRepositoryPort,
     private readonly cipher: ImportMetadataCipher,
@@ -76,6 +86,14 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly matchingService?: MatchingServicePort,
   ) {}
 
+  /**
+   * Analysis/bookkeeping only (FASE 03): creates/updates the import_jobs row
+   * (status ANALYZED), the import_files + evidence_documents rows (evidence
+   * custody, sha256, encrypted filename) and import_errors (the issue list).
+   * Deliberately does NOT create commercial_orders/financial_events/
+   * royalty_lines and does NOT run matching -- see persistFiscalRecords(),
+   * which is called from confirm time only.
+   */
   async persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
     const result = await this.repository.persist({
       tenantId,
@@ -88,30 +106,42 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       issues: preview.issues,
     });
 
-    if (result.duplicate) {
-      return { jobId: result.jobId, duplicate: result.duplicate };
-    }
+    return { jobId: result.jobId, duplicate: result.duplicate };
+  }
+
+  /**
+   * Fiscal persistence (FASE 03, confirm-exclusive): creates the real
+   * commercial_orders/financial_events/royalty_lines records for an already-
+   * analyzed job and runs matching for the newly-created rows. Called by
+   * confirmImportJob (import-lifecycle-service.ts) once blocking-issue
+   * gating has passed -- never at preview time.
+   */
+  async persistFiscalRecords(tenantId: string, importFileId: string, preview: ImportPreviewResponse): Promise<{ createdRecordIds: Record<string, string[]> }> {
+    const createdRecordIds: Record<string, string[]> = {};
 
     if (this.royaltyRepository && preview.royalty) {
-      await this.royaltyRepository.persist({
+      const royaltyResult = await this.royaltyRepository.persist({
         tenantId,
-        importFileId: result.importFileId,
+        importFileId,
         statement: preview.royalty.statement,
         lines: preview.royalty.lines,
       });
+      createdRecordIds.royaltyStatements = [royaltyResult.statementId];
     }
 
     if (this.commercialOrdersRepository && preview.commercialOrders) {
       const createdOrders = await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
+      createdRecordIds.commercialOrders = createdOrders.map((order) => order.id);
       await this.triggerMatchingForNewOrders(tenantId, createdOrders);
     }
 
     if (this.financialEventsRepository && preview.financialEvents) {
       const createdEvents = await this.financialEventsRepository.createMany(tenantId, preview.financialEvents);
+      createdRecordIds.financialEvents = createdEvents.map((event) => event.id);
       await this.triggerMatchingForNewEvents(tenantId, createdEvents);
     }
 
-    return { jobId: result.jobId, duplicate: result.duplicate };
+    return { createdRecordIds };
   }
 
   /**

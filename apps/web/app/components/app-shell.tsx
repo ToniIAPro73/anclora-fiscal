@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import medal from '../../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
 import tenantMedal from '../../../../packages/ui/assets/brand/anclora-insights-medalla-oro-transparente.png';
 import { navigation, type NavPendingCounts } from '../lib/navigation';
@@ -12,10 +12,40 @@ import { LogoutButton } from '../logout-button';
 export interface AppShellProps {
   children: ReactNode;
   pendingCounts?: NavPendingCounts | undefined;
+  /**
+   * Whether the tenant has at least one confirmed Shopify Payments import —
+   * gates the "Conciliación" nav item. When a page has already fetched
+   * dashboard-summary (e.g. the dashboard itself), pass the known value
+   * directly to avoid a duplicate network call. When omitted, AppShell
+   * fetches it itself so nav gating still works on pages that don't already
+   * load the summary (e.g. /imports).
+   */
+  hasPayoutData?: boolean | undefined;
 }
 
-export function AppShell({ children, pendingCounts }: AppShellProps) {
+export function AppShell({ children, pendingCounts, hasPayoutData }: AppShellProps) {
   const pathname = usePathname();
+  const [fetchedHasPayoutData, setFetchedHasPayoutData] = useState<boolean>();
+
+  useEffect(() => {
+    if (hasPayoutData !== undefined) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const response = await fetch('/api/v1/dashboard/summary', { credentials: 'include' });
+        if (!response.ok) return;
+        const data = await response.json() as { hasPayoutData?: boolean };
+        if (!cancelled) setFetchedHasPayoutData(Boolean(data.hasPayoutData));
+      } catch {
+        // Nav gating fails closed (item stays hidden) when the summary can't be fetched.
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [hasPayoutData]);
+
+  const resolvedHasPayoutData = hasPayoutData ?? fetchedHasPayoutData ?? false;
+  const visibleNavigation = navigation.filter((item) => item.gatedBy !== 'hasPayoutData' || resolvedHasPayoutData);
 
   return <main className="app-shell">
     <aside className="sidebar">
@@ -24,7 +54,7 @@ export function AppShell({ children, pendingCounts }: AppShellProps) {
         <span>Anclora <em>Fiscal</em></span>
       </div>
       <nav aria-label="Navegación principal">
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           if (item.status === 'comingSoon') {
             return <span
               key={item.href}

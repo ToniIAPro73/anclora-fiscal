@@ -31,11 +31,45 @@ describe('ImportPreviewPersistenceService', () => {
     expect(persisted.originalNameEncrypted).not.toContain('clientes-2026.csv');
   });
 
-  it('persiste las líneas de regalías cuando el preview incluye datos KDP', async () => {
+  it('persist() NO crea pedidos, eventos ni líneas de regalías aunque el preview los incluya (FASE 03: solo confirm() puede persistir datos fiscales)', async () => {
     const persist = vi.fn().mockResolvedValue({ jobId: 'job-2', importFileId: 'file-2', duplicate: false });
-    const royaltyPersist = vi.fn().mockResolvedValue({ statementId: 'stmt-1', duplicate: false });
+    const royaltyPersist = vi.fn();
+    const commercialOrdersCreateMany = vi.fn();
+    const financialEventsCreateMany = vi.fn();
     const service = new ImportPreviewPersistenceService(
       { persist },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      { persist: royaltyPersist },
+      { createMany: commercialOrdersCreateMany },
+      { createMany: financialEventsCreateMany },
+    );
+    const statement = { hash: 'b'.repeat(64), sourceConnector: 'kdp' as const, currency: 'EUR', periods: ['2026-06'], totalRoyalties: 6.99, lineCount: 1 };
+    const lines = [{ businessKey: 'k1', classification: 'ebook' as const, status: 'RECOGNIZED' as const, period: '2026-06', isbnOrAsin: 'B1', amount: 6.99, currency: 'EUR', sourceSheet: 'Regalías de eBooks' }];
+    const preview = {
+      jobId: 'job-2',
+      status: 'PREVIEW_READY' as const,
+      connector: 'kdp-xlsx' as const,
+      evidence: { key: 'evidence/key', sha256: 'c'.repeat(64), size: 42, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+      summary: { records: 1, issues: 0, orderIds: ['B1'] },
+      issues: [],
+      royalty: { statement, lines },
+      commercialOrders: [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001', commercialDate: new Date('2026-07-01') }],
+      financialEvents: [{ sourceChannel: 'SHOPIFY', externalEventId: 'evt-1', eventType: 'charge', amount: '10', feeAmount: '1', netAmount: '9', currency: 'EUR', occurredAt: new Date('2026-07-01') }],
+    };
+
+    await service.persist('01977d43-75de-7000-8000-000000000010', 'kdp.xlsx', preview);
+
+    expect(royaltyPersist).not.toHaveBeenCalled();
+    expect(commercialOrdersCreateMany).not.toHaveBeenCalled();
+    expect(financialEventsCreateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('ImportPreviewPersistenceService.persistFiscalRecords (FASE 03, confirm-exclusive)', () => {
+  it('persiste las líneas de regalías cuando el preview incluye datos KDP y devuelve createdRecordIds', async () => {
+    const royaltyPersist = vi.fn().mockResolvedValue({ statementId: 'stmt-1', duplicate: false });
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
       { persist: royaltyPersist },
     );
@@ -51,38 +85,16 @@ describe('ImportPreviewPersistenceService', () => {
       royalty: { statement, lines },
     };
 
-    await service.persist('01977d43-75de-7000-8000-000000000010', 'kdp.xlsx', preview);
+    const result = await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-2', preview);
     expect(royaltyPersist).toHaveBeenCalledWith({ tenantId: '01977d43-75de-7000-8000-000000000010', importFileId: 'file-2', statement, lines });
+    expect(result).toEqual({ createdRecordIds: { royaltyStatements: ['stmt-1'] } });
   });
 
-  it('no persiste líneas de regalías cuando el archivo ya estaba registrado (duplicate)', async () => {
-    const persist = vi.fn().mockResolvedValue({ jobId: 'job-3', importFileId: 'file-3', duplicate: true });
-    const royaltyPersist = vi.fn();
-    const service = new ImportPreviewPersistenceService(
-      { persist },
-      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
-      { persist: royaltyPersist },
-    );
-    const preview = {
-      jobId: 'job-3',
-      status: 'PREVIEW_READY' as const,
-      connector: 'kdp-xlsx' as const,
-      evidence: { key: 'evidence/key', sha256: 'd'.repeat(64), size: 42, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
-      summary: { records: 1, issues: 0, orderIds: ['B1'] },
-      issues: [],
-      royalty: { statement: { hash: 'd'.repeat(64), sourceConnector: 'kdp' as const, currency: 'EUR', periods: ['2026-06'], totalRoyalties: 6.99, lineCount: 1 }, lines: [] },
-    };
-
-    await service.persist('01977d43-75de-7000-8000-000000000010', 'kdp.xlsx', preview);
-    expect(royaltyPersist).not.toHaveBeenCalled();
-  });
-
-  it('persiste los pedidos comerciales y eventos financieros normalizados cuando el preview los incluye', async () => {
-    const persist = vi.fn().mockResolvedValue({ jobId: 'job-4', importFileId: 'file-4', duplicate: false });
+  it('persiste los pedidos comerciales y eventos financieros normalizados cuando el preview los incluye y devuelve sus ids', async () => {
     const commercialOrdersCreateMany = vi.fn().mockResolvedValue([{ id: 'order-row-1' }]);
     const financialEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-1' }]);
     const service = new ImportPreviewPersistenceService(
-      { persist },
+      { persist: vi.fn() },
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
       undefined,
       { createMany: commercialOrdersCreateMany },
@@ -101,20 +113,21 @@ describe('ImportPreviewPersistenceService', () => {
       financialEvents,
     };
 
-    await service.persist('01977d43-75de-7000-8000-000000000010', 'pedido-shopify.csv', preview);
+    const result = await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-4', preview);
 
     expect(commercialOrdersCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', commercialOrders);
     expect(financialEventsCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', financialEvents);
+    expect(result).toEqual({ createdRecordIds: { commercialOrders: ['order-row-1'], financialEvents: ['event-row-1'] } });
   });
 
-  it('no persiste pedidos ni eventos cuando el archivo ya estaba registrado (duplicate)', async () => {
-    const persist = vi.fn().mockResolvedValue({ jobId: 'job-5', importFileId: 'file-5', duplicate: true });
+  it('no persiste nada cuando el preview no incluye datos fiscales', async () => {
+    const royaltyPersist = vi.fn();
     const commercialOrdersCreateMany = vi.fn();
     const financialEventsCreateMany = vi.fn();
     const service = new ImportPreviewPersistenceService(
-      { persist },
+      { persist: vi.fn() },
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
-      undefined,
+      { persist: royaltyPersist },
       { createMany: commercialOrdersCreateMany },
       { createMany: financialEventsCreateMany },
     );
@@ -125,12 +138,13 @@ describe('ImportPreviewPersistenceService', () => {
       evidence: { key: 'evidence/key', sha256: 'f'.repeat(64), size: 42, mimeType: 'text/csv' },
       summary: { records: 1, issues: 0, orderIds: ['AI-1001'] },
       issues: [],
-      commercialOrders: [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001' }],
     };
 
-    await service.persist('01977d43-75de-7000-8000-000000000010', 'pedido-shopify.csv', preview);
+    const result = await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-5', preview);
 
+    expect(royaltyPersist).not.toHaveBeenCalled();
     expect(commercialOrdersCreateMany).not.toHaveBeenCalled();
     expect(financialEventsCreateMany).not.toHaveBeenCalled();
+    expect(result).toEqual({ createdRecordIds: {} });
   });
 });

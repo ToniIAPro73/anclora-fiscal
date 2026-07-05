@@ -12,6 +12,7 @@ interface DashboardSummary {
   reconciliationStatus: { matched: number; unmatched: number; total: number };
   documentsIssuedCount: number;
   royalties: { statementsCount: number; totalThisPeriod: string; period: string };
+  hasPayoutData?: boolean;
 }
 
 export default function Dashboard() {
@@ -44,7 +45,10 @@ export default function Dashboard() {
     ? Math.round((summary.reconciliationStatus.matched / summary.reconciliationStatus.total) * 100)
     : undefined;
 
-  return <AppShell pendingCounts={summary ? { openIssuesCount: summary.openIssuesCount, reconciliationTotal: summary.reconciliationStatus.total } : undefined}>
+  return <AppShell
+    pendingCounts={summary ? { openIssuesCount: summary.openIssuesCount, reconciliationTotal: summary.reconciliationStatus.total } : undefined}
+    hasPayoutData={summary?.hasPayoutData}
+  >
     <PageHeader
       eyebrow="Centro de control"
       title="Centro de control"

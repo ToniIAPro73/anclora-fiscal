@@ -17,6 +17,7 @@ export function createOfflineDatabase(path = 'memory://') {
 export * from './schema.js';
 export * from './migrations.js';
 export * from './import-preview-repository.js';
+export * from './import-issue-codes.js';
 export * from './auth-audit-repository.js';
 export * from './operations-repository.js';
 export * from './financial-events-repository.js';

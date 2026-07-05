@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { previewImport } from './import-service.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
 import type { ImportPreviewPersistencePort } from './import-preview-persistence.js';
+import { isImportConnectorId } from '@anclora/db';
 
 const ALLOWED_IMPORT_MIME_TYPES = new Set([
   'text/csv',
@@ -22,6 +23,17 @@ export function createImportPreviewHandler(dependencies: {
     if (!tenantId) return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Debe iniciar sesión' });
     const file = await request.file();
     if (!file) return reply.code(400).send({ code: 'FILE_REQUIRED', message: 'Debe adjuntar un archivo' });
+    // FASE 03: the multipart form must declare which of the 3 known
+    // connectors the upload is for. This is validated at the HTTP layer only
+    // -- previewImport() still auto-detects the actual file format/connector
+    // from file content, and the two are cross-checked below so a
+    // mislabeled upload fails loudly instead of silently mis-routing.
+    const connectorIdField = file.fields?.['connectorId'];
+    const connectorIdPart = Array.isArray(connectorIdField) ? connectorIdField[0] : connectorIdField;
+    const connectorId = connectorIdPart && 'value' in connectorIdPart && typeof connectorIdPart.value === 'string' ? connectorIdPart.value : undefined;
+    if (!connectorId || !isImportConnectorId(connectorId)) {
+      return reply.code(400).send({ code: 'CONNECTOR_ID_REQUIRED', message: 'Debe indicar connectorId (shopify-orders, shopify-payments o amazon-kdp-royalties)' });
+    }
     if (!ALLOWED_IMPORT_MIME_TYPES.has(file.mimetype)) {
       return reply.code(422).send({ code: 'UNSUPPORTED_MIME_TYPE', message: `Tipo de archivo no admitido: ${file.mimetype}` });
     }
@@ -47,11 +59,17 @@ export function createImportPreviewHandler(dependencies: {
       return reply.code(422).send({ code: 'INVALID_IMPORT', message: 'El archivo no coincide con un formato admitido' });
     }
 
-    if (!dependencies.persistence) return preview;
+    // HTTP-layer rename only (FASE 03): new jobs are reported as ANALYZED,
+    // not PREVIEW_READY. The internal previewImport()/persist() functions
+    // keep using 'PREVIEW_READY' as their literal type -- only the response
+    // body changes, so unit tests of those functions are unaffected.
+    const response = { ...preview, status: 'ANALYZED' as const };
+
+    if (!dependencies.persistence) return response;
 
     try {
       const persisted = await dependencies.persistence.persist(tenantId, file.filename, preview);
-      return { ...preview, ...persisted };
+      return { ...response, ...persisted };
     } catch (error) {
       // Drizzle wraps driver errors in a DrizzleQueryError whose own .message
       // is just "Failed query: <sql>\nparams: <params>" — the real reason

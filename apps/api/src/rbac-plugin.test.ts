@@ -28,6 +28,10 @@ async function authenticatedApp(role: Role) {
 function multipartCsvBody(boundary: string, filename: string, mimeType: string, content: string) {
   return [
     `--${boundary}`,
+    'Content-Disposition: form-data; name="connectorId"',
+    '',
+    'shopify-orders',
+    `--${boundary}`,
     `Content-Disposition: form-data; name="file"; filename="${filename}"`,
     `Content-Type: ${mimeType}`,
     '',

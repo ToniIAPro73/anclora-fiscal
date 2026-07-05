@@ -1,7 +1,10 @@
 import { boolean, date, index, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 export const roleName = pgEnum('role_name', ['ADMIN', 'FISCAL_OPERATOR', 'REVIEWER', 'ADVISOR_READONLY']);
-export const importStatus = pgEnum('import_status', ['PENDING', 'PROCESSING', 'PREVIEW_READY', 'VALIDATED', 'PARTIALLY_IMPORTED', 'FAILED', 'REPROCESSED']);
+// FASE 03: ANALYZED/PENDING_CONFIRMATION/IMPORTED/IMPORTED_WITH_ISSUES/REJECTED
+// are additive (see migrations/0012_import_states_v2.sql). Old values remain
+// valid for reading pre-FASE-03 rows -- no backfill, no rename.
+export const importStatus = pgEnum('import_status', ['PENDING', 'PROCESSING', 'PREVIEW_READY', 'VALIDATED', 'PARTIALLY_IMPORTED', 'FAILED', 'REPROCESSED', 'ANALYZED', 'PENDING_CONFIRMATION', 'IMPORTED', 'IMPORTED_WITH_ISSUES', 'REJECTED']);
 
 const identity = {
   id: uuid('id').primaryKey().defaultRandom(),

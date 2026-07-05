@@ -10,7 +10,8 @@ import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
 import { resolve } from 'node:path';
 import { createImportPreviewHandler } from './import-controller.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
-import type { ImportPreviewPersistencePort } from './import-preview-persistence.js';
+import type { FiscalPersistencePort, ImportPreviewPersistencePort } from './import-preview-persistence.js';
+import { createImportConfirmHandler, createImportRejectHandler, createImportRetryHandler, type ImportLifecycleRepositoryPort } from './import-lifecycle-controller.js';
 import { createOperationsListHandler, type OperationsRepositoryPort } from './operations-controller.js';
 import { createFinancialEventsListHandler, type FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import { createReconciliationCandidatesListHandler, type ReconciliationRepositoryPort } from './reconciliation-controller.js';
@@ -61,11 +62,13 @@ function createUnmatchedOrdersListHandler(dependencies: { repository?: (Reconcil
 export async function buildApp(options: {
   storage?: StoragePort;
   importPreviewPersistence?: ImportPreviewPersistencePort;
+  fiscalPersistence?: FiscalPersistencePort | undefined;
   importDedup?: {
     commercialOrdersRepository?: CommercialOrdersDedupPort | undefined;
     financialEventsRepository?: FinancialEventsDedupPort | undefined;
     royaltyRepository?: RoyaltyDedupPort | undefined;
   } | undefined;
+  importLifecycleRepository?: ImportLifecycleRepositoryPort | undefined;
   operationsRepository?: OperationsRepositoryPort | undefined;
   commercialOrdersRepository?: CommercialOrdersRepositoryPort | undefined;
   financialEventsRepository?: FinancialEventsRepositoryPort | undefined;
@@ -110,6 +113,22 @@ export async function buildApp(options: {
       financialEventsRepository: options.importDedup?.financialEventsRepository,
       royaltyRepository: options.importDedup?.royaltyRepository,
     }),
+  );
+  const importStorage = options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage'));
+  app.post(
+    '/api/v1/imports/:jobId/confirm',
+    { preHandler: requireRole(['imports:write']) },
+    createImportConfirmHandler({ repository: options.importLifecycleRepository, fiscalPersistence: options.fiscalPersistence, storage: importStorage }),
+  );
+  app.post(
+    '/api/v1/imports/:jobId/reject',
+    { preHandler: requireRole(['imports:write']) },
+    createImportRejectHandler({ repository: options.importLifecycleRepository }),
+  );
+  app.post(
+    '/api/v1/imports/:jobId/retry',
+    { preHandler: requireRole(['imports:write']) },
+    createImportRetryHandler({ repository: options.importLifecycleRepository, storage: importStorage }),
   );
   app.get(
     '/api/v1/commercial-orders',

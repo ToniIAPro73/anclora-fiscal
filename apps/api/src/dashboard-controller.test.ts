@@ -28,6 +28,7 @@ const summary = {
   reconciliationStatus: { matched: 1, unmatched: 1, total: 2 },
   documentsIssuedCount: 0,
   royalties: { statementsCount: 1, totalThisPeriod: '42.50' },
+  hasPayoutData: false,
 };
 
 describe('GET /api/v1/dashboard/summary', () => {

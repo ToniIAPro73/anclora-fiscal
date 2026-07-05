@@ -47,14 +47,57 @@ ya aplicado y el bootstrap reutiliza el tenant, actor y rol existentes.
 
 ### `POST /api/v1/imports/preview`
 
-Acepta multipart con campo `file`, máximo 15 MB. MIME permitidos: CSV, PDF y
-XLSX. Requiere una sesión firmada cuyo actor tenga rol `FISCAL_OPERATOR` o
-`ADMIN`. El tenant de almacenamiento y persistencia se deriva exclusivamente
-de esa sesión (ver `docs/security.md` para el mecanismo de sesión firmada).
+Acepta multipart con campo `file` (máximo 15 MB) y campo de texto
+**obligatorio** `connectorId`, uno de `shopify-orders`, `shopify-payments` o
+`amazon-kdp-royalties` (FASE 03 — ver
+`packages/db/src/import-issue-codes.ts`). MIME permitidos: CSV, PDF y XLSX.
+Requiere una sesión firmada cuyo actor tenga rol `FISCAL_OPERATOR` o `ADMIN`.
+El tenant de almacenamiento y persistencia se deriva exclusivamente de esa
+sesión (ver `docs/security.md` para el mecanismo de sesión firmada).
 
 La respuesta incluye conector, hash de evidencia, resumen e incidencias sin
-PII. Los errores son `400 FILE_REQUIRED`, `401 UNAUTHENTICATED`,
-`403 FORBIDDEN` y errores `422` de MIME o estructura.
+PII, y `status: 'ANALYZED'` para trabajos nuevos (antes `'PREVIEW_READY'` —
+cambio de contrato intencional de FASE 03). Los errores son
+`400 FILE_REQUIRED`, `400 CONNECTOR_ID_REQUIRED` (falta o valor inválido de
+`connectorId`), `401 UNAUTHENTICATED`, `403 FORBIDDEN` y errores `422` de MIME
+o estructura.
+
+### `POST /api/v1/imports/:jobId/confirm`
+
+Requiere `imports:write`. Body opcional `{ acknowledgedIssueIds?: string[] }`
+con los ids de `import_errors` que el operador reconoce explícitamente. Es la
+**única** acción que persiste los registros fiscales finales
+(`commercial_orders`/`financial_events`/`royalty_lines`) derivados de la
+importación — `preview`/`retry` nunca escriben esas tablas.
+
+- `200` → `{ jobId, status: 'IMPORTED' | 'IMPORTED_WITH_ISSUES', createdRecordIds }`
+  (`IMPORTED_WITH_ISSUES` si quedan incidencias no bloqueantes, o bloqueantes
+  ya reconocidas, tras la confirmación).
+- `404 IMPORT_JOB_NOT_FOUND`
+- `409 IMPORT_JOB_NOT_CONFIRMABLE` — el job no está en `ANALYZED`/`PENDING_CONFIRMATION`.
+- `422 IMPORT_JOB_BLOCKING_ISSUES` — quedan incidencias bloqueantes sin
+  reconocer; el cuerpo incluye `unacknowledgedIssueIds`.
+
+### `POST /api/v1/imports/:jobId/reject`
+
+Requiere `imports:write`. Body opcional `{ reason?: string }`. Transiciona el
+job a `REJECTED` sin borrar `import_files`/`evidence_documents` (la custodia
+del archivo original se conserva).
+
+- `200` → `{ jobId, status: 'REJECTED' }`
+- `404 IMPORT_JOB_NOT_FOUND`
+- `409 IMPORT_JOB_ALREADY_CONFIRMED` — el job ya está `IMPORTED`/`IMPORTED_WITH_ISSUES`.
+
+### `POST /api/v1/imports/:jobId/retry`
+
+Requiere `imports:write`. Body opcional `{ reason?: string }`. Reanaliza el
+archivo ya custodiado (mismo `sha256` + `mapping_version`, sin crear un nuevo
+`import_jobs`/`import_files`) y registra quién reintentó y por qué en
+`import_jobs.summary.retryHistory` (jsonb, ver
+`packages/db/src/import-preview-repository.ts`).
+
+- `200` → `{ jobId, status: 'ANALYZED' | 'FAILED', summary, issues }`
+- `404 IMPORT_JOB_NOT_FOUND` — el job o el archivo custodiado no existen.
 
 ## Paginación
 

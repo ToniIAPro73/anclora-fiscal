@@ -37,6 +37,7 @@ describe('DrizzleDashboardSummaryRepository', () => {
       reconciliationStatus: { matched: 0, unmatched: 0, total: 0 },
       documentsIssuedCount: 0,
       royalties: { statementsCount: 0, totalThisPeriod: '0.00', period: currentPeriodKey() },
+      hasPayoutData: false,
     });
   });
 
@@ -96,6 +97,21 @@ describe('DrizzleDashboardSummaryRepository', () => {
     expect(summary.reconciliationStatus).toEqual({ matched: 1, unmatched: 1, total: 2 });
     expect(summary.documentsIssuedCount).toBe(0);
     expect(summary.royalties).toEqual({ statementsCount: 1, totalThisPeriod: '42.50', period });
+    expect(summary.hasPayoutData).toBe(false);
+  });
+
+  it('hasPayoutData es true solo cuando existe un import_job shopify-payments IMPORTED/IMPORTED_WITH_ISSUES', async () => {
+    const { client, db } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const tenantId = await seedTenant(db, 'tenant-payouts');
+    const repository = new DrizzleDashboardSummaryRepository(db);
+
+    await db.insert(importJobs).values({ tenantId, status: 'ANALYZED', connectorId: 'shopify-payments' });
+    expect((await repository.getSummary(tenantId)).hasPayoutData).toBe(false);
+
+    await db.insert(importJobs).values({ tenantId, status: 'IMPORTED', connectorId: 'shopify-payments' });
+    expect((await repository.getSummary(tenantId)).hasPayoutData).toBe(true);
   });
 
   it('devuelve el period key del mes actual en royalties.period', async () => {

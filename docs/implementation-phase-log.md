@@ -167,3 +167,50 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
     servicios productivos cargan exclusivamente perfiles persistidos y bloquean si faltan.
   - No se aplica la migración a producción en esta fase; requiere una petición explícita.
 - **Siguiente fase:** FASE 03 — Arquitectura de importación, preview y confirmación segura.
+
+---
+
+## FASE 03 — Arquitectura de importación, preview y confirmación segura
+
+- **Objetivo:** implementar el circuito completo de importación de archivos (Shopify, KDP, Pagos) con
+  descomposición transparente de problemas, vista previa antes de persistencia, y confirmación
+  deliberada sin rollback automático de cambios fiscales parcialmente comprometidos.
+- **Archivos / migraciones:** migración aditiva `packages/db/migrations/0012_import_states_v2.sql`;
+  esquema y repositorios en `packages/db/src/schema.ts`, `import-preview-repository.ts`,
+  `import-issue-codes.ts` y `dashboard-summary-repository.ts`; ciclo de vida y servicios en
+  `apps/api/src/import-lifecycle-controller.ts`, `import-lifecycle-service.ts`,
+  `import-controller.ts` e `import-preview-persistence.ts`; wiring productivo en
+  `apps/api/src/build-app.ts` y `create-production-app.ts`; componentes de interfaz en
+  `apps/web/app/imports/` (uploader, import-card, shopify-orders-card, shopify-payments-card,
+  kdp-royalties-card); actualización de navegación y shell en `apps/web/app/lib/navigation.ts`,
+  `apps/web/app/components/app-shell.tsx`, `apps/web/app/page.tsx`; pruebas end-to-end en
+  `apps/web/e2e/imports.spec.ts` y `e2e/navigation.spec.ts`; actualización de documentación en
+  `docs/api.md` y pruebas unitarias asociadas en todos los módulos.
+- **Pruebas ejecutadas y resultado real:** `pnpm --filter api test`, `pnpm --filter web test`,
+  `pnpm --filter db test`:
+
+  ```text
+  @anclora/api:test — Test Files  21 passed, 1 failed / Tests  136 passed, 12 failed
+  (12 failures: ENOENT on .evidence/pedido-shopify.csv and pedido-shopify-sin-pais.csv —
+   pre-existing fixture files missing, confirmed unrelated to FASE 03 changes via clean-HEAD
+   worktree baseline)
+
+  @anclora/web:test — Test Files  17 passed (17) / Tests  61 passed (61)
+
+  @anclora/db:test — Test Files  16 passed (16) / Tests  77 passed (77)
+  ```
+
+  Los 12 fallos de fixture son defectos de base (archivos `.evidence/` faltantes desde commits
+  previos), certificados como preexistentes y no causados por esta fase.
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/main`.
+- **Limitaciones abiertas:**
+  - Los 12 fallos de test por archivos de fixture faltantes (`.evidence/pedido-shopify.csv` y
+    `pedido-shopify-sin-pais.csv`) deben restaurarse o sus tests refactearse en una fase o fix
+    dedicado.
+  - El enfoque de re-preview en tiempo de confirmación re-parsea el fichero custodiado en lugar
+    de usar una instantánea almacenada; válido por diseño para esta fase pero revisable si el
+    rendimiento se convierte en limitación.
+  - La normalización completa de importaciones (decomposición de multipedidos Shopify, asociación
+    a perfiles fiscales, integración con ciclos de compra KDP) corresponde a FASE 04.
+- **Siguiente fase:** FASE 04 — Normalización de importaciones Shopify y KDP.

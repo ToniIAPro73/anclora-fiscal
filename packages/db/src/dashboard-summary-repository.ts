@@ -1,4 +1,4 @@
-import { and, count, eq, gte } from 'drizzle-orm';
+import { and, count, eq, gte, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { canonicalOperations, fiscalDocuments, importJobs, issues } from './schema.js';
@@ -17,7 +17,24 @@ export interface DashboardSummary {
   reconciliationStatus: ReconciliationStatusSummary;
   documentsIssuedCount: number;
   royalties: RoyaltySummary & { period: string };
+  /**
+   * FASE 03 nav-gating signal: true once the tenant has at least one
+   * imported (IMPORTED/IMPORTED_WITH_ISSUES) shopify-payments job. apps/web
+   * uses this to hide "Conciliación" until there is transaction data worth
+   * reconciling (Task 3, owned by a different batch — this repository only
+   * exposes the signal).
+   */
+  hasPayoutData: boolean;
 }
+
+const PAYOUT_IMPORTED_STATUSES = ['IMPORTED', 'IMPORTED_WITH_ISSUES'] as const;
+// KNOWN GAP: import_jobs.connector_id is still populated from previewImport()'s
+// internal connector id ('shopify-csv' for the Shopify Payments CSV format —
+// see import-service.ts), not yet from the new FASE 03 HTTP-layer
+// connectorId ('shopify-payments'). Both are matched here so nav-gating
+// keeps working through the transition; once persist() threads the new
+// connectorId through end-to-end, 'shopify-csv' can be dropped from this list.
+const PAYOUT_CONNECTOR_IDS = ['shopify-payments', 'shopify-csv'] as const;
 
 function startOfCurrentMonth(): Date {
   const now = new Date();
@@ -50,7 +67,7 @@ export class DrizzleDashboardSummaryRepository<TQueryResult extends PgQueryResul
     const monthStart = startOfCurrentMonth();
     const period = currentPeriodKey();
 
-    const [[openIssuesRow], [importsRow], reconciliationRows, [documentsRow], royaltySummary] = await Promise.all([
+    const [[openIssuesRow], [importsRow], reconciliationRows, [documentsRow], royaltySummary, [payoutRow]] = await Promise.all([
       this.db
         .select({ total: count() })
         .from(issues)
@@ -69,6 +86,14 @@ export class DrizzleDashboardSummaryRepository<TQueryResult extends PgQueryResul
         .from(fiscalDocuments)
         .where(eq(fiscalDocuments.tenantId, tenantId)),
       this.royaltyRepository.getSummary(tenantId, period),
+      this.db
+        .select({ total: count() })
+        .from(importJobs)
+        .where(and(
+          eq(importJobs.tenantId, tenantId),
+          inArray(importJobs.connectorId, [...PAYOUT_CONNECTOR_IDS]),
+          inArray(importJobs.status, [...PAYOUT_IMPORTED_STATUSES]),
+        )),
     ]);
 
     const reconciliationStatus = reconciliationRows.reduce<ReconciliationStatusSummary>(
@@ -87,6 +112,7 @@ export class DrizzleDashboardSummaryRepository<TQueryResult extends PgQueryResul
       reconciliationStatus,
       documentsIssuedCount: documentsRow?.total ?? 0,
       royalties: { ...royaltySummary, period },
+      hasPayoutData: (payoutRow?.total ?? 0) > 0,
     };
   }
 }

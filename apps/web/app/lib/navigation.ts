@@ -12,6 +12,15 @@ export interface NavItem {
   href: Route;
   status: NavStatus;
   pendingCountKey?: keyof NavPendingCounts;
+  /**
+   * When set, the item is only rendered when the named boolean gating flag
+   * (resolved by AppShell from the dashboard-summary endpoint) is true —
+   * unlike `status: 'requiresData'`, which only decorates a badge, this
+   * actually removes the item from the rendered nav list. Added for FASE 03:
+   * "Conciliación" must stay hidden until the tenant has at least one
+   * confirmed Shopify Payments import (`hasPayoutData`).
+   */
+  gatedBy?: 'hasPayoutData';
 }
 
 // Single source of truth for the sidebar. Both AppShell and the E2E
@@ -20,7 +29,7 @@ export const navigation: NavItem[] = [
   { label: 'Centro de control', href: '/', status: 'enabled' },
   { label: 'Importaciones', href: '/imports', status: 'enabled' },
   { label: 'Ventas Shopify', href: '/sales/shopify', status: 'enabled' },
-  { label: 'Conciliación', href: '/reconciliation', status: 'requiresData', pendingCountKey: 'reconciliationTotal' },
+  { label: 'Conciliación', href: '/reconciliation', status: 'requiresData', pendingCountKey: 'reconciliationTotal', gatedBy: 'hasPayoutData' },
   { label: 'Facturación', href: '/invoicing', status: 'enabled' },
   { label: 'VERI*FACTU', href: '/verifactu', status: 'advanced' },
   { label: 'Reglas fiscales', href: '/tax-rules', status: 'enabled' },

@@ -6,6 +6,8 @@ export interface DashboardSummary {
   reconciliationStatus: { matched: number; unmatched: number; total: number };
   documentsIssuedCount: number;
   royalties: { statementsCount: number; totalThisPeriod: string };
+  /** FASE 03 nav-gating signal — see packages/db/src/dashboard-summary-repository.ts. */
+  hasPayoutData: boolean;
 }
 
 export interface DashboardSummaryRepositoryPort {
