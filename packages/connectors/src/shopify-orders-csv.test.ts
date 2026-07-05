@@ -7,18 +7,18 @@ const evidence = resolve(import.meta.dirname, '../../../.evidence');
 
 describe('extractShopifyOrdersCsv', () => {
   it('captura customerCountry priorizando Shipping Country sobre Billing Country', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-pruebas.csv')));
     expect(parsed.orders.every((order) => order.customerCountry === 'ES')).toBe(true);
   });
 
   it('deja customerCountry sin definir cuando el export no trae columnas de país (honesto, no fabricado)', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-sin-pais.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-pruebas.csv')));
     expect(parsed.orders).toHaveLength(1);
     expect(parsed.orders[0]?.customerCountry).toBeUndefined();
   });
 
   it('captura customerName, totalPrice y taxAmount reales de un pedido con Billing Name/Total/Taxes', async () => {
-    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify.csv')));
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(evidence, 'pedido-shopify-pruebas.csv')));
     const order = parsed.orders.find((entry) => entry.orderId === 'AI-1001');
     expect(order?.customerName).toBe('Cliente Demo AI-1001');
     expect(order?.totalPrice).toBe(6.99);
