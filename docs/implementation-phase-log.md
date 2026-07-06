@@ -214,3 +214,41 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   - La normalización completa de importaciones (decomposición de multipedidos Shopify, asociación
     a perfiles fiscales, integración con ciclos de compra KDP) corresponde a FASE 04.
 - **Siguiente fase:** FASE 04 — Normalización de importaciones Shopify y KDP.
+
+---
+
+## SHOPIFY-04 — Orquestador de importación y previews por fuente
+
+- **Objetivo:** separar de extremo a extremo los tres streams Shopify (pedidos,
+  transacciones de pedido y ledger de Shopify Payments), con detección por cabeceras,
+  previews específicos y ciclo analizar/confirmar/rechazar/reintentar sin efectos fiscales
+  automáticos.
+- **Archivos / migraciones:** contratos y sanitización de preview en
+  `apps/api/src/import-service.ts`; validación exacta de stream y ciclo de vida en
+  `import-controller.ts`, `import-lifecycle-controller.ts`, `import-lifecycle-service.ts` e
+  `import-preview-persistence.ts`; IDs persistidos de incidencias en
+  `packages/db/src/import-preview-repository.ts`; tres tarjetas y previews diferenciados en
+  `apps/web/app/imports/`; autenticación reproducible del arnés Playwright en
+  `apps/web/e2e/auth.setup.ts` y `playwright.config.ts`; pruebas API, web y E2E asociadas.
+  No se añade ninguna migración. Las migraciones 0012–0014 ya estaban aplicadas en producción.
+- **Pruebas ejecutadas y resultado real:** `pnpm lint`, `pnpm typecheck`, `pnpm test`,
+  `pnpm build`, `pnpm --filter @anclora/web test:e2e` y `git diff --check`:
+
+  ```text
+  lint — 7/7 tareas correctas
+  typecheck — 7/7 tareas correctas
+  @anclora/web:test — 25 archivos / 62 pruebas correctas
+  @anclora/db:test — 18 archivos / 94 pruebas correctas
+  @anclora/connectors:test — 5 archivos / 41 pruebas correctas
+  @anclora/api:test — 24 archivos / 156 pruebas correctas
+  build — 7/7 tareas correctas
+  Playwright — 33/33 pruebas correctas
+  ```
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/main`.
+- **Limitaciones abiertas:**
+  - Los enlaces explícitos entre las tres evidencias y la conciliación segura pertenecen a
+    SHOPIFY-05 según el prompt maestro vigente.
+  - Las filas de ledger sin `externalPayoutId` permanecen correctamente como liquidación
+    pendiente; no representan payout ni cobro bancario.
+- **Siguiente fase:** SHOPIFY-05 — Enlaces de evidencia y conciliación segura.

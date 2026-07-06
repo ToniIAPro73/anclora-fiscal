@@ -148,7 +148,7 @@ export async function rejectImportJob(
 
 export type RetryImportJobResult =
   | { outcome: 'not_found' }
-  | { outcome: 'retried'; status: 'ANALYZED' | 'FAILED'; summary: Record<string, unknown>; issues: ImportPreviewResponse['issues'] };
+  | { outcome: 'retried'; status: 'ANALYZED' | 'FAILED'; summary: Record<string, unknown>; issues: ImportPreviewResponse['issues']; preview?: ImportPreviewResponse };
 
 /**
  * Idempotent re-analysis: reuses the already-custodied file (same sha256,
@@ -169,6 +169,7 @@ export async function retryImportJob(
   let status: 'ANALYZED' | 'FAILED';
   let summary: Record<string, unknown>;
   let issues: ImportPreviewResponse['issues'];
+  let successfulPreview: ImportPreviewResponse | undefined;
   try {
     const bytes = await ports.storage.get(job.storageKey);
     const preview = await previewImport({
@@ -184,6 +185,7 @@ export async function retryImportJob(
     status = 'ANALYZED';
     summary = preview.summary as Record<string, unknown>;
     issues = preview.issues;
+    successfulPreview = preview;
   } catch (error) {
     status = 'FAILED';
     summary = {};
@@ -191,5 +193,5 @@ export async function retryImportJob(
   }
 
   await ports.jobs.recordRetry({ tenantId: input.tenantId, jobId: input.jobId, actorId: input.actorId, reason: input.reason, status, summary, issues });
-  return { outcome: 'retried', status, summary, issues };
+  return { outcome: 'retried', status, summary, issues, ...(successfulPreview ? { preview: successfulPreview } : {}) };
 }

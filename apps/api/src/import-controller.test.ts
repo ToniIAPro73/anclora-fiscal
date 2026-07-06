@@ -100,4 +100,21 @@ describe('POST /api/v1/imports/preview persistence', () => {
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ code: 'CONNECTOR_ID_REQUIRED' });
   });
+
+  it('rechaza con STREAM_MISMATCH un ledger cargado en la tarjeta de pedidos', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
+    const app = await buildApp({
+      storage: { put: async (input) => ({ key: `${input.tenantId}/evidence`, sha256: createHash('sha256').update(input.bytes).digest('hex'), size: input.bytes.byteLength, mimeType: input.mimeType }), get: async () => new Uint8Array() },
+      authService: new AuthService({ authenticate: async () => ({ actorId: '01977d43-75de-7000-8000-000000000020', tenantId: '01977d43-75de-7000-8000-000000000010', email: 'operator@example.test', displayName: 'Operador', role: 'FISCAL_OPERATOR' }) }, { record: async () => undefined }),
+    });
+    apps.push(app);
+    const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: 'operator@example.test', password: 'valid-password' } });
+    const setCookie = login.headers['set-cookie'];
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
+    const boundary = '----wrongStreamBoundary';
+    const prefix = Buffer.from([`--${boundary}`, 'Content-Disposition: form-data; name="connectorId"', '', 'shopify-orders', `--${boundary}`, 'Content-Disposition: form-data; name="file"; filename="ledger.csv"', 'Content-Type: text/csv', '', ''].join('\r\n'));
+    const response = await app.inject({ method: 'POST', url: '/api/v1/imports/preview', headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, cookie }, payload: Buffer.concat([prefix, bytes, Buffer.from(`\r\n--${boundary}--\r\n`)]) });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: 'STREAM_MISMATCH' });
+  });
 });

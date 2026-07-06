@@ -58,6 +58,7 @@ export interface PersistImportPreviewResult {
   jobId: string;
   importFileId: string;
   duplicate: boolean;
+  issueIds: string[];
 }
 
 export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHKT> {
@@ -72,7 +73,10 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
       .where(and(eq(importFiles.tenantId, input.tenantId), eq(importFiles.sha256, input.evidence.sha256)))
       .limit(1);
 
-    if (existing) return { jobId: existing.jobId, importFileId: existing.importFileId, duplicate: true };
+    if (existing) {
+      const existingIssues = await this.db.select({ id: importErrors.id }).from(importErrors).where(and(eq(importErrors.tenantId, input.tenantId), eq(importErrors.importJobId, existing.jobId)));
+      return { jobId: existing.jobId, importFileId: existing.importFileId, duplicate: true, issueIds: existingIssues.map((issue) => issue.id) };
+    }
 
     return this.db.transaction(async (transaction) => {
       await transaction.insert(importJobs).values({
@@ -104,15 +108,17 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
         storageKey: input.evidence.key,
         sha256: input.evidence.sha256,
       });
+      let issueIds: string[] = [];
       if (input.issues.length > 0) {
-        await transaction.insert(importErrors).values(input.issues.map((issue) => ({
+        const createdIssues = await transaction.insert(importErrors).values(input.issues.map((issue) => ({
           tenantId: input.tenantId,
           importJobId: input.jobId,
           code: issue.code,
           severity: issue.severity,
           message: issue.message,
           blocking: issue.severity === 'BLOCKING',
-        })));
+        }))).returning({ id: importErrors.id });
+        issueIds = createdIssues.map((issue) => issue.id);
       }
       await transaction.insert(auditEvents).values({
         tenantId: input.tenantId,
@@ -122,7 +128,7 @@ export class DrizzleImportPreviewRepository<TQueryResult extends PgQueryResultHK
         metadata: { connectorId: input.connectorId, sha256: input.evidence.sha256 },
       });
 
-      return { jobId: input.jobId, importFileId: file.id, duplicate: false };
+      return { jobId: input.jobId, importFileId: file.id, duplicate: false, issueIds };
     });
   }
 

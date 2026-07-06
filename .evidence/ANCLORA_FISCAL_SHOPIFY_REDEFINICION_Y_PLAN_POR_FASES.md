@@ -62,11 +62,13 @@ Los datos se resumen sin reproducir nombres, emails, direcciones ni referencias 
    - `Name`: número visible/comercial del pedido.
 
 2. El historial de transacciones de pedido referencia el **ID interno**:
+
    ```text
    transactions_export_1.Order = orders_export_1.Id
    ```
 
 3. El export de Shopify Payments referencia el **número visible**:
+
    ```text
    payment_transactions_export_1.Order = orders_export_1.Name
    ```
@@ -74,11 +76,13 @@ Los datos se resumen sin reproducir nombres, emails, direcciones ni referencias 
 4. La muestra contiene una venta y un refund completo del mismo pedido en el historial de transacciones; el ledger de Shopify Payments contiene el charge con fee y el refund posterior.
 
 5. En esa muestra, los importes del ledger implican:
+
    ```text
    charge neto:   +6,54 EUR
    refund neto:   -6,99 EUR
    saldo ledger:  -0,45 EUR
    ```
+
    El estado de payout figura como `pending` y el `Payout ID` está vacío. Por tanto, **no existe todavía evidencia de un payout liquidado ni de un abono bancario**. La aplicación debe mostrarlo como liquidación prevista o saldo pendiente, no como payout conciliado.
 
 6. Hay pedidos con descuento del 100 %: total e impuestos reportados a cero, aunque `Financial Status` sea `paid`. Son pedidos comerciales válidos como evidencia, pero no deben entrar automáticamente en una cola de factura o en métricas de ingreso sin una regla explícita de importe cero.

@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { ImportUploader } from './uploader';
 
 describe('ImportUploader', () => {
-  it('renders the three connector-specific cards', () => {
+  it('renders three distinct Shopify evidence cards plus KDP', () => {
     render(<ImportUploader />);
     expect(screen.getByRole('article', { name: 'Shopify — Pedidos' })).toBeInTheDocument();
-    expect(screen.getByRole('article', { name: 'Shopify — Pagos y payouts' })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Shopify — Transacciones de pedido' })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Shopify Payments — Ledger y liquidación' })).toBeInTheDocument();
     expect(screen.getByRole('article', { name: 'Amazon KDP — Regalías' })).toBeInTheDocument();
   });
 });

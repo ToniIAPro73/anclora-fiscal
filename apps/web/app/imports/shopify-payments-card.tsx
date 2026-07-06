@@ -1,28 +1,24 @@
 'use client';
 
 import { ImportCard } from './import-card';
-import type { CommercialOrderPreview, ImportIssue, PreviewResponse } from './types';
+import type { ImportIssue, PreviewResponse } from './types';
 
-function PayoutsPreviewTable({ preview, issuesByPosition }: { preview: PreviewResponse; issuesByPosition: Map<number, ImportIssue[]> }) {
-  const rows: CommercialOrderPreview[] = preview.commercialOrders
-    ?? preview.summary.orderIds.map((externalOrderId) => ({ externalOrderId }));
+function LedgerPreviewTable({ preview, issuesByPosition }: { preview: PreviewResponse; issuesByPosition: Map<number, ImportIssue[]> }) {
+  const rows = preview.shopifyPaymentsLedger?.entries ?? [];
 
   return <table>
     <thead>
       <tr>
-        <th scope="col">Payout</th>
-        <th scope="col">Fecha</th>
-        <th scope="col">Importe</th>
+        <th scope="col">Pedido</th><th scope="col">Movimiento</th><th scope="col">Bruto</th><th scope="col">Fee</th><th scope="col">Neto</th><th scope="col">Liquidación</th>
         <th scope="col">Incidencias</th>
       </tr>
     </thead>
     <tbody>
-      {rows.map((payout, index) => {
-        const rowIssues = issuesByPosition.get(index + 1) ?? [];
-        return <tr key={payout.externalOrderId}>
-          <td>{payout.externalOrderId}</td>
-          <td>{payout.commercialDate ? new Date(payout.commercialDate).toLocaleDateString('es-ES') : '—'}</td>
-          <td>{payout.totalAmount ?? '—'}</td>
+      {rows.map((entry, index) => {
+        const rowIssues = issuesByPosition.get(index + 2) ?? [];
+        const settlement = entry.externalPayoutId ? `Payout ${entry.externalPayoutId}` : 'Liquidación pendiente';
+        return <tr key={`${entry.orderName}-${entry.entryType}-${index}`}>
+          <td>{entry.orderName}</td><td>{entry.entryType}</td><td>{entry.amount} {entry.currency}</td><td>{entry.feeAmount} {entry.currency}</td><td>{entry.netAmount} {entry.currency}</td><td>{settlement}</td>
           <td>{rowIssues.length > 0 ? rowIssues.map((issue) => `${issue.code}: ${issue.message}`).join('; ') : '—'}</td>
         </tr>;
       })}
@@ -43,14 +39,14 @@ export interface ShopifyPaymentsCardProps {
 export function ShopifyPaymentsCard({ enabled = true }: ShopifyPaymentsCardProps) {
   return <ImportCard
     connectorId="shopify-payments"
-    title="Shopify — Pagos y payouts"
-    description="Analiza y confirma los payouts de Shopify Payments para habilitar la conciliación."
+    title="Shopify Payments — Ledger y liquidación"
+    description="Movimientos, fees y netos de Shopify Payments. Sin Payout ID se muestra como liquidación pendiente."
     accept=".csv,text/csv"
     fileFieldId="shopify-payments-file"
-    fileFieldLabel="Archivo de payouts Shopify"
-    hint="CSV de pagos y payouts Shopify · máximo 15 MB"
+    fileFieldLabel="Archivo de ledger Shopify Payments"
+    hint="CSV View payouts → View transactions → Export · máximo 15 MB"
     disabled={!enabled}
     disabledReason="El mapeo de payouts Shopify está en construcción — próximamente disponible."
-    renderPreviewTable={(preview, issuesByPosition) => <PayoutsPreviewTable preview={preview} issuesByPosition={issuesByPosition} />}
+    renderPreviewTable={(preview, issuesByPosition) => <LedgerPreviewTable preview={preview} issuesByPosition={issuesByPosition} />}
   />;
 }

@@ -3,6 +3,7 @@
 import { KdpRoyaltiesCard } from './kdp-royalties-card';
 import { ShopifyOrdersCard } from './shopify-orders-card';
 import { ShopifyPaymentsCard } from './shopify-payments-card';
+import { ShopifyOrderTransactionsCard } from './shopify-order-transactions-card';
 
 /**
  * Container composing the three FASE 03 connector-specific import cards.
@@ -12,6 +13,7 @@ import { ShopifyPaymentsCard } from './shopify-payments-card';
 export function ImportUploader() {
   return <section className="import-workbench">
     <ShopifyOrdersCard />
+    <ShopifyOrderTransactionsCard />
     <ShopifyPaymentsCard />
     <KdpRoyaltiesCard />
   </section>;

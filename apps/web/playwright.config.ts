@@ -9,7 +9,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  ...(process.env.CI ? { workers: 1 } : {}),
+  // The authenticated shell checks /session from middleware and the client.
+  // A single worker keeps the E2E suite below the API's production-like rate
+  // limit and avoids false redirects to /auth/login during parallel bursts.
+  workers: 1,
   reporter: 'list',
   use: {
     baseURL: 'http://127.0.0.1:3000',
@@ -17,8 +20,17 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+    },
+    {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: 'test-results/.auth/user.json',
+      },
     },
   ],
   webServer: [

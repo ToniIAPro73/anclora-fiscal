@@ -17,12 +17,12 @@ describe('previewImport', () => {
     expect(JSON.stringify(result)).not.toContain('@');
   });
 
-  it('normaliza las transacciones Shopify a financialEvents para persistencia posterior', async () => {
+  it('devuelve un contrato explícito de ledger sin crear financialEvents legacy', async () => {
     const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     expect(result.connector).toBe('shopify-csv');
-    expect(result.financialEvents).toHaveLength(result.summary.records);
-    expect(result.financialEvents?.every((event) => event.sourceChannel === 'SHOPIFY')).toBe(true);
+    expect(result.shopifyPaymentsLedger?.entries).toHaveLength(result.summary.records);
+    expect(result.financialEvents).toBeUndefined();
     expect(result.commercialOrders).toBeUndefined();
   });
 
@@ -32,6 +32,8 @@ describe('previewImport', () => {
     expect(result.connector).toBe('shopify-orders-csv');
     expect(result.commercialOrders).toHaveLength(result.summary.records);
     expect(result.commercialOrders?.every((order) => order.sourceChannel === 'SHOPIFY')).toBe(true);
+    expect(result.shopifyOrders?.orders).toHaveLength(4);
+    expect(result.shopifyOrders?.orders[0]).toEqual(expect.objectContaining({ orderName: expect.any(String), lines: expect.any(Array) }));
     expect(result.financialEvents).toBeUndefined();
   });
 
@@ -114,6 +116,7 @@ describe('previewImport', () => {
     const result = await previewImport({ tenantId: 'test', filename: 'order-transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     expect(result.connector).toBe('shopify-order-transactions-csv');
     expect(result.orderTransactions).toHaveLength(2);
+    expect(result.shopifyOrderTransactions?.events).toHaveLength(2);
     expect(result.orderTransactions?.every((row) => row.shopifyOrderName === 'AI-1001')).toBe(true);
     // shopifyOrderId carries the raw numeric Shopify "Order" value, distinct from shopifyOrderName (the real join key).
     expect(result.orderTransactions?.every((row) => row.shopifyOrderId === '9000000000001')).toBe(true);
@@ -121,13 +124,14 @@ describe('previewImport', () => {
     expect(result.financialEvents).toBeUndefined();
   });
 
-  it('normaliza las transacciones Shopify Ledger a paymentsLedger además de financialEvents (SHOPIFY-03)', async () => {
+  it('normaliza Shopify Payments Ledger sin duplicarlo en financialEvents legacy', async () => {
     const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
     expect(result.connector).toBe('shopify-csv');
     expect(result.paymentsLedger).toHaveLength(result.summary.records);
     expect(result.paymentsLedger?.every((row) => row.shopifyOrderName === 'AI-1001')).toBe(true);
-    expect(result.paymentsLedger?.map((row) => row.feeAmount)).toEqual(result.financialEvents?.map((event) => event.feeAmount));
+    expect(result.shopifyPaymentsLedger?.entries).toEqual(result.paymentsLedger);
+    expect(result.financialEvents).toBeUndefined();
   });
 
   it('no custodia contenido que falle la validación estructural', async () => {

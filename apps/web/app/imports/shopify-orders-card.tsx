@@ -10,7 +10,7 @@ function OrdersPreviewTable({ preview, issuesByPosition }: { preview: PreviewRes
   const [dateTo, setDateTo] = useState('');
   const [productNature, setProductNature] = useState('');
 
-  const rows: CommercialOrderPreview[] = preview.commercialOrders
+  const rows: CommercialOrderPreview[] = preview.shopifyOrders?.orders.map((order) => ({ ...order, externalOrderId: order.orderName })) ?? preview.commercialOrders
     ?? preview.summary.orderIds.map((externalOrderId) => ({ externalOrderId }));
   const filteredRows = rows.filter((order) =>
     (!dateFrom || Boolean(order.commercialDate && order.commercialDate.slice(0, 10) >= dateFrom))
@@ -28,7 +28,8 @@ function OrdersPreviewTable({ preview, issuesByPosition }: { preview: PreviewRes
         <tr>
           <th scope="col">Pedido</th>
           <th scope="col">Fecha</th>
-          <th scope="col">Cliente</th>
+          <th scope="col">Estado</th>
+          <th scope="col">Líneas</th>
           <th scope="col">Total</th>
           <th scope="col">IVA</th>
           <th scope="col">Incidencias</th>
@@ -40,7 +41,8 @@ function OrdersPreviewTable({ preview, issuesByPosition }: { preview: PreviewRes
           return <tr key={order.externalOrderId}>
             <td>{order.externalOrderId}</td>
             <td>{order.commercialDate ? new Date(order.commercialDate).toLocaleDateString('es-ES') : '—'}</td>
-            <td>{order.customerName ?? '—'}</td>
+            <td>{preview.shopifyOrders?.orders[index]?.financialStatus ?? order.customerName ?? '—'}</td>
+            <td>{preview.shopifyOrders?.orders[index]?.lines.length ?? '—'}</td>
             <td>{order.totalAmount ?? '—'}</td>
             <td>{order.taxAmount ?? '—'}</td>
             <td>{rowIssues.length > 0 ? rowIssues.map((issue) => `${issue.code}: ${issue.message}`).join('; ') : '—'}</td>
@@ -55,7 +57,7 @@ export function ShopifyOrdersCard() {
   return <ImportCard
     connectorId="shopify-orders"
     title="Shopify — Pedidos"
-    description="Analiza y confirma pedidos exportados desde Shopify antes de crear operaciones."
+    description="CSV exportado desde Orders. Crea pedidos y líneas comerciales al confirmar."
     accept=".csv,text/csv"
     fileFieldId="shopify-orders-file"
     fileFieldLabel="Archivo de pedidos Shopify"

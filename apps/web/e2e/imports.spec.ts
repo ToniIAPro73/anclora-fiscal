@@ -9,7 +9,7 @@ const previewResponse = {
   status: 'ANALYZED',
   summary: { records: 1, issues: 1, orderIds: ['AI-9001'] },
   issues: [{ position: 1, code: 'ORDER_TOTAL_MISMATCH', message: 'El total no coincide con el neto comercial', suggestedAction: 'Revisa el pedido AI-9001 antes de confirmar' }],
-  commercialOrders: [{ externalOrderId: 'AI-9001', commercialDate: '2026-07-01T00:00:00.000Z', customerName: 'Ana García', totalAmount: '19.99', taxAmount: '1.99' }],
+  shopifyOrders: { orders: [{ orderName: 'AI-9001', commercialDate: '2026-07-01T00:00:00.000Z', totalAmount: '19.99', taxAmount: '1.99', financialStatus: 'paid', lines: [{ title: 'Libro digital', quantity: '1', unitPrice: '19.99', discountAmount: '0', subtotalAmount: '19.99' }] }] },
 };
 
 const confirmResponse = { jobId: 'e2e-job-1', status: 'IMPORTED', createdRecordIds: { orders: ['ord-9001'] } };
@@ -29,11 +29,11 @@ test.describe('importación — Shopify Pedidos: previsualizar y confirmar', () 
 
     await page.goto('/imports');
     const ordersCard = page.getByRole('article', { name: 'Shopify — Pedidos' });
-    await ordersCard.getByLabel('Archivo de pedidos Shopify').setInputFiles(resolve(repositoryRoot, 'packages/connectors/test/fixtures/shopify-orders-four.csv'));
+    await ordersCard.locator('input[type="file"]').setInputFiles(resolve(repositoryRoot, 'packages/connectors/test/fixtures/shopify-orders-four.csv'));
     await ordersCard.getByRole('button', { name: 'Generar vista previa' }).click();
 
-    await expect(ordersCard.getByText('AI-9001')).toBeVisible();
-    await expect(ordersCard.getByText('ORDER_TOTAL_MISMATCH', { exact: false })).toBeVisible();
+    await expect(ordersCard.getByText('AI-9001', { exact: true })).toBeVisible();
+    await expect(ordersCard.getByText('Fila 1 — ORDER_TOTAL_MISMATCH', { exact: true })).toBeVisible();
 
     const confirmButton = ordersCard.getByRole('button', { name: 'Confirmar importación' });
     await expect(confirmButton).toBeDisabled();
@@ -48,10 +48,17 @@ test.describe('importación — Shopify Pedidos: previsualizar y confirmar', () 
   test('rechaza un tipo de archivo no admitido', async ({ page }) => {
     await page.goto('/imports');
     const ordersCard = page.getByRole('article', { name: 'Shopify — Pedidos' });
-    await ordersCard.getByLabel('Archivo de pedidos Shopify').setInputFiles({ name: 'notas.txt', mimeType: 'text/plain', buffer: Buffer.from('contenido no admitido') });
+    await ordersCard.locator('input[type="file"]').setInputFiles({ name: 'notas.txt', mimeType: 'text/plain', buffer: Buffer.from('contenido no admitido') });
     await ordersCard.getByRole('button', { name: 'Generar vista previa' }).click();
     await expect(ordersCard.getByText('El archivo no supera la validación estructural')).toBeVisible();
   });
+});
+
+test('muestra tres tarjetas Shopify con contratos separados', async ({ page }) => {
+  await page.goto('/imports');
+  await expect(page.getByRole('article', { name: 'Shopify — Pedidos' })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'Shopify — Transacciones de pedido' })).toBeVisible();
+  await expect(page.getByRole('article', { name: 'Shopify Payments — Ledger y liquidación' })).toBeVisible();
 });
 
 test.describe('importación — Amazon KDP Regalías: previsualizar', () => {
@@ -74,7 +81,7 @@ test.describe('importación — Amazon KDP Regalías: previsualizar', () => {
 
     await page.goto('/imports');
     const kdpCard = page.getByRole('article', { name: 'Amazon KDP — Regalías' });
-    await kdpCard.getByLabel('Archivo de regalías KDP').setInputFiles(resolve(repositoryRoot, 'packages/connectors/test/fixtures/kdp-orders-anonymized.xlsx'));
+    await kdpCard.locator('input[type="file"]').setInputFiles(resolve(repositoryRoot, 'packages/connectors/test/fixtures/kdp-orders-anonymized.xlsx'));
     await kdpCard.getByRole('button', { name: 'Generar vista previa' }).click();
     await expect(kdpCard.getByText('9798184523026', { exact: true })).toBeVisible();
     await expect(kdpCard.getByText('Mi libro')).toBeVisible();

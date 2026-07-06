@@ -5,7 +5,6 @@ import {
   normalizeShopifyOrdersCsv,
   normalizeShopifyOrderTransactions,
   normalizeShopifyPaymentsLedger,
-  normalizeShopifyPaymentTransactions,
   type NewCommercialOrderWithoutTenant,
   type NewFinancialEventWithoutTenant,
   type NewShopifyOrderPaymentEventWithoutTenant,
@@ -42,6 +41,27 @@ export interface ImportPreviewResponse {
   orderTransactions?: NewShopifyOrderPaymentEventWithoutTenant[];
   /** SHOPIFY-03: platform settlement-ledger evidence, computed alongside financialEvents from the same shopify-csv (Payments Ledger) rows. */
   paymentsLedger?: NewShopifyPaymentsLedgerEntryWithoutTenant[];
+  /** SHOPIFY-04: safe, source-specific preview contract exposed to clients. */
+  shopifyOrders?: { orders: Array<{ orderName: string; commercialDate?: string; totalAmount?: string; taxAmount?: string; financialStatus?: string; fulfillmentStatus?: string; productNature?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
+  shopifyOrderTransactions?: { events: NewShopifyOrderPaymentEventWithoutTenant[] };
+  shopifyPaymentsLedger?: { entries: NewShopifyPaymentsLedgerEntryWithoutTenant[] };
+}
+
+export function toSafeImportPreview(preview: ImportPreviewResponse, status: string, issueIds: string[] = []) {
+  const safePreview = { ...preview };
+  delete safePreview.commercialOrders;
+  delete safePreview.commercialOrderGroups;
+  delete safePreview.financialEvents;
+  delete safePreview.orderTransactions;
+  delete safePreview.paymentsLedger;
+  const issues = preview.issues.map((issue, index) => ({
+    ...issue,
+    position: issue.row ?? 0,
+    suggestedAction: 'Revisa la evidencia indicada antes de confirmar.',
+    blocking: issue.severity === 'BLOCKING',
+    ...(issueIds[index] ? { id: issueIds[index] } : {}),
+  }));
+  return { ...safePreview, issues, status };
 }
 
 const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -87,6 +107,16 @@ export async function previewImport(
       const allCommercialOrders = allGroups.map((group) => group.order);
       const allIssues = preview.groupedOrders.flatMap((order) => order.issues.map((issue) => ({ ...issue, message: `${order.orderId}: ${issue.message}` })));
       const rowsAnalyzed = preview.orders.length;
+      const shopifyOrders = { orders: allGroups.map((group) => ({
+        orderName: group.order.externalOrderId,
+        ...(group.order.commercialDate ? { commercialDate: group.order.commercialDate.toISOString() } : {}),
+        ...(group.order.totalAmount ? { totalAmount: group.order.totalAmount } : {}),
+        ...(group.order.taxAmount ? { taxAmount: group.order.taxAmount } : {}),
+        ...(group.order.financialStatus ? { financialStatus: group.order.financialStatus } : {}),
+        ...(group.order.fulfillmentStatus ? { fulfillmentStatus: group.order.fulfillmentStatus } : {}),
+        ...(group.order.productNature ? { productNature: group.order.productNature } : {}),
+        lines: group.lines.map((line) => ({ title: line.title, quantity: line.quantity, unitPrice: line.unitPrice, discountAmount: line.discountAmount ?? '0', subtotalAmount: line.subtotalAmount })),
+      })) };
 
       const sourceChannel = allCommercialOrders[0]?.sourceChannel;
       const existingOrderIds = dependencies?.commercialOrdersRepository && sourceChannel
@@ -104,6 +134,7 @@ export async function previewImport(
           issues: allIssues,
           commercialOrders: allCommercialOrders,
           commercialOrderGroups: allGroups,
+          shopifyOrders,
         };
       }
 
@@ -131,6 +162,7 @@ export async function previewImport(
         issues,
         commercialOrders,
         commercialOrderGroups: groups,
+        shopifyOrders: { orders: shopifyOrders.orders.filter((order) => !existingOrderIds.has(order.orderName)) },
       };
     }
     if (isShopifyOrderTransactionsCsvFile(input.bytes)) {
@@ -150,50 +182,26 @@ export async function previewImport(
         summary: { records: parsed.rows.length, issues: parsed.issues.length, orderIds: [...new Set(parsed.rows.map((row) => row.name))] },
         issues: parsed.issues,
         orderTransactions,
+        shopifyOrderTransactions: { events: orderTransactions },
       };
     }
     if (isShopifyPaymentsLedgerCsvFile(input.bytes)) {
       const preview = previewShopifyCsv(input.bytes);
       const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });
-      const allFinancialEvents = normalizeShopifyPaymentTransactions(preview);
       // SHOPIFY-03: platform settlement-ledger evidence, computed from the
       // same rows as allFinancialEvents (distinct persistence target --
       // shopify_payments_ledger_entries, not financial_events).
       const allPaymentsLedger = normalizeShopifyPaymentsLedger(preview);
 
-      const sourceChannel = allFinancialEvents[0]?.sourceChannel;
-      const existingEventIds = dependencies?.financialEventsRepository && sourceChannel
-        ? await dependencies.financialEventsRepository.findExistingExternalEventIds(input.tenantId, sourceChannel, preview.rows.map((row) => row.businessKey))
-        : undefined;
-
-      if (!existingEventIds) {
-        return { jobId, status: 'PREVIEW_READY', connector: 'shopify-csv', evidence, summary: { records: preview.rows.length, issues: preview.issues.length, orderIds: [...new Set(preview.rows.map((row) => row.Order))] }, issues: preview.issues, financialEvents: allFinancialEvents, paymentsLedger: allPaymentsLedger };
-      }
-
-      const keep = preview.rows.map((row) => !existingEventIds.has(row.businessKey));
-      const rows = preview.rows.filter((_, index) => keep[index]);
-      const financialEvents = allFinancialEvents.filter((_, index) => keep[index]);
-      const paymentsLedger = allPaymentsLedger.filter((_, index) => keep[index]);
-      // Row-level issues carry a 1-based CSV row (index + 2); the one
-      // synthetic order-level issue (FULL_REFUND_NET_ZERO) uses row: 0 and
-      // isn't tied to a single businessKey, so it's kept as-is.
-      const issues = preview.issues.filter((issue) => issue.row === 0 || keep[issue.row - 2]);
-      const alreadyImportedCount = preview.rows.length - rows.length;
       return {
         jobId,
         status: 'PREVIEW_READY',
         connector: 'shopify-csv',
         evidence,
-        summary: {
-          records: preview.rows.length,
-          issues: issues.length,
-          orderIds: [...new Set(rows.map((row) => row.Order))],
-          alreadyImportedCount,
-          allAlreadyImported: preview.rows.length > 0 && rows.length === 0,
-        },
-        issues,
-        financialEvents,
-        paymentsLedger,
+        summary: { records: preview.rows.length, issues: preview.issues.length, orderIds: [...new Set(preview.rows.map((row) => row.Order))] },
+        issues: preview.issues,
+        paymentsLedger: allPaymentsLedger,
+        shopifyPaymentsLedger: { entries: allPaymentsLedger },
       };
     }
   }

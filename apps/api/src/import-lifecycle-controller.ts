@@ -12,6 +12,7 @@ import {
   type ImportStorageReadPort,
 } from './import-lifecycle-service.js';
 import type { FiscalPersistencePort } from './import-preview-persistence.js';
+import { toSafeImportPreview } from './import-service.js';
 
 /** Combined port so build-app.ts only needs one repository option, matching the pattern of other single-repository controllers (issues-controller.ts). */
 export interface ImportLifecycleRepositoryPort extends ImportJobPort, ImportIssuesPort, ImportConfirmRepositoryPort, ImportRejectRepositoryPort, ImportRetryRepositoryPort, ImportJobFilePort {}
@@ -94,6 +95,7 @@ export function createImportRetryHandler(dependencies: { repository?: ImportLife
     const result = await retryImportJob({ tenantId, jobId, actorId, reason }, { jobs: dependencies.repository, storage: dependencies.storage });
 
     if (result.outcome === 'not_found') return reply.code(404).send({ code: 'IMPORT_JOB_NOT_FOUND', message: 'La importación o el archivo no existen' });
+    if (result.preview) return { ...toSafeImportPreview(result.preview, result.status), jobId };
     return { jobId, status: result.status, summary: result.summary, issues: result.issues };
   };
 }

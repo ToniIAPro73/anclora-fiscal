@@ -11,7 +11,7 @@ export interface ImportPreviewRepositoryPort {
     evidence: ImportPreviewResponse['evidence'];
     summary: Record<string, unknown>;
     issues: ImportPreviewResponse['issues'];
-  }): Promise<{ jobId: string; importFileId: string; duplicate: boolean }>;
+  }): Promise<{ jobId: string; importFileId: string; duplicate: boolean; issueIds?: string[] }>;
 }
 
 export interface RoyaltyRepositoryPort {
@@ -82,7 +82,7 @@ export interface ShopifyPaymentsLedgerRepositoryPort {
 }
 
 export interface ImportPreviewPersistencePort {
-  persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }>;
+  persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean; issueIds?: string[] }>;
 }
 
 /**
@@ -138,7 +138,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
    * royalty_lines and does NOT run matching -- see persistFiscalRecords(),
    * which is called from confirm time only.
    */
-  async persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }> {
+  async persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean; issueIds?: string[] }> {
     const result = await this.repository.persist({
       tenantId,
       jobId: preview.jobId,
@@ -150,7 +150,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       issues: preview.issues,
     });
 
-    return { jobId: result.jobId, duplicate: result.duplicate };
+    return { jobId: result.jobId, duplicate: result.duplicate, ...(result.issueIds?.length ? { issueIds: result.issueIds } : {}) };
   }
 
   /**
@@ -178,17 +178,14 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       // idempotent on both unique indexes — never overwrites existing rows.
       const result = await this.commercialOrdersRepository.createManyWithLines(tenantId, preview.commercialOrderGroups);
       createdRecordIds.commercialOrders = result.orders.map((order) => order.id);
-      await this.triggerMatchingForNewOrders(tenantId, result.orders);
     } else if (this.commercialOrdersRepository && preview.commercialOrders) {
       const createdOrders = await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
       createdRecordIds.commercialOrders = createdOrders.map((order) => order.id);
-      await this.triggerMatchingForNewOrders(tenantId, createdOrders);
     }
 
     if (this.financialEventsRepository && preview.financialEvents) {
       const createdEvents = await this.financialEventsRepository.createMany(tenantId, preview.financialEvents);
       createdRecordIds.financialEvents = createdEvents.map((event) => event.id);
-      await this.triggerMatchingForNewEvents(tenantId, createdEvents);
     }
 
     if (this.shopifyOrderPaymentEventsRepository && preview.orderTransactions) {

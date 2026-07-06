@@ -22,17 +22,17 @@ function mockFetchSequence(responses: Array<{ ok: boolean; status?: number; body
 describe('ShopifyPaymentsCard', () => {
   it('ships enabled by default while the backend connector is being built this batch', () => {
     render(<ShopifyPaymentsCard />);
-    expect(screen.getByLabelText(/Archivo de payouts Shopify/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Archivo de ledger Shopify Payments/)).toBeInTheDocument();
     expect(screen.queryByText('El mapeo de payouts Shopify está en construcción')).not.toBeInTheDocument();
   });
 
   it('can be rendered disabled with a "próximamente" reason', () => {
     render(<ShopifyPaymentsCard enabled={false} />);
-    expect(screen.queryByLabelText(/Archivo de payouts Shopify/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Archivo de ledger Shopify Payments/)).not.toBeInTheDocument();
     expect(screen.getByText(/El mapeo de payouts Shopify está en construcción/)).toBeInTheDocument();
   });
 
-  it('preview happy path confirms a payout import', async () => {
+  it('preview distingue settlement pendiente de payout real', async () => {
     mockFetchSequence([
       {
         ok: true,
@@ -42,17 +42,18 @@ describe('ShopifyPaymentsCard', () => {
           status: 'ANALYZED',
           summary: { records: 1, issues: 0, orderIds: ['PO-1'] },
           issues: [],
-          commercialOrders: [{ externalOrderId: 'PO-1', commercialDate: '2026-07-01T00:00:00.000Z', totalAmount: '150.00' }],
+          shopifyPaymentsLedger: { entries: [{ orderName: 'PO-1', entryType: 'charge', amount: '150.00', feeAmount: '4.50', netAmount: '145.50', currency: 'EUR', payoutStatus: 'pending', payoutDate: null, externalPayoutId: null }] },
         },
       },
       { ok: true, body: { jobId: 'job-pay-1', status: 'IMPORTED', createdRecordIds: { payouts: ['pay-1'] } } },
     ]);
     render(<ShopifyPaymentsCard />);
-    const input = screen.getByLabelText(/Archivo de payouts Shopify/) as HTMLInputElement;
+    const input = screen.getByLabelText(/Archivo de ledger Shopify Payments/) as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['x'], 'payouts.csv', { type: 'text/csv' })] } });
     fireEvent.submit(screen.getByRole('button', { name: 'Generar vista previa' }).closest('form')!);
 
     await waitFor(() => expect(screen.getByText('PO-1')).toBeInTheDocument());
+    expect(screen.getByText('Liquidación pendiente')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar importación' }));
     await waitFor(() => expect(screen.getByText('Importado')).toBeInTheDocument());
   });

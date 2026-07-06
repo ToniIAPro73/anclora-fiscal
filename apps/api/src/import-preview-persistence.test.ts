@@ -93,12 +93,14 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords (FASE 03, confirm
   it('persiste los pedidos comerciales y eventos financieros normalizados cuando el preview los incluye y devuelve sus ids', async () => {
     const commercialOrdersCreateMany = vi.fn().mockResolvedValue([{ id: 'order-row-1' }]);
     const financialEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-1' }]);
+    const runMatchingForOrder = vi.fn();
     const service = new ImportPreviewPersistenceService(
       { persist: vi.fn() },
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
       undefined,
       { createMany: commercialOrdersCreateMany },
       { createMany: financialEventsCreateMany },
+      { runMatchingForOrder },
     );
     const commercialOrders = [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001', commercialDate: new Date('2026-07-01') }];
     const financialEvents = [{ sourceChannel: 'SHOPIFY', externalEventId: 'evt-1', eventType: 'charge', amount: '10', feeAmount: '1', netAmount: '9', currency: 'EUR', occurredAt: new Date('2026-07-01') }];
@@ -117,6 +119,7 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords (FASE 03, confirm
 
     expect(commercialOrdersCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', commercialOrders);
     expect(financialEventsCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', financialEvents);
+    expect(runMatchingForOrder).not.toHaveBeenCalled();
     expect(result).toEqual({ createdRecordIds: { commercialOrders: ['order-row-1'], financialEvents: ['event-row-1'] } });
   });
 
