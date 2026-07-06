@@ -109,6 +109,27 @@ describe('previewImport', () => {
     expect(result.summary.allAlreadyImported).toBe(true);
   });
 
+  it('detecta el CSV de Order Transactions y normaliza orderTransactions para persistencia posterior (SHOPIFY-03)', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-order-transactions.csv'));
+    const result = await previewImport({ tenantId: 'test', filename: 'order-transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    expect(result.connector).toBe('shopify-order-transactions-csv');
+    expect(result.orderTransactions).toHaveLength(2);
+    expect(result.orderTransactions?.every((row) => row.shopifyOrderName === 'AI-1001')).toBe(true);
+    // shopifyOrderId carries the raw numeric Shopify "Order" value, distinct from shopifyOrderName (the real join key).
+    expect(result.orderTransactions?.every((row) => row.shopifyOrderId === '9000000000001')).toBe(true);
+    expect(result.commercialOrders).toBeUndefined();
+    expect(result.financialEvents).toBeUndefined();
+  });
+
+  it('normaliza las transacciones Shopify Ledger a paymentsLedger además de financialEvents (SHOPIFY-03)', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
+    const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
+    expect(result.connector).toBe('shopify-csv');
+    expect(result.paymentsLedger).toHaveLength(result.summary.records);
+    expect(result.paymentsLedger?.every((row) => row.shopifyOrderName === 'AI-1001')).toBe(true);
+    expect(result.paymentsLedger?.map((row) => row.feeAmount)).toEqual(result.financialEvents?.map((event) => event.feeAmount));
+  });
+
   it('no custodia contenido que falle la validación estructural', async () => {
     let writes = 0;
     await expect(previewImport({

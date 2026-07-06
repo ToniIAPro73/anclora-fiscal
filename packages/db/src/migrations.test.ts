@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las catorce migraciones en orden y puede repetirse', async () => {
+  it('aplica las quince migraciones en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -36,10 +36,11 @@ describe('migrateOfflineDatabase', () => {
       '0011_fiscal_configuration_foundation.sql',
       '0012_import_states_v2.sql',
       '0013_shopify_order_lines_traceability.sql',
+      '0014_shopify_payment_settlement_evidence.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
-      expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines', 'order_lines', 'product_tax_profiles', 'channel_fiscal_policies', 'fiscal_counterparties', 'tax_periods', 'payouts']),
+      expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines', 'order_lines', 'product_tax_profiles', 'channel_fiscal_policies', 'fiscal_counterparties', 'tax_periods', 'payouts', 'shopify_order_payment_events', 'shopify_payments_ledger_entries']),
     );
   });
 });

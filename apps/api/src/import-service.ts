@@ -1,11 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import { extractShopifyOrdersCsv, isKdpXlsxFile, isShopifyOrdersCsvFile, previewKdpXlsx, previewShopifyCsv } from '@anclora/connectors';
+import { extractShopifyOrdersCsv, isKdpXlsxFile, isShopifyOrdersCsvFile, isShopifyOrderTransactionsCsvFile, isShopifyPaymentsLedgerCsvFile, parseShopifyOrderTransactionsCsv, previewKdpXlsx, previewShopifyCsv } from '@anclora/connectors';
 import { summarizeRoyaltyLinesByFormat, type RoyaltyFormatSummary, type RoyaltyLine, type RoyaltyStatement, type StoragePort } from '@anclora/core/server';
 import {
   normalizeShopifyOrdersCsv,
+  normalizeShopifyOrderTransactions,
+  normalizeShopifyPaymentsLedger,
   normalizeShopifyPaymentTransactions,
   type NewCommercialOrderWithoutTenant,
   type NewFinancialEventWithoutTenant,
+  type NewShopifyOrderPaymentEventWithoutTenant,
+  type NewShopifyPaymentsLedgerEntryWithoutTenant,
   type NormalizedShopifyOrderGroup,
 } from './ingestion-normalization-service.js';
 
@@ -25,7 +29,7 @@ export interface ImportGroupingSummary {
 export interface ImportPreviewResponse {
   jobId: string;
   status: 'PREVIEW_READY';
-  connector: 'shopify-csv' | 'shopify-orders-csv' | 'kdp-xlsx';
+  connector: 'shopify-csv' | 'shopify-orders-csv' | 'shopify-order-transactions-csv' | 'kdp-xlsx';
   evidence: { key: string; sha256: string; size: number; mimeType: string };
   summary: { records: number; issues: number; orderIds: string[]; royaltyByFormat?: RoyaltyFormatSummary[]; alreadyImportedCount?: number; allAlreadyImported?: boolean; grouping?: ImportGroupingSummary };
   issues: Array<{ code: string; severity: string; message: string; row?: number; sheet?: string }>;
@@ -34,6 +38,10 @@ export interface ImportPreviewResponse {
   /** SHOPIFY-02: order + lines, paired — the shape persistFiscalRecords() actually writes. */
   commercialOrderGroups?: NormalizedShopifyOrderGroup[];
   financialEvents?: NewFinancialEventWithoutTenant[];
+  /** SHOPIFY-03: order-level payment-transaction evidence (shopify-order-transactions-csv connector). */
+  orderTransactions?: NewShopifyOrderPaymentEventWithoutTenant[];
+  /** SHOPIFY-03: platform settlement-ledger evidence, computed alongside financialEvents from the same shopify-csv (Payments Ledger) rows. */
+  paymentsLedger?: NewShopifyPaymentsLedgerEntryWithoutTenant[];
 }
 
 const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -125,42 +133,69 @@ export async function previewImport(
         commercialOrderGroups: groups,
       };
     }
-    const preview = previewShopifyCsv(input.bytes);
-    const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });
-    const allFinancialEvents = normalizeShopifyPaymentTransactions(preview);
-
-    const sourceChannel = allFinancialEvents[0]?.sourceChannel;
-    const existingEventIds = dependencies?.financialEventsRepository && sourceChannel
-      ? await dependencies.financialEventsRepository.findExistingExternalEventIds(input.tenantId, sourceChannel, preview.rows.map((row) => row.businessKey))
-      : undefined;
-
-    if (!existingEventIds) {
-      return { jobId, status: 'PREVIEW_READY', connector: 'shopify-csv', evidence, summary: { records: preview.rows.length, issues: preview.issues.length, orderIds: [...new Set(preview.rows.map((row) => row.Order))] }, issues: preview.issues, financialEvents: allFinancialEvents };
+    if (isShopifyOrderTransactionsCsvFile(input.bytes)) {
+      // SHOPIFY-03: order-level payment-transaction evidence (sale/refund/
+      // authorization/capture/void). Persisted confirm-time-only via
+      // persistFiscalRecords() -- see import-preview-persistence.ts, which
+      // resolves commercialOrderId per row against the real commercial_orders
+      // table (shopifyOrderName is the join key, never shopifyOrderId).
+      const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });
+      const parsed = parseShopifyOrderTransactionsCsv(input.bytes);
+      const orderTransactions = normalizeShopifyOrderTransactions(parsed);
+      return {
+        jobId,
+        status: 'PREVIEW_READY',
+        connector: 'shopify-order-transactions-csv',
+        evidence,
+        summary: { records: parsed.rows.length, issues: parsed.issues.length, orderIds: [...new Set(parsed.rows.map((row) => row.name))] },
+        issues: parsed.issues,
+        orderTransactions,
+      };
     }
+    if (isShopifyPaymentsLedgerCsvFile(input.bytes)) {
+      const preview = previewShopifyCsv(input.bytes);
+      const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });
+      const allFinancialEvents = normalizeShopifyPaymentTransactions(preview);
+      // SHOPIFY-03: platform settlement-ledger evidence, computed from the
+      // same rows as allFinancialEvents (distinct persistence target --
+      // shopify_payments_ledger_entries, not financial_events).
+      const allPaymentsLedger = normalizeShopifyPaymentsLedger(preview);
 
-    const keep = preview.rows.map((row) => !existingEventIds.has(row.businessKey));
-    const rows = preview.rows.filter((_, index) => keep[index]);
-    const financialEvents = allFinancialEvents.filter((_, index) => keep[index]);
-    // Row-level issues carry a 1-based CSV row (index + 2); the one
-    // synthetic order-level issue (FULL_REFUND_NET_ZERO) uses row: 0 and
-    // isn't tied to a single businessKey, so it's kept as-is.
-    const issues = preview.issues.filter((issue) => issue.row === 0 || keep[issue.row - 2]);
-    const alreadyImportedCount = preview.rows.length - rows.length;
-    return {
-      jobId,
-      status: 'PREVIEW_READY',
-      connector: 'shopify-csv',
-      evidence,
-      summary: {
-        records: preview.rows.length,
-        issues: issues.length,
-        orderIds: [...new Set(rows.map((row) => row.Order))],
-        alreadyImportedCount,
-        allAlreadyImported: preview.rows.length > 0 && rows.length === 0,
-      },
-      issues,
-      financialEvents,
-    };
+      const sourceChannel = allFinancialEvents[0]?.sourceChannel;
+      const existingEventIds = dependencies?.financialEventsRepository && sourceChannel
+        ? await dependencies.financialEventsRepository.findExistingExternalEventIds(input.tenantId, sourceChannel, preview.rows.map((row) => row.businessKey))
+        : undefined;
+
+      if (!existingEventIds) {
+        return { jobId, status: 'PREVIEW_READY', connector: 'shopify-csv', evidence, summary: { records: preview.rows.length, issues: preview.issues.length, orderIds: [...new Set(preview.rows.map((row) => row.Order))] }, issues: preview.issues, financialEvents: allFinancialEvents, paymentsLedger: allPaymentsLedger };
+      }
+
+      const keep = preview.rows.map((row) => !existingEventIds.has(row.businessKey));
+      const rows = preview.rows.filter((_, index) => keep[index]);
+      const financialEvents = allFinancialEvents.filter((_, index) => keep[index]);
+      const paymentsLedger = allPaymentsLedger.filter((_, index) => keep[index]);
+      // Row-level issues carry a 1-based CSV row (index + 2); the one
+      // synthetic order-level issue (FULL_REFUND_NET_ZERO) uses row: 0 and
+      // isn't tied to a single businessKey, so it's kept as-is.
+      const issues = preview.issues.filter((issue) => issue.row === 0 || keep[issue.row - 2]);
+      const alreadyImportedCount = preview.rows.length - rows.length;
+      return {
+        jobId,
+        status: 'PREVIEW_READY',
+        connector: 'shopify-csv',
+        evidence,
+        summary: {
+          records: preview.rows.length,
+          issues: issues.length,
+          orderIds: [...new Set(rows.map((row) => row.Order))],
+          alreadyImportedCount,
+          allAlreadyImported: preview.rows.length > 0 && rows.length === 0,
+        },
+        issues,
+        financialEvents,
+        paymentsLedger,
+      };
+    }
   }
   if (input.filename.toLowerCase().endsWith('.xlsx') || input.mimeType === XLSX_MIME_TYPE) {
     if (isKdpXlsxFile(input.bytes)) {

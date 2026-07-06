@@ -49,6 +49,38 @@ export interface MatchingServicePort {
   runMatchingForOrder(tenantId: string, commercialOrderId: string): Promise<unknown>;
 }
 
+export interface PersistedShopifyOrderPaymentEvent { id: string; }
+export interface PersistedShopifyPaymentsLedgerEntry { id: string; }
+
+/**
+ * SHOPIFY-03: order-level payment-transaction evidence writer. Rows already
+ * carry `commercialOrderId` (nullable) -- persistFiscalRecords resolves it
+ * per row via CommercialOrdersRepositoryPort.findByExternalOrderId
+ * (shopifyOrderName as the join key) before calling this, attaching
+ * ORDER_EVIDENCE_MISSING when unresolved rather than blocking the write.
+ */
+export interface ShopifyOrderPaymentEventsRepositoryPort {
+  createMany(
+    tenantId: string,
+    importFileId: string,
+    rows: Array<NonNullable<ImportPreviewResponse['orderTransactions']>[number] & { commercialOrderId: string | null }>,
+  ): Promise<PersistedShopifyOrderPaymentEvent[]>;
+}
+
+/**
+ * SHOPIFY-03: platform settlement-ledger evidence writer -- distinct from
+ * FinancialEventsWriteRepositoryPort/financial_events (the existing matching
+ * pipeline). A real `payouts` row is created by the repository layer only
+ * when a row carries `externalPayoutId`.
+ */
+export interface ShopifyPaymentsLedgerRepositoryPort {
+  createMany(
+    tenantId: string,
+    importFileId: string,
+    rows: Array<NonNullable<ImportPreviewResponse['paymentsLedger']>[number] & { commercialOrderId: string | null }>,
+  ): Promise<{ entries: PersistedShopifyPaymentsLedgerEntry[] }>;
+}
+
 export interface ImportPreviewPersistencePort {
   persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean }>;
 }
@@ -82,6 +114,7 @@ export class ImportMetadataCipher {
 const IMPORTER_VERSIONS: Record<ImportPreviewResponse['connector'], string> = {
   'shopify-csv': 'shopify-csv@0.1.0',
   'shopify-orders-csv': 'shopify-orders-csv@0.1.0',
+  'shopify-order-transactions-csv': 'shopify-order-transactions-csv@0.1.0',
   'kdp-xlsx': 'kdp-xlsx@0.1.0',
 };
 
@@ -93,6 +126,8 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly commercialOrdersRepository?: CommercialOrdersRepositoryPort,
     private readonly financialEventsRepository?: FinancialEventsWriteRepositoryPort,
     private readonly matchingService?: MatchingServicePort,
+    private readonly shopifyOrderPaymentEventsRepository?: ShopifyOrderPaymentEventsRepositoryPort,
+    private readonly shopifyPaymentsLedgerRepository?: ShopifyPaymentsLedgerRepositoryPort,
   ) {}
 
   /**
@@ -156,7 +191,48 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       await this.triggerMatchingForNewEvents(tenantId, createdEvents);
     }
 
+    if (this.shopifyOrderPaymentEventsRepository && preview.orderTransactions) {
+      const rows = await this.resolveShopifyOrderName(tenantId, preview.orderTransactions);
+      const created = await this.shopifyOrderPaymentEventsRepository.createMany(tenantId, importFileId, rows);
+      createdRecordIds.shopifyOrderPaymentEvents = created.map((row) => row.id);
+    }
+
+    if (this.shopifyPaymentsLedgerRepository && preview.paymentsLedger) {
+      const rows = await this.resolveShopifyOrderName(tenantId, preview.paymentsLedger);
+      const { entries } = await this.shopifyPaymentsLedgerRepository.createMany(tenantId, importFileId, rows);
+      createdRecordIds.shopifyPaymentsLedgerEntries = entries.map((row) => row.id);
+    }
+
     return { createdRecordIds };
+  }
+
+  /**
+   * SHOPIFY-03: resolves `commercialOrderId` per row via
+   * CommercialOrdersRepositoryPort.findByExternalOrderId, using
+   * `shopifyOrderName` as the join key (never the raw numeric
+   * `shopifyOrderId` -- see migration 0014's linkage-field note). A miss is
+   * non-fatal: the row is still persisted, with `commercialOrderId: null` --
+   * this is the ORDER_EVIDENCE_MISSING case, logged rather than blocking the
+   * whole import, matching the non-fatal pattern used by
+   * triggerMatchingForNewOrders/Events above.
+   */
+  private async resolveShopifyOrderName<T extends { shopifyOrderName: string }>(tenantId: string, rows: readonly T[]): Promise<Array<T & { commercialOrderId: string | null }>> {
+    if (!this.commercialOrdersRepository?.findByExternalOrderId) {
+      return rows.map((row) => ({ ...row, commercialOrderId: null }));
+    }
+    const findByExternalOrderId = this.commercialOrdersRepository.findByExternalOrderId;
+    return Promise.all(rows.map(async (row) => {
+      try {
+        const order = await findByExternalOrderId(tenantId, row.shopifyOrderName);
+        if (!order) {
+          console.warn(`[import-preview-persistence] ORDER_EVIDENCE_MISSING: pedido ${row.shopifyOrderName} no encontrado en commercial_orders para el tenant ${tenantId}`);
+        }
+        return { ...row, commercialOrderId: order?.id ?? null };
+      } catch (error) {
+        console.error(`[import-preview-persistence] Fallo al resolver commercial_order_id para ${row.shopifyOrderName}`, error);
+        return { ...row, commercialOrderId: null };
+      }
+    }));
   }
 
   /**

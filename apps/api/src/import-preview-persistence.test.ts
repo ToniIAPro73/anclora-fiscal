@@ -148,3 +148,94 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords (FASE 03, confirm
     expect(result).toEqual({ createdRecordIds: {} });
   });
 });
+
+describe('ImportPreviewPersistenceService.persistFiscalRecords — SHOPIFY-03 payment/settlement evidence', () => {
+  it('resuelve commercial_order_id vía shopify_order_name (no el shopify_order_id numérico) antes de persistir orderTransactions', async () => {
+    const findByExternalOrderId = vi.fn().mockResolvedValue({ id: 'order-row-1' });
+    const shopifyOrderPaymentEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-1' }]);
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: vi.fn(), findByExternalOrderId },
+      undefined,
+      undefined,
+      { createMany: shopifyOrderPaymentEventsCreateMany },
+    );
+    const preview = {
+      jobId: 'job-6',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-order-transactions-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'a'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 1, issues: 0, orderIds: ['AI-1001'] },
+      issues: [],
+      orderTransactions: [{ externalEventKey: 'evt-key', shopifyOrderId: '9000000000001', shopifyOrderName: 'AI-1001', kind: 'sale', gateway: 'shopify_payments', status: 'success', amount: '6.99', currency: 'EUR', occurredAt: new Date('2026-07-01'), minimizedSnapshot: {} }],
+    };
+
+    const result = await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-6', preview);
+
+    expect(findByExternalOrderId).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', 'AI-1001');
+    const persistedRows = shopifyOrderPaymentEventsCreateMany.mock.calls[0]?.[2];
+    expect(persistedRows[0]).toMatchObject({ commercialOrderId: 'order-row-1', shopifyOrderId: '9000000000001', shopifyOrderName: 'AI-1001' });
+    expect(result).toEqual({ createdRecordIds: { shopifyOrderPaymentEvents: ['event-row-1'] } });
+  });
+
+  it('ORDER_EVIDENCE_MISSING: persiste commercial_order_id null cuando shopify_order_name no resuelve, sin bloquear el import', async () => {
+    const findByExternalOrderId = vi.fn().mockResolvedValue(undefined);
+    const shopifyOrderPaymentEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-2' }]);
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: vi.fn(), findByExternalOrderId },
+      undefined,
+      undefined,
+      { createMany: shopifyOrderPaymentEventsCreateMany },
+    );
+    const preview = {
+      jobId: 'job-7',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-order-transactions-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'b'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 1, issues: 0, orderIds: ['AI-9999'] },
+      issues: [],
+      orderTransactions: [{ externalEventKey: 'evt-key-2', shopifyOrderId: '9000000000009', shopifyOrderName: 'AI-9999', kind: 'sale', gateway: 'shopify_payments', status: 'success', amount: '6.99', currency: 'EUR', occurredAt: new Date('2026-07-01'), minimizedSnapshot: {} }],
+    };
+
+    await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-7', preview);
+
+    const persistedRows = shopifyOrderPaymentEventsCreateMany.mock.calls[0]?.[2];
+    expect(persistedRows[0]).toMatchObject({ commercialOrderId: null });
+  });
+
+  it('persiste paymentsLedger resolviendo commercial_order_id por shopify_order_name', async () => {
+    const findByExternalOrderId = vi.fn().mockResolvedValue({ id: 'order-row-2' });
+    const shopifyPaymentsLedgerCreateMany = vi.fn().mockResolvedValue({ entries: [{ id: 'ledger-row-1' }] });
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: vi.fn(), findByExternalOrderId },
+      undefined,
+      undefined,
+      undefined,
+      { createMany: shopifyPaymentsLedgerCreateMany },
+    );
+    const preview = {
+      jobId: 'job-8',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'c'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 1, issues: 0, orderIds: ['AI-1001'] },
+      issues: [],
+      paymentsLedger: [{ externalEntryKey: 'entry-key', shopifyOrderName: 'AI-1001', checkoutReference: '#1', entryType: 'charge', amount: '6.99', feeAmount: '0.45', netAmount: '6.54', currency: 'EUR', payoutStatus: 'pending', minimizedSnapshot: {} }],
+    };
+
+    const result = await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-8', preview);
+
+    expect(findByExternalOrderId).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', 'AI-1001');
+    const persistedRows = shopifyPaymentsLedgerCreateMany.mock.calls[0]?.[2];
+    expect(persistedRows[0]).toMatchObject({ commercialOrderId: 'order-row-2' });
+    expect(result).toEqual({ createdRecordIds: { shopifyPaymentsLedgerEntries: ['ledger-row-1'] } });
+  });
+});
