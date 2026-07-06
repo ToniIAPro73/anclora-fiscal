@@ -374,6 +374,13 @@ body {
 }
 .operation-filters-compact { grid-template-columns: minmax(300px, 1.45fr) minmax(180px, .72fr) auto; }
 .reconciliation-workbench { padding: 34px 0 0; background: none; box-shadow: none; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 18px 0 24px; }
+.summary-grid article { display: grid; gap: 10px; padding: 20px; border-radius: 18px; background: linear-gradient(145deg, rgb(21 36 55 / 68%), rgb(10 18 29 / 72%)); box-shadow: inset 0 0 0 1px rgb(245 239 227 / 7%); }
+.summary-grid article span { color: var(--fiscal-muted); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }
+.summary-grid article strong { color: var(--fiscal-ivory); font: 600 1.3rem var(--font-display), serif; }
+.detail-section { display: grid; gap: 14px; margin-top: 30px; }
+.reconciliation-filters label { display: grid; gap: 8px; color: var(--fiscal-muted); font-size: .7rem; }
+.reconciliation-filters select { min-height: 46px; padding: 0 14px; border: 0; border-radius: 12px; color: var(--fiscal-ivory); background: rgb(7 12 19 / 66%); box-shadow: inset 0 0 0 1px rgb(245 239 227 / 11%); color-scheme: dark; }
 .unmatched-orders { display: grid; gap: 18px; }
 .reconciliation-filters {
   display: grid;
@@ -491,6 +498,7 @@ body {
   .topbar-actions { width: 100%; }
   .topbar-actions .btn { width: 100%; }
   .metrics { grid-template-columns: 1fr; }
+  .summary-grid { grid-template-columns: 1fr; }
   .operation-filters { grid-template-columns: 1fr; }
   .reconciliation-filters { grid-template-columns: 1fr; }
   .date-range-inputs { grid-template-columns: 1fr; }

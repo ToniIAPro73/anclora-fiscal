@@ -6,8 +6,8 @@ export default function ReconciliationPage() {
   return <AppShell>
     <PageHeader
       eyebrow="03 / CONCILIACIÓN"
-      title="Conciliación"
-      description="Compara evidencia comercial y financiera caso a caso."
+      title="Cobros y liquidación Shopify"
+      description="Revisa los enlaces entre pedidos, transacciones y ledger. Un payout identificado no acredita por sí solo el cobro bancario."
       backHref="/"
     />
     <ReconciliationWorkbench />

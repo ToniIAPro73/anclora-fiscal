@@ -93,14 +93,14 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords (FASE 03, confirm
   it('persiste los pedidos comerciales y eventos financieros normalizados cuando el preview los incluye y devuelve sus ids', async () => {
     const commercialOrdersCreateMany = vi.fn().mockResolvedValue([{ id: 'order-row-1' }]);
     const financialEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-1' }]);
-    const runMatchingForOrder = vi.fn();
+    const createForConfirmedOrder = vi.fn();
     const service = new ImportPreviewPersistenceService(
       { persist: vi.fn() },
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
       undefined,
       { createMany: commercialOrdersCreateMany },
       { createMany: financialEventsCreateMany },
-      { runMatchingForOrder },
+      { createForConfirmedOrder },
     );
     const commercialOrders = [{ sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001', commercialDate: new Date('2026-07-01') }];
     const financialEvents = [{ sourceChannel: 'SHOPIFY', externalEventId: 'evt-1', eventType: 'charge', amount: '10', feeAmount: '1', netAmount: '9', currency: 'EUR', occurredAt: new Date('2026-07-01') }];
@@ -119,8 +119,79 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords (FASE 03, confirm
 
     expect(commercialOrdersCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', commercialOrders);
     expect(financialEventsCreateMany).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', financialEvents);
-    expect(runMatchingForOrder).not.toHaveBeenCalled();
+    expect(createForConfirmedOrder).not.toHaveBeenCalled();
     expect(result).toEqual({ createdRecordIds: { commercialOrders: ['order-row-1'], financialEvents: ['event-row-1'] } });
+  });
+
+  it('SHOPIFY-06: dispara la creación de la operación fiscal solo para pedidos con financialStatus confirmado (paid), no para pedidos pendientes', async () => {
+    const commercialOrdersCreateMany = vi.fn().mockResolvedValue([
+      { id: 'order-row-paid', externalOrderId: 'AI-1001' },
+      { id: 'order-row-pending', externalOrderId: 'AI-1002' },
+    ]);
+    const createForConfirmedOrder = vi.fn().mockResolvedValue({ status: 'CREATED', canonicalOperationId: 'op-1' });
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: commercialOrdersCreateMany },
+      undefined,
+      { createForConfirmedOrder },
+    );
+    const commercialOrders = [
+      { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1001', financialStatus: 'paid', commercialDate: new Date('2026-07-01') },
+      { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-1002', financialStatus: 'pending', commercialDate: new Date('2026-07-01') },
+    ];
+    const preview = {
+      jobId: 'job-confirmed',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-orders-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'e'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 2, issues: 0, orderIds: ['AI-1001', 'AI-1002'] },
+      issues: [],
+      commercialOrders,
+    };
+
+    await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-confirmed', preview);
+
+    expect(createForConfirmedOrder).toHaveBeenCalledTimes(1);
+    expect(createForConfirmedOrder).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', 'order-row-paid');
+  });
+
+  it('SHOPIFY-06: también dispara para pedidos reembolsados total o parcialmente (el cargo ya se confirmó), pero no para voided', async () => {
+    const commercialOrdersCreateMany = vi.fn().mockResolvedValue([
+      { id: 'order-row-refunded', externalOrderId: 'AI-2001' },
+      { id: 'order-row-partial', externalOrderId: 'AI-2002' },
+      { id: 'order-row-voided', externalOrderId: 'AI-2003' },
+    ]);
+    const createForConfirmedOrder = vi.fn().mockResolvedValue({ status: 'CREATED', canonicalOperationId: 'op-1' });
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: commercialOrdersCreateMany },
+      undefined,
+      { createForConfirmedOrder },
+    );
+    const commercialOrders = [
+      { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-2001', financialStatus: 'refunded', commercialDate: new Date('2026-07-01') },
+      { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-2002', financialStatus: 'partially_refunded', commercialDate: new Date('2026-07-01') },
+      { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-2003', financialStatus: 'voided', commercialDate: new Date('2026-07-01') },
+    ];
+    const preview = {
+      jobId: 'job-refunded',
+      status: 'PREVIEW_READY' as const,
+      connector: 'shopify-orders-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'f'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 3, issues: 0, orderIds: ['AI-2001', 'AI-2002', 'AI-2003'] },
+      issues: [],
+      commercialOrders,
+    };
+
+    await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-refunded', preview);
+
+    expect(createForConfirmedOrder).toHaveBeenCalledTimes(2);
+    expect(createForConfirmedOrder).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', 'order-row-refunded');
+    expect(createForConfirmedOrder).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', 'order-row-partial');
   });
 
   it('no persiste nada cuando el preview no incluye datos fiscales', async () => {
@@ -185,14 +256,14 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords — SHOPIFY-03 pa
 
   it('reconstruye enlaces de evidencia tras confirmar cualquier stream Shopify sin invocar matching legacy', async () => {
     const linkTenantEvidence = vi.fn().mockResolvedValue(undefined);
-    const runMatchingForOrder = vi.fn();
+    const createForConfirmedOrder = vi.fn();
     const service = new ImportPreviewPersistenceService(
       { persist: vi.fn() },
       new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
       undefined,
       { createMany: vi.fn().mockResolvedValue([]) },
       undefined,
-      { runMatchingForOrder },
+      { createForConfirmedOrder },
       undefined,
       undefined,
       { linkTenantEvidence },
@@ -206,7 +277,7 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords — SHOPIFY-03 pa
     await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-links', preview);
 
     expect(linkTenantEvidence).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', { windowDays: 7 });
-    expect(runMatchingForOrder).not.toHaveBeenCalled();
+    expect(createForConfirmedOrder).not.toHaveBeenCalled();
   });
 
   it('ORDER_EVIDENCE_MISSING: persiste commercial_order_id null cuando shopify_order_name no resuelve, sin bloquear el import', async () => {

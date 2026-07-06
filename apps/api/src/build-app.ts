@@ -19,6 +19,7 @@ import { parsePagination } from './pagination.js';
 import type { Paginated } from './pagination.js';
 import { createIssueResolveHandler, createIssuesListHandler, type IssuesRepositoryPort } from './issues-controller.js';
 import { createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
+import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } from './dashboard-controller.js';
@@ -75,6 +76,7 @@ export async function buildApp(options: {
   financialEventsRepository?: FinancialEventsRepositoryPort | undefined;
   reconciliationRepository?: (ReconciliationRepositoryPort & Partial<UnmatchedOrdersRepositoryPort>) | undefined;
   issuesRepository?: IssuesRepositoryPort | undefined;
+  shopifySalesRepository?: ShopifySalesRepositoryPort | undefined;
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
@@ -131,6 +133,21 @@ export async function buildApp(options: {
     '/api/v1/imports/:jobId/retry',
     { preHandler: requireRole(['imports:write']) },
     createImportRetryHandler({ repository: options.importLifecycleRepository, storage: importStorage }),
+  );
+  app.get(
+    '/api/v1/shopify/sales',
+    { preHandler: requireRole(['operations:read']) },
+    createShopifySalesListHandler(options.shopifySalesRepository),
+  );
+  app.get(
+    '/api/v1/shopify/sales/:orderId',
+    { preHandler: requireRole(['operations:read']) },
+    createShopifySaleDetailHandler(options.shopifySalesRepository),
+  );
+  app.post(
+    '/api/v1/shopify/sales/:orderId/invoice',
+    { preHandler: requireRole(['documents:issue']) },
+    createShopifySaleInvoiceHandler({ repository: options.shopifySalesRepository, fiscalDocumentsRepository: options.fiscalDocumentsRepository, storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')) }),
   );
   app.get(
     '/api/v1/commercial-orders',

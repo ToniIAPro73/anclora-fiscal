@@ -4,7 +4,7 @@ const routes = [
   ['/', 'Centro de control'],
   ['/imports', 'Bandeja de importaciones'],
   ['/sales/shopify', 'Ventas Shopify'],
-  ['/reconciliation', 'Conciliación'],
+  ['/reconciliation', 'Cobros y liquidación Shopify'],
   ['/invoicing', 'Facturación'],
   ['/verifactu', 'VERI*FACTU'],
   ['/tax-rules', 'Reglas fiscales'],

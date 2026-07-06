@@ -218,6 +218,24 @@ Requiere `dossier:read`. Devuelve los metadatos del expediente
 descarga firmada — `StoragePort` no expone ese mecanismo todavía; se devuelve
 el `storageKey` en crudo. Ver la brecha documentada en `docs/security.md`.
 
+### `GET /api/v1/shopify/sales`
+
+Listado operativo tenant-scoped de pedidos Shopify. Admite filtros de fecha,
+estado de pago, reembolso, fiscalidad, liquidación y pedidos de importe cero.
+Incluye métricas de ventas, reembolsos, comisiones y liquidaciones pendientes.
+
+### `GET /api/v1/shopify/sales/:orderId`
+
+Devuelve el expediente completo: pedido y líneas, transacciones, ledger,
+enlaces, payout pendiente o identificado, operación, decisión fiscal,
+documentos y auditoría. Un payout identificado no equivale a verificación bancaria.
+
+### `POST /api/v1/shopify/sales/:orderId/invoice`
+
+Emisión manual con permiso `documents:issue`. El servidor exige expediente,
+importe distinto de cero, configuración y perfil fiscal, transacciones, ledger
+y decisión fiscal. Nunca se ejecuta automáticamente al importar o enlazar.
+
 ## Recursos no implementados
 
 Quedan sin ruta de API: payouts, motor de reglas/decisiones fiscales

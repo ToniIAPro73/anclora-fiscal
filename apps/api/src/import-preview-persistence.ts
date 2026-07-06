@@ -1,6 +1,13 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import type { ImportPreviewResponse } from './import-service.js';
 
+/**
+ * SHOPIFY-06: Shopify `Financial Status` values that indicate an order has
+ * been confirmed (charge captured) — see
+ * triggerFiscalOperationForConfirmedOrders below.
+ */
+const CONFIRMED_ORDER_FINANCIAL_STATUSES = new Set(['paid', 'partially_refunded', 'refunded']);
+
 export interface ImportPreviewRepositoryPort {
   persist(input: {
     tenantId: string;
@@ -45,8 +52,8 @@ export interface FinancialEventsWriteRepositoryPort {
   findByOrderReference?(tenantId: string, orderReference: string): Promise<unknown[]>;
 }
 
-export interface MatchingServicePort {
-  runMatchingForOrder(tenantId: string, commercialOrderId: string): Promise<unknown>;
+export interface ConfirmedOrderFiscalCasePort {
+  createForConfirmedOrder(tenantId: string, commercialOrderId: string): Promise<unknown>;
 }
 
 export interface PersistedShopifyOrderPaymentEvent { id: string; }
@@ -129,7 +136,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly royaltyRepository?: RoyaltyRepositoryPort,
     private readonly commercialOrdersRepository?: CommercialOrdersRepositoryPort,
     private readonly financialEventsRepository?: FinancialEventsWriteRepositoryPort,
-    private readonly matchingService?: MatchingServicePort,
+    private readonly confirmedOrderFiscalCaseService?: ConfirmedOrderFiscalCasePort,
     private readonly shopifyOrderPaymentEventsRepository?: ShopifyOrderPaymentEventsRepositoryPort,
     private readonly shopifyPaymentsLedgerRepository?: ShopifyPaymentsLedgerRepositoryPort,
     private readonly shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort,
@@ -183,9 +190,15 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       // idempotent on both unique indexes — never overwrites existing rows.
       const result = await this.commercialOrdersRepository.createManyWithLines(tenantId, preview.commercialOrderGroups);
       createdRecordIds.commercialOrders = result.orders.map((order) => order.id);
+      await this.triggerFiscalOperationForConfirmedOrders(
+        tenantId,
+        result.orders,
+        preview.commercialOrderGroups.map((group) => group.order),
+      );
     } else if (this.commercialOrdersRepository && preview.commercialOrders) {
       const createdOrders = await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
       createdRecordIds.commercialOrders = createdOrders.map((order) => order.id);
+      await this.triggerFiscalOperationForConfirmedOrders(tenantId, createdOrders, preview.commercialOrders);
     }
 
     if (this.financialEventsRepository && preview.financialEvents) {
@@ -242,45 +255,33 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
   }
 
   /**
-   * Automatic-on-import trigger (orders-CSV imported first, or re-imported
-   * after a prior payment-transactions import already landed): for each
-   * newly-created commercial order, check whether a counterpart
-   * financial_events row already exists for the tenant by orderReference —
-   * if so, run matching now. Non-fatal: a matching failure must never break
-   * the import commit itself.
+   * SHOPIFY-06: fiscal-operation/sales-case creation now triggers from a
+   * *confirmed order*, not from a match event. Replaces the prior
+   * match-driven triggers (triggerMatchingForNewOrders/NewEvents, which ran
+   * matching the moment any counterpart financial_event existed, regardless
+   * of the order's own commercial state — and which, in this codebase, were
+   * never actually wired to a call site). "Confirmed" is read off Shopify's
+   * own `Financial Status` signal (financialStatus), already captured on
+   * commercial_orders per FASE 02/03 normalization: 'paid',
+   * 'partially_refunded', and 'refunded' all imply the order was captured
+   * (refunds only happen after a successful charge); 'pending', 'authorized',
+   * and 'voided' do not. Non-fatal per row — a matching/persistence failure
+   * for one order must never block the rest of the import commit.
    */
-  private async triggerMatchingForNewOrders(tenantId: string, createdOrders: PersistedCommercialOrder[]): Promise<void> {
-    if (!this.matchingService || !this.financialEventsRepository?.findByOrderReference) return;
+  private async triggerFiscalOperationForConfirmedOrders(
+    tenantId: string,
+    createdOrders: PersistedCommercialOrder[],
+    sourceRows: ReadonlyArray<{ externalOrderId: string; financialStatus?: string | null | undefined }>,
+  ): Promise<void> {
+    if (!this.confirmedOrderFiscalCaseService) return;
+    const financialStatusByExternalId = new Map(sourceRows.map((row) => [row.externalOrderId, row.financialStatus]));
     for (const order of createdOrders) {
+      const financialStatus = financialStatusByExternalId.get(order.externalOrderId);
+      if (!financialStatus || !CONFIRMED_ORDER_FINANCIAL_STATUSES.has(financialStatus)) continue;
       try {
-        const counterparts = await this.financialEventsRepository.findByOrderReference(tenantId, order.externalOrderId);
-        if (counterparts.length > 0) {
-          await this.matchingService.runMatchingForOrder(tenantId, order.id);
-        }
+        await this.confirmedOrderFiscalCaseService.createForConfirmedOrder(tenantId, order.id);
       } catch (error) {
-        console.error(`[import-preview-persistence] Fallo al ejecutar el emparejamiento automático para el pedido ${order.id}`, error);
-      }
-    }
-  }
-
-  /**
-   * Symmetric case: payment-transactions CSV imported first (or re-imported
-   * after a prior orders-CSV import already landed) — for each newly-created
-   * financial event with an orderReference, check whether a matching
-   * commercial order already exists for the tenant, and run matching from
-   * that direction too. Non-fatal, same as triggerMatchingForNewOrders.
-   */
-  private async triggerMatchingForNewEvents(tenantId: string, createdEvents: PersistedFinancialEvent[]): Promise<void> {
-    if (!this.matchingService || !this.commercialOrdersRepository?.findByExternalOrderId) return;
-    for (const event of createdEvents) {
-      if (!event.orderReference) continue;
-      try {
-        const order = await this.commercialOrdersRepository.findByExternalOrderId(tenantId, event.orderReference);
-        if (order) {
-          await this.matchingService.runMatchingForOrder(tenantId, order.id);
-        }
-      } catch (error) {
-        console.error(`[import-preview-persistence] Fallo al ejecutar el emparejamiento automático para el evento ${event.id}`, error);
+        console.error(`[import-preview-persistence] Fallo al crear la operación fiscal para el pedido confirmado ${order.id}`, error);
       }
     }
   }

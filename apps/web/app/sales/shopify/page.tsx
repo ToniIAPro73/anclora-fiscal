@@ -7,7 +7,7 @@ export default function SalesShopifyPage() {
     <PageHeader
       eyebrow="02 / EVIDENCIA CRUZADA"
       title="Ventas Shopify"
-      description="Cruza evidencia comercial y financiera antes de liquidar."
+      description="Controla ventas, cobros, comisiones, reembolsos y liquidaciones de Shopify."
       backHref="/"
     />
     <OperationsTimeline />

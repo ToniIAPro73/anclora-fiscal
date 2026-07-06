@@ -292,3 +292,25 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   - `bankVerified` permanece siempre falso: la aplicación aún no ingiere extractos
     bancarios.
 - **Siguiente fase:** SHOPIFY-06 — Ventas Shopify, conciliación y facturación segura.
+
+---
+
+## SHOPIFY-06 — Ventas, liquidación y facturación segura
+
+- **Objetivo:** convertir las tres evidencias Shopify en un expediente operativo por pedido,
+  sin confundir payout con conciliación bancaria y sin emisión automática.
+- **Implementación:** read model y API `/api/v1/shopify/sales`; lista con métricas y filtros;
+  detalle pedido → transacciones → ledger → payout → decisión → documentos → auditoría;
+  workbench “Cobros y liquidación Shopify”; creación del caso fiscal desde el pedido
+  confirmado, independiente del matching; emisión manual con permiso y elegibilidad
+  calculada en servidor; importe cero excluido y reembolsos bifurcados en el servicio de
+  emisión. No se añade migración.
+- **Pruebas:** `pnpm lint` y `pnpm typecheck` (7/7); `pnpm test` (API 25
+  archivos/176 pruebas, DB 19/100, web 25/58, conectores 5/41, core 6/22,
+  UI 11/29 y tax-engine 1/3); `pnpm build` (7/7); Playwright (33/33); y
+  `git diff --check`, todos correctos.
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/main`.
+- **Limitación explícita:** no se ingieren extractos bancarios; ningún estado de payout se
+  presenta como cobro bancario verificado.
+- **Siguiente fase:** SHOPIFY-07 — Cierre de calidad, documentación y aceptación real.

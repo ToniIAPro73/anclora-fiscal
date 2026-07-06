@@ -2,101 +2,42 @@
 
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
-import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../../components/operation-filters';
-import { fetchAllPages } from '../../lib/fetch-all-pages';
 
-interface Operation {
-  id: string;
-  sourceChannel: string;
-  sourceOrderId: string | null;
-  operationType: string;
-  operationStatus: string;
-  reviewStatus: string;
-  reconciliationStatus: string;
-  verifactuStatus: string;
-  grossAmount: string | null;
-  platformFeeAmount: string | null;
-  netAmount: string | null;
-  originalCurrency: string | null;
-  createdAt: string;
-}
-
-interface CommercialOrder {
-  id: string;
-  externalOrderId: string;
-  commercialDate: string | null;
-  productNature: string | null;
-  totalAmount: string | null;
-  taxAmount: string | null;
-}
-
-const statusLabels: Record<string, string> = { PENDING_TAX_REVIEW: 'Pendiente de revisión fiscal', PENDING_EVIDENCE: 'Pendiente de evidencia' };
-const reconciliationLabels: Record<string, string> = { MATCHED: 'Conciliado', PARTIALLY_MATCHED: 'Parcialmente conciliado', UNMATCHED: 'Excepción' };
+interface Sale { id: string; externalOrderId: string; commercialDate: string | null; totalAmount: string | null; paymentStatus: string; refundStatus: string; fiscalStatus: string; transactionCount: number; ledgerCount: number; feeAmount: string; payoutStatus: string; }
+interface Response { items: Sale[]; metrics: { salesAmount: string; refundedAmount: string; feeAmount: string; pendingSettlement: number }; }
 
 export function OperationsTimeline() {
-  const [operations, setOperations] = useState<Operation[]>();
-  const [orders, setOrders] = useState<CommercialOrder[]>();
+  const [data, setData] = useState<Response>();
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<OperationFilterValues>({ ...emptyOperationFilters, sourceChannel: 'SHOPIFY' });
-  const hasFilters = Boolean(filters.dateFrom || filters.dateTo || filters.productNature);
-
+  const [filters, setFilters] = useState({ paymentStatus: '', refundStatus: '', fiscalStatus: '', settlementStatus: '', zeroAmount: '' });
   useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const [orderItems, operationItems] = await Promise.all([
-          fetchAllPages<CommercialOrder>('/api/v1/commercial-orders', { credentials: 'include' }, 'No se pudieron obtener las ventas Shopify'),
-          fetchAllPages<Operation>(`/api/v1/operations${operationFiltersQuery(filters)}`, { credentials: 'include' }, 'No se pudieron obtener las ventas Shopify'),
-        ]);
-        if (!cancelled) {
-          setOrders(orderItems);
-          setOperations(operationItems);
-        }
-      } catch (reason) {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : 'No se pudieron obtener las ventas Shopify');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
+    const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
+    fetch(`/api/v1/shopify/sales?${query}`, { credentials: 'include' }).then(async (response) => {
+      if (!response.ok) throw new Error('No se pudieron obtener las ventas Shopify');
+      return response.json() as Promise<Response>;
+    }).then(setData).catch((reason: Error) => setError(reason.message));
   }, [filters]);
-
-  const filteredOrders = orders?.filter((order) => {
-    const orderDate = order.commercialDate?.slice(0, 10) ?? '';
-    return (!filters.dateFrom || orderDate >= filters.dateFrom)
-      && (!filters.dateTo || orderDate <= filters.dateTo)
-      && (!filters.productNature || order.productNature === filters.productNature);
-  });
-  const operationsByOrder = new Map(operations?.map((operation) => [operation.sourceOrderId, operation]) ?? []);
-
-  if (loading) return <section className="operations-timeline"><p aria-live="polite">Cargando operaciones…</p></section>;
-  if (error) return <section className="operations-timeline"><p className="import-error">{error}</p></section>;
+  if (error) return <p className="workbench-notice workbench-notice-error">{error}</p>;
+  if (!data) return <p className="workbench-notice">Cargando ventas Shopify…</p>;
   return <section className="operations-timeline">
-    <span className="section-index">Ventas importadas</span>
-    <OperationFilters value={filters} onChange={setFilters} showPlatform={false} />
-    {!filteredOrders || filteredOrders.length === 0 ? <p>{hasFilters ? 'No hay ventas para los filtros seleccionados.' : 'No hay ventas Shopify importadas todavía.'}</p> : null}
-    {filteredOrders && filteredOrders.length > 0 ?
-    <ol className="evidence-thread">
-      {filteredOrders.map((order) => {
-        const operation = operationsByOrder.get(order.externalOrderId);
-        const total = order.totalAmount !== null ? Number(order.totalAmount).toFixed(2) : '—';
-        const tax = order.taxAmount !== null ? Number(order.taxAmount).toFixed(2) : '—';
-        return <li key={order.id}>
-          <time>{order.commercialDate ? new Date(order.commercialDate).toLocaleDateString('es-ES') : 'Sin fecha'}</time>
-          <div>
-            <strong>{order.externalOrderId}</strong>
-            <p>Total {total} EUR · IVA {tax} EUR · {order.productNature === 'ebook' ? 'eBook' : 'Producto físico / general'}</p>
-          </div>
-          <div className="operation-status-group">
-            {operation ? <>
-              <StatusBadge tone={operation.reviewStatus === 'PENDING' ? 'warning' : 'info'}>{statusLabels[operation.reviewStatus] ?? operation.reviewStatus}</StatusBadge>
-              <StatusBadge tone={operation.reconciliationStatus === 'MATCHED' ? 'info' : 'warning'}>{reconciliationLabels[operation.reconciliationStatus] ?? operation.reconciliationStatus}</StatusBadge>
-            </> : <StatusBadge tone="warning">Pendiente de conciliación</StatusBadge>}
-          </div>
-        </li>;
-      })}
-    </ol> : null}
+    <span className="section-index">Resumen operativo</span>
+    <div className="summary-grid">
+      <article><span>Ventas</span><strong>{Number(data.metrics.salesAmount).toFixed(2)} €</strong></article>
+      <article><span>Reembolsos</span><strong>{Number(data.metrics.refundedAmount).toFixed(2)} €</strong></article>
+      <article><span>Comisiones</span><strong>{Number(data.metrics.feeAmount).toFixed(2)} €</strong></article>
+      <article><span>Liquidación pendiente</span><strong>{data.metrics.pendingSettlement}</strong></article>
+    </div>
+    <div className="reconciliation-filters" aria-label="Filtros de ventas Shopify">
+      <label>Pago<select value={filters.paymentStatus} onChange={(e) => setFilters({ ...filters, paymentStatus: e.target.value })}><option value="">Todos</option><option value="PAID">Pagado</option><option value="PENDING">Pendiente</option></select></label>
+      <label>Reembolso<select value={filters.refundStatus} onChange={(e) => setFilters({ ...filters, refundStatus: e.target.value })}><option value="">Todos</option><option value="NONE">Sin reembolso</option><option value="PARTIAL">Parcial</option><option value="FULL">Total</option></select></label>
+      <label>Liquidación<select value={filters.settlementStatus} onChange={(e) => setFilters({ ...filters, settlementStatus: e.target.value })}><option value="">Todas</option><option value="PENDING">Pendiente</option><option value="SETTLED">Con payout</option></select></label>
+      <label>Importe<select value={filters.zeroAmount} onChange={(e) => setFilters({ ...filters, zeroAmount: e.target.value })}><option value="">Todos</option><option value="true">Cero</option><option value="false">Mayor que cero</option></select></label>
+      <button className="filter-clear" onClick={() => setFilters({ paymentStatus: '', refundStatus: '', fiscalStatus: '', settlementStatus: '', zeroAmount: '' })}>Limpiar</button>
+    </div>
+    {data.items.length === 0 ? <p className="workbench-notice">No hay pedidos Shopify para los filtros seleccionados.</p> : <div className="reconciliation-table-panel"><table><thead><tr><th>Pedido</th><th>Fecha</th><th>Importe</th><th>Evidencia</th><th>Liquidación</th><th>Fiscal</th></tr></thead><tbody>{data.items.map((sale) => <tr key={sale.id}>
+      <td><a href={`/sales/shopify/${sale.id}`}><strong>{sale.externalOrderId}</strong></a></td><td>{sale.commercialDate ? new Date(sale.commercialDate).toLocaleDateString('es-ES') : 'Sin fecha'}</td><td>{Number(sale.totalAmount ?? 0).toFixed(2)} €</td>
+      <td>{sale.transactionCount ? `${sale.transactionCount} transacción · ${sale.ledgerCount} ledger` : <StatusBadge tone="warning">Faltan transacciones</StatusBadge>}</td>
+      <td><StatusBadge tone={sale.payoutStatus === 'SETTLED' ? 'info' : 'warning'}>{sale.payoutStatus === 'SETTLED' ? 'Payout identificado' : sale.payoutStatus === 'LEDGER_MISSING' ? 'Falta ledger' : 'Payout pendiente'}</StatusBadge></td>
+      <td>{sale.fiscalStatus}</td></tr>)}</tbody></table></div>}
   </section>;
 }
