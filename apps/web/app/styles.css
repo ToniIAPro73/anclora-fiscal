@@ -508,3 +508,241 @@ body {
   .file-dropzone { min-width: 0; padding: 24px 18px; }
   .fiscal-settings-form fieldset { grid-template-columns: 1fr; padding: 18px; }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Collapsible desktop sidebar
+   The explicit collapsed state replaces the old automatic
+   medium-screen rail behaviour.
+   ───────────────────────────────────────────────────────────── */
+
+@media (min-width: 781px) {
+  .app-shell {
+    --sidebar-width: 286px;
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    transition: grid-template-columns 280ms var(--fiscal-ease);
+  }
+
+  .sidebar {
+    position: sticky;
+    width: var(--sidebar-width);
+    overflow: visible;
+    transition:
+      width 280ms var(--fiscal-ease),
+      padding 280ms var(--fiscal-ease);
+  }
+
+  .sidebar-toggle {
+    position: absolute;
+    z-index: 5;
+    top: 44px;
+    right: -16px;
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgb(215 169 87 / 42%);
+    border-radius: 999px;
+    background: linear-gradient(
+      145deg,
+      rgb(27 43 62 / 98%),
+      rgb(12 23 37 / 98%)
+    );
+    color: var(--fiscal-gold);
+    box-shadow:
+      0 8px 24px rgb(0 0 0 / 30%),
+      inset 0 1px rgb(255 255 255 / 6%);
+    cursor: pointer;
+    transition:
+      transform 180ms ease,
+      border-color 180ms ease,
+      background-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+
+  .sidebar-toggle:hover {
+    transform: scale(1.06);
+    border-color: rgb(215 169 87 / 76%);
+    background: #18293c;
+    box-shadow:
+      0 12px 30px rgb(0 0 0 / 38%),
+      0 0 0 4px rgb(215 169 87 / 8%);
+  }
+
+  .sidebar-toggle svg {
+    width: 16px;
+    height: 16px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .brand-lockup {
+    width: auto;
+    overflow: visible;
+    transition:
+      justify-content 280ms var(--fiscal-ease),
+      gap 280ms var(--fiscal-ease);
+  }
+
+  .brand-lockup > span:last-child {
+    display: inline;
+  }
+
+  .sidebar nav a,
+  .nav-item-disabled {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+
+  .sidebar nav a {
+    gap: 10px;
+    font-size: 0.78rem;
+    text-align: left;
+  }
+
+  .sidebar nav a span {
+    font-size: inherit;
+  }
+
+  .nav-item-disabled {
+    gap: 10px;
+    row-gap: 0;
+  }
+
+  .nav-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nav-rail-token {
+    display: none;
+    flex: 0 0 auto;
+  }
+
+  .nav-badge,
+  .nav-badge-soon {
+    margin-left: auto;
+  }
+
+  .app-shell.sidebar-collapsed {
+    --sidebar-width: 84px;
+  }
+
+  .sidebar-collapsed .sidebar {
+    padding-inline: 13px;
+  }
+
+  .sidebar-collapsed .brand-lockup {
+    justify-content: center;
+    gap: 0;
+  }
+
+  .sidebar-collapsed .brand-lockup > span:last-child,
+  .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .nav-badge,
+  .sidebar-collapsed .nav-badge-soon,
+  .sidebar-collapsed .tenant > div,
+  .sidebar-collapsed .logout-button-label {
+    display: none;
+  }
+
+  .sidebar-collapsed .sidebar nav a,
+  .sidebar-collapsed .nav-item-disabled {
+    justify-content: center;
+    gap: 0;
+    padding-inline: 0;
+  }
+
+  .sidebar-collapsed .sidebar nav a:hover {
+    transform: none;
+  }
+
+  .sidebar-collapsed .nav-rail-token {
+    display: grid;
+    width: 31px;
+    height: 31px;
+    place-items: center;
+    border: 1px solid rgb(245 239 227 / 11%);
+    border-radius: 10px;
+    background: rgb(245 239 227 / 3%);
+    color: rgb(245 239 227 / 72%);
+    font-family: var(--font-ui), sans-serif;
+    font-size: 0.58rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+
+  .sidebar-collapsed .sidebar nav a.active .nav-rail-token {
+    border-color: rgb(215 169 87 / 48%);
+    background: rgb(215 169 87 / 15%);
+    color: var(--fiscal-gold);
+    box-shadow: inset 0 1px rgb(255 255 255 / 7%);
+  }
+
+  .sidebar-collapsed .nav-item-disabled .nav-rail-token {
+    border-color: rgb(245 239 227 / 8%);
+    background: transparent;
+    color: rgb(245 239 227 / 36%);
+  }
+
+  .sidebar-collapsed .tenant {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .sidebar-collapsed .tenant-medal {
+    width: 38px;
+    height: 38px;
+  }
+
+  .logout-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .logout-button-icon {
+    display: none;
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sidebar-collapsed .logout-button {
+    width: 42px;
+    min-height: 42px;
+    margin-inline: auto;
+    padding: 0;
+    border-radius: 14px;
+  }
+
+  .sidebar-collapsed .logout-button-icon {
+    display: block;
+  }
+}
+
+@media (min-width: 781px) and (max-width: 1100px) {
+  .app-shell:not(.sidebar-collapsed) {
+    --sidebar-width: 246px;
+  }
+}
+
+@media (max-width: 780px) {
+  .sidebar-toggle {
+    display: none;
+  }
+}
