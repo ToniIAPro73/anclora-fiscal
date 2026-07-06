@@ -1,0 +1,6 @@
+Name,Financial Status,Fulfillment Status,Created at,Lineitem quantity,Billing Name,Shipping Name,Billing Country,Total,Taxes,Email,Billing Address1,Billing City,Billing Zip,Billing Province,Lineitem requires shipping,Lineitem name,Lineitem price,Lineitem sku,Lineitem discount
+AI-2001,paid,fulfilled,2026-07-02 09:00:00 +0000,1,Cliente Demo AI-2001,,ES,8.66,0.66,cliente-ai-2001@ejemplo.com,Calle Ejemplo 5,Palma,'07015,PM,false,Producto A,5.00,SKU-A,0.00
+AI-2001,paid,fulfilled,2026-07-02 09:00:00 +0000,1,Cliente Demo AI-2001,,ES,8.66,0.66,cliente-ai-2001@ejemplo.com,Calle Ejemplo 5,Palma,'07015,PM,false,Producto B,3.00,SKU-B,0.00
+AI-2002,paid,fulfilled,2026-07-02 09:10:00 +0000,1,Cliente Demo AI-2002,,ES,9.00,0.66,cliente-ai-2002@ejemplo.com,Calle Ejemplo 6,Palma,'07015,PM,false,Producto A,5.00,SKU-A,0.00
+AI-2002,paid,fulfilled,2026-07-02 09:10:00 +0000,1,Cliente Demo AI-2002,,ES,9.00,0.66,cliente-ai-2002@ejemplo.com,Calle Ejemplo 6,Palma,'07015,PM,false,Producto B,3.00,SKU-B,0.00
+AI-2003,paid,fulfilled,2026-07-02 09:20:00 +0000,1,Cliente Demo AI-2003,,ES,0.00,0.00,cliente-ai-2003@ejemplo.com,Calle Ejemplo 7,Palma,'07015,PM,false,Producto Gratis,0.00,SKU-C,0.00

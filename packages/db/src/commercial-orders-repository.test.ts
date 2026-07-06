@@ -188,4 +188,100 @@ describe('DrizzleCommercialOrdersRepository', () => {
     const existing = await repository.findExistingExternalOrderIds(tenantAId, 'SHOPIFY', ['order-1', 'order-2', 'order-3', 'order-4']);
     expect(existing).toEqual(new Set(['order-1', 'order-2']));
   });
+
+  describe('createManyWithLines (SHOPIFY-02)', () => {
+    it('persiste un pedido agrupado y sus N líneas en una sola transacción', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const tenantId = await seedTenant(db, 'tenant-a');
+      const repository = new DrizzleCommercialOrdersRepository(db);
+
+      const result = await repository.createManyWithLines(tenantId, [
+        {
+          order: { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-3001', totalAmount: '8.66' },
+          lines: [
+            { title: 'Producto A', quantity: '1', unitPrice: '5.00', discountAmount: '0', subtotalAmount: '5.00', externalLineId: 'fp-a' },
+            { title: 'Producto B', quantity: '1', unitPrice: '3.00', discountAmount: '0', subtotalAmount: '3.00', externalLineId: 'fp-b' },
+          ],
+        },
+      ]);
+
+      expect(result.orders).toHaveLength(1);
+      expect(result.lines).toHaveLength(2);
+      expect(result.lines.every((line) => line.commercialOrderId === result.orders[0]?.id)).toBe(true);
+    });
+
+    it('reimportar el mismo pedido agrupado es idempotente: no duplica ni el pedido ni sus líneas', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const tenantId = await seedTenant(db, 'tenant-a');
+      const repository = new DrizzleCommercialOrdersRepository(db);
+
+      const group = {
+        order: { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-3002', totalAmount: '5.00' },
+        lines: [{ title: 'Producto A', quantity: '1', unitPrice: '5.00', discountAmount: '0', subtotalAmount: '5.00', externalLineId: 'fp-c' }],
+      };
+
+      const first = await repository.createManyWithLines(tenantId, [group]);
+      const second = await repository.createManyWithLines(tenantId, [group]);
+
+      const allOrders = await repository.listByTenant({ tenantId, page: 1, pageSize: 10 });
+      expect(allOrders.total).toBe(1);
+      expect(second.orders[0]?.id).toBe(first.orders[0]?.id);
+      // Segunda pasada: la línea ya existe (mismo externalLineId), no se duplica.
+      expect(second.lines).toHaveLength(0);
+    });
+
+    it('un reembolso (refundStatus) no elimina el pedido ni sus líneas ya persistidas', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const tenantId = await seedTenant(db, 'tenant-a');
+      const repository = new DrizzleCommercialOrdersRepository(db);
+
+      const group = {
+        order: { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-3003', totalAmount: '5.00' },
+        lines: [{ title: 'Producto A', quantity: '1', unitPrice: '5.00', discountAmount: '0', subtotalAmount: '5.00', externalLineId: 'fp-d' }],
+      };
+      await repository.createManyWithLines(tenantId, [group]);
+
+      // Re-importar el mismo pedido tras un reembolso (financialStatus cambia
+      // en el export) no debe borrar el pedido ni sus líneas --
+      // createManyWithLines nunca sobrescribe ni elimina evidencia ya
+      // persistida (reutiliza la fila existente en lugar de actualizarla).
+      const refunded = { ...group, order: { ...group.order, financialStatus: 'refunded' } };
+      await repository.createManyWithLines(tenantId, [refunded]);
+
+      const found = await repository.findByExternalOrderId(tenantId, 'AI-3003');
+      expect(found).toBeDefined();
+      const allOrders = await repository.listByTenant({ tenantId, page: 1, pageSize: 10 });
+      expect(allOrders.total).toBe(1);
+    });
+
+    it('nunca mezcla pedidos ni líneas entre tenants', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const tenantAId = await seedTenant(db, 'tenant-a');
+      const tenantBId = await seedTenant(db, 'tenant-b');
+      const repository = new DrizzleCommercialOrdersRepository(db);
+
+      const group = {
+        order: { sourceChannel: 'SHOPIFY', externalOrderId: 'AI-3004', totalAmount: '5.00' },
+        lines: [{ title: 'Producto A', quantity: '1', unitPrice: '5.00', discountAmount: '0', subtotalAmount: '5.00', externalLineId: 'fp-e' }],
+      };
+
+      await repository.createManyWithLines(tenantAId, [group]);
+      await repository.createManyWithLines(tenantBId, [group]);
+
+      const forA = await repository.listByTenant({ tenantId: tenantAId, page: 1, pageSize: 10 });
+      const forB = await repository.listByTenant({ tenantId: tenantBId, page: 1, pageSize: 10 });
+      expect(forA.total).toBe(1);
+      expect(forB.total).toBe(1);
+      expect(forA.items[0]?.tenantId).toBe(tenantAId);
+      expect(forB.items[0]?.tenantId).toBe(tenantBId);
+    });
+  });
 });

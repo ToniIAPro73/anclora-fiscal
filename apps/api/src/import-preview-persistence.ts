@@ -29,6 +29,15 @@ export interface PersistedFinancialEvent { id: string; orderReference: string | 
 export interface CommercialOrdersRepositoryPort {
   createMany(tenantId: string, orders: NonNullable<ImportPreviewResponse['commercialOrders']>): Promise<PersistedCommercialOrder[]>;
   findByExternalOrderId?(tenantId: string, externalOrderId: string): Promise<{ id: string } | undefined>;
+  /**
+   * SHOPIFY-02: dual order+lines write, one transaction per grouped order,
+   * idempotent on both `orders_external_uq` and `order_lines_external_uq` —
+   * never overwrites an existing order/line on re-import. Optional so
+   * existing test doubles that only implement createMany() keep compiling;
+   * persistFiscalRecords() falls back to createMany() (order-only, no
+   * lines) when this isn't provided.
+   */
+  createManyWithLines?(tenantId: string, groups: NonNullable<ImportPreviewResponse['commercialOrderGroups']>): Promise<{ orders: PersistedCommercialOrder[] }>;
 }
 
 export interface FinancialEventsWriteRepositoryPort {
@@ -129,7 +138,13 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       createdRecordIds.royaltyStatements = [royaltyResult.statementId];
     }
 
-    if (this.commercialOrdersRepository && preview.commercialOrders) {
+    if (this.commercialOrdersRepository && preview.commercialOrderGroups && this.commercialOrdersRepository.createManyWithLines) {
+      // SHOPIFY-02: order + lines, one transaction per grouped order,
+      // idempotent on both unique indexes — never overwrites existing rows.
+      const result = await this.commercialOrdersRepository.createManyWithLines(tenantId, preview.commercialOrderGroups);
+      createdRecordIds.commercialOrders = result.orders.map((order) => order.id);
+      await this.triggerMatchingForNewOrders(tenantId, result.orders);
+    } else if (this.commercialOrdersRepository && preview.commercialOrders) {
       const createdOrders = await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
       createdRecordIds.commercialOrders = createdOrders.map((order) => order.id);
       await this.triggerMatchingForNewOrders(tenantId, createdOrders);

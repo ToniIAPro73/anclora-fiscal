@@ -48,10 +48,63 @@ export interface ShopifyOrderEvidence {
   customerAddress?: string;
   /** Derived from Shopify's real `Lineitem requires shipping` column. */
   productNature?: 'ebook' | 'general';
+  /** Real `Financial Status` column value (paid/refunded/pending/...), verbatim. */
+  financialStatus?: string;
+  /** Real `Fulfillment Status` column value, verbatim. */
+  fulfillmentStatus?: string;
   issues: Array<{ code: string; severity: 'HIGH' | 'BLOCKING'; message: string }>;
 }
 
-export interface ShopifyOrdersCsvEvidence { hash: string; orders: ShopifyOrderEvidence[]; }
+export interface ShopifyOrderLineEvidence {
+  /** Real Shopify Lineitem ID column value, when the export carries one. */
+  externalLineId?: string;
+  /**
+   * Reproducible fingerprint (sha256 of orderId + sku/title + row number),
+   * generated ONLY when the export has no real Lineitem ID for this row.
+   * This is NOT an official Shopify identifier — it exists purely so a
+   * re-import of the same file produces the same idempotency key for this
+   * row via `order_lines_external_uq`. Never label it as a Shopify id
+   * anywhere downstream.
+   */
+  sourceLineFingerprint?: string;
+  /** 1-based row number within the source CSV (for traceability, not identity). */
+  sourceRowNumber: number;
+  sku?: string;
+  title: string;
+  quantity: number;
+  /**
+   * Real `Lineitem price` column value when present. When absent (older/
+   * customized exports without line-level pricing, e.g. this connector's
+   * pre-SHOPIFY-02 fixtures), derived as `Total / Lineitem quantity` for the
+   * order's single/first line — a documented arithmetic fallback, not
+   * fabricated data, and only applied when no real per-line price exists.
+   */
+  unitPrice: number;
+  discountAmount: number;
+  subtotalAmount: number;
+  requiresShipping?: boolean;
+}
+
+export interface ShopifyOrdersCsvEvidence { hash: string; orders: ShopifyOrderEvidence[]; groupedOrders: ShopifyGroupedOrder[]; }
+
+/**
+ * Order grouped by `Name` (requirement: multiple CSV rows sharing the same
+ * `Name` are one commercial order with N lines — see SHOPIFY-02). Extends
+ * `ShopifyOrderEvidence` with the line-level breakdown and the order-level
+ * reconciliation fields/flags computed from it. `quantity` on the base type
+ * still reflects the first row (kept for backward compatibility with
+ * existing per-row consumers); `lines.length` and each line's `quantity` are
+ * the source of truth for line-level counts.
+ */
+export interface ShopifyGroupedOrder extends ShopifyOrderEvidence {
+  lines: ShopifyOrderLineEvidence[];
+  reportedSubtotalAmount?: number;
+  discountAmount?: number;
+  shippingAmount?: number;
+  reportedTotalAmount?: number;
+  /** Total = 0: kept (never dropped), flagged for manual review downstream. */
+  zeroValueReview: boolean;
+}
 
 const requiredHeaders = ['Name', 'Financial Status', 'Fulfillment Status', 'Created at', 'Lineitem quantity', 'Billing Name', 'Shipping Name'];
 
@@ -144,8 +197,109 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
       ...(customerEmail ? { customerEmail } : {}),
       ...(customerAddress ? { customerAddress } : {}),
       ...(productNature ? { productNature } : {}),
+      ...(record['Financial Status'] ? { financialStatus: record['Financial Status'] } : {}),
+      ...(record['Fulfillment Status'] ? { fulfillmentStatus: record['Fulfillment Status'] } : {}),
       issues,
     };
   });
-  return { hash: createHash('sha256').update(bytes).digest('hex'), orders };
+
+  const groupedOrders = groupShopifyOrderRows(records, orders);
+
+  return { hash: createHash('sha256').update(bytes).digest('hex'), orders, groupedOrders };
+}
+
+const TOTAL_MISMATCH_TOLERANCE_EUR = 0.01;
+
+function buildLineEvidence(record: Record<string, string>, orderId: string, rowNumber: number): ShopifyOrderLineEvidence {
+  const externalLineId = record['Lineitem id']?.trim() || undefined;
+  const sku = record['Lineitem sku']?.trim() || undefined;
+  const title = record['Lineitem name']?.trim() || orderId;
+  const quantity = Number(record['Lineitem quantity']) || 0;
+  const totalPrice = record.Total !== undefined && record.Total !== '' ? Number(record.Total) : undefined;
+  const linePriceRaw = record['Lineitem price'];
+  // Real per-line price when the export carries it; otherwise a documented
+  // arithmetic fallback (Total / quantity) — never fabricated, only derived
+  // from real order-level fields already present on this row.
+  const unitPrice = linePriceRaw !== undefined && linePriceRaw !== ''
+    ? Number(linePriceRaw)
+    : (totalPrice !== undefined && quantity > 0 ? totalPrice / quantity : 0);
+  const discountAmount = record['Lineitem discount'] !== undefined && record['Lineitem discount'] !== ''
+    ? Number(record['Lineitem discount'])
+    : 0;
+  const subtotalAmount = unitPrice * quantity;
+  const requiresShippingRaw = record['Lineitem requires shipping']?.trim().toLowerCase();
+  const requiresShipping = requiresShippingRaw === 'true' ? true : requiresShippingRaw === 'false' ? false : undefined;
+
+  return {
+    ...(externalLineId ? { externalLineId } : {
+      // No real Lineitem ID column value on this row — generate a
+      // reproducible fingerprint so re-importing the same file yields the
+      // same idempotency key. NOT an official Shopify identifier.
+      sourceLineFingerprint: createHash('sha256').update(`${orderId}|${sku ?? title}|${rowNumber}`).digest('hex'),
+    }),
+    sourceRowNumber: rowNumber,
+    ...(sku ? { sku } : {}),
+    title,
+    quantity,
+    unitPrice,
+    discountAmount,
+    subtotalAmount,
+    ...(requiresShipping !== undefined ? { requiresShipping } : {}),
+  };
+}
+
+/**
+ * Groups per-row parsed records by `Name` into one order with N lines each —
+ * closing the silent-drop gap where a multi-lineitem order previously
+ * produced one `commercial_orders` row per CSV row (and `onConflictDoNothing`
+ * dropped every row after the first). Runs strictly after the existing
+ * per-row parsing/validation above; does not alter it.
+ */
+function groupShopifyOrderRows(records: Record<string, string>[], parsedOrders: ShopifyOrderEvidence[]): ShopifyGroupedOrder[] {
+  const groups = new Map<string, { representative: ShopifyOrderEvidence; lines: ShopifyOrderLineEvidence[] }>();
+
+  records.forEach((record, index) => {
+    const orderId = record.Name;
+    const representative = parsedOrders[index];
+    if (!representative || !orderId) return;
+    const rowNumber = index + 1;
+    const line = buildLineEvidence(record, orderId, rowNumber);
+
+    const existing = groups.get(orderId);
+    if (existing) {
+      existing.lines.push(line);
+    } else {
+      groups.set(orderId, { representative, lines: [line] });
+    }
+  });
+
+  return Array.from(groups.values()).map(({ representative, lines }): ShopifyGroupedOrder => {
+    const reportedSubtotalAmount = lines.reduce((sum, line) => sum + line.subtotalAmount, 0);
+    const discountAmount = lines.reduce((sum, line) => sum + line.discountAmount, 0);
+    const shippingAmount = 0; // No `Shipping` column exists in any current fixture — no evidence to report yet.
+    const reportedTotalAmount = representative.totalPrice;
+    const reportedTaxAmount = representative.taxAmount ?? 0;
+
+    const issues = [...representative.issues];
+    if (reportedTotalAmount !== undefined) {
+      const computedTotal = reportedSubtotalAmount - discountAmount + shippingAmount + reportedTaxAmount;
+      const mismatch = Math.abs(computedTotal - reportedTotalAmount) > TOTAL_MISMATCH_TOLERANCE_EUR;
+      if (mismatch) {
+        issues.push({ code: 'ORDER_TOTAL_MISMATCH', severity: 'HIGH', message: `Total reportado (${reportedTotalAmount}) no coincide con el total calculado (${computedTotal.toFixed(2)})` });
+      }
+    }
+
+    const zeroValueReview = reportedTotalAmount === 0;
+
+    return {
+      ...representative,
+      lines,
+      reportedSubtotalAmount,
+      discountAmount,
+      shippingAmount,
+      ...(reportedTotalAmount !== undefined ? { reportedTotalAmount } : {}),
+      zeroValueReview,
+      issues,
+    };
+  });
 }

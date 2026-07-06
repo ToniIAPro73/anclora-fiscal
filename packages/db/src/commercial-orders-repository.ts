@@ -1,11 +1,30 @@
 import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { commercialOrders } from './schema.js';
+import { commercialOrders, orderLines } from './schema.js';
 import * as schema from './schema.js';
 
 export type CommercialOrder = typeof commercialOrders.$inferSelect;
 export type NewCommercialOrder = typeof commercialOrders.$inferInsert;
+export type OrderLine = typeof orderLines.$inferSelect;
+export type NewOrderLine = typeof orderLines.$inferInsert;
+
+/**
+ * One grouped Shopify order (SHOPIFY-02): the order row plus its N lines.
+ * Lines carry no `commercialOrderId`/`tenantId` yet -- both are filled in by
+ * `createManyWithLines` once the parent order row is resolved (existing or
+ * newly inserted), same two-step shape as royalty-repository.ts's
+ * statement+lines dual write.
+ */
+export interface NewCommercialOrderWithLines {
+  order: Omit<NewCommercialOrder, 'tenantId'>;
+  lines: Array<Omit<NewOrderLine, 'tenantId' | 'commercialOrderId'>>;
+}
+
+export interface CreateManyWithLinesResult {
+  orders: CommercialOrder[];
+  lines: OrderLine[];
+}
 
 export interface ListCommercialOrdersInput {
   tenantId: string;
@@ -53,6 +72,76 @@ export class DrizzleCommercialOrdersRepository<TQueryResult extends PgQueryResul
       .values(orders.map((order) => ({ ...order, tenantId })))
       .onConflictDoNothing({ target: [commercialOrders.tenantId, commercialOrders.sourceChannel, commercialOrders.externalOrderId] })
       .returning();
+  }
+
+  /**
+   * SHOPIFY-02: persists a grouped Shopify order (the order row + its N
+   * lines) atomically per order, in one transaction. Idempotent on
+   * re-import: an existing order (by `orders_external_uq`) is never
+   * overwritten -- its existing row is reused as the parent for line
+   * inserts. Lines are idempotent on `order_lines_external_uq`
+   * (tenantId, commercialOrderId, externalLineId) via onConflictDoNothing,
+   * mirroring DrizzleRoyaltyRepository.persist's statement+lines pattern.
+   * Tenant-scoped exactly like create()/createMany() above.
+   */
+  async createManyWithLines(tenantId: string, groupedOrders: NewCommercialOrderWithLines[]): Promise<CreateManyWithLinesResult> {
+    if (groupedOrders.length === 0) return { orders: [], lines: [] };
+
+    return this.db.transaction(async (transaction) => {
+      const persistedOrders: CommercialOrder[] = [];
+      const persistedLines: OrderLine[] = [];
+
+      for (const { order, lines } of groupedOrders) {
+        const [existing] = await transaction
+          .select()
+          .from(commercialOrders)
+          .where(and(
+            eq(commercialOrders.tenantId, tenantId),
+            eq(commercialOrders.sourceChannel, order.sourceChannel),
+            eq(commercialOrders.externalOrderId, order.externalOrderId),
+          ))
+          .limit(1);
+
+        // Never overwrite existing evidence on re-import -- reuse the
+        // already-persisted row as the parent for any (idempotent) line
+        // inserts below, rather than updating it.
+        let orderRow = existing;
+        if (!orderRow) {
+          const [inserted] = await transaction
+            .insert(commercialOrders)
+            .values({ ...order, tenantId })
+            .onConflictDoNothing({ target: [commercialOrders.tenantId, commercialOrders.sourceChannel, commercialOrders.externalOrderId] })
+            .returning();
+          orderRow = inserted;
+          if (!orderRow) {
+            // Concurrent insert landed first -- refetch the winner.
+            const [refetched] = await transaction
+              .select()
+              .from(commercialOrders)
+              .where(and(
+                eq(commercialOrders.tenantId, tenantId),
+                eq(commercialOrders.sourceChannel, order.sourceChannel),
+                eq(commercialOrders.externalOrderId, order.externalOrderId),
+              ))
+              .limit(1);
+            if (!refetched) throw new Error('No se pudo persistir el pedido comercial agrupado');
+            orderRow = refetched;
+          }
+        }
+        persistedOrders.push(orderRow);
+
+        if (lines.length > 0) {
+          const insertedLines = await transaction
+            .insert(orderLines)
+            .values(lines.map((line) => ({ ...line, tenantId, commercialOrderId: orderRow.id })))
+            .onConflictDoNothing({ target: [orderLines.tenantId, orderLines.commercialOrderId, orderLines.externalLineId] })
+            .returning();
+          persistedLines.push(...insertedLines);
+        }
+      }
+
+      return { orders: persistedOrders, lines: persistedLines };
+    });
   }
 
   async findByExternalOrderId(tenantId: string, externalOrderId: string): Promise<CommercialOrder | undefined> {

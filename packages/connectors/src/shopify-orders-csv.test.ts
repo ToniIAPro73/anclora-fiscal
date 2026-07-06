@@ -123,3 +123,47 @@ describe('extractShopifyOrdersCsv — casos existentes', () => {
     expect(order?.customerAddress).toBeUndefined();
   });
 });
+
+describe('extractShopifyOrdersCsv — agrupación de líneas por Name (SHOPIFY-02)', () => {
+  it('agrupa 2+ filas con el mismo Name en 1 pedido con N líneas', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-grouped-multiline.csv')));
+    const grouped = parsed.groupedOrders.find((order) => order.orderId === 'AI-2001');
+    expect(grouped).toBeDefined();
+    expect(grouped?.lines).toHaveLength(2);
+    expect(grouped?.lines.map((line) => line.sku)).toEqual(['SKU-A', 'SKU-B']);
+    // Only 1 group for AI-2001, not 2 (regression guard against the
+    // silent-drop bug this grouping step exists to close).
+    expect(parsed.groupedOrders.filter((order) => order.orderId === 'AI-2001')).toHaveLength(1);
+  });
+
+  it('no marca ORDER_TOTAL_MISMATCH cuando el total reportado coincide con el calculado', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-grouped-multiline.csv')));
+    const grouped = parsed.groupedOrders.find((order) => order.orderId === 'AI-2001');
+    expect(grouped?.issues).not.toContainEqual(expect.objectContaining({ code: 'ORDER_TOTAL_MISMATCH' }));
+  });
+
+  it('marca ORDER_TOTAL_MISMATCH cuando el total reportado no coincide con el calculado, sin corregirlo automáticamente', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-grouped-multiline.csv')));
+    const grouped = parsed.groupedOrders.find((order) => order.orderId === 'AI-2002');
+    expect(grouped?.issues).toContainEqual(expect.objectContaining({ code: 'ORDER_TOTAL_MISMATCH' }));
+    expect(grouped?.reportedTotalAmount).toBe(9);
+  });
+
+  it('conserva un pedido con Total=0 y lo marca zeroValueReview, sin descartarlo ni emitir automáticamente', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-grouped-multiline.csv')));
+    const grouped = parsed.groupedOrders.find((order) => order.orderId === 'AI-2003');
+    expect(grouped).toBeDefined();
+    expect(grouped?.zeroValueReview).toBe(true);
+    expect(grouped?.issues).not.toContainEqual(expect.objectContaining({ code: 'ORDER_TOTAL_MISMATCH' }));
+  });
+
+  it('genera fingerprint + sourceRowNumber (no un ID oficial falso) cuando falta Lineitem ID', async () => {
+    const parsed = extractShopifyOrdersCsv(await readFile(resolve(fixtures, 'shopify-orders-grouped-multiline.csv')));
+    const grouped = parsed.groupedOrders.find((order) => order.orderId === 'AI-2001');
+    for (const line of grouped?.lines ?? []) {
+      expect(line.externalLineId).toBeUndefined();
+      expect(line.sourceLineFingerprint).toBeDefined();
+      expect(line.sourceRowNumber).toBeGreaterThan(0);
+    }
+  });
+});

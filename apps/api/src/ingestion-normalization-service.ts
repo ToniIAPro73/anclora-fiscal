@@ -1,49 +1,95 @@
-import type { ShopifyCsvPreview, ShopifyOrdersCsvEvidence } from '@anclora/connectors';
-import type { NewCommercialOrder, NewFinancialEvent } from '@anclora/db';
+import type { ShopifyCsvPreview, ShopifyGroupedOrder } from '@anclora/connectors';
+import type { NewCommercialOrder, NewFinancialEvent, NewOrderLine } from '@anclora/db';
 
 const SOURCE_CHANNEL = 'SHOPIFY';
 
 export type NewCommercialOrderWithoutTenant = Omit<NewCommercialOrder, 'tenantId'>;
 export type NewFinancialEventWithoutTenant = Omit<NewFinancialEvent, 'tenantId'>;
+export type NewOrderLineWithoutTenant = Omit<NewOrderLine, 'tenantId' | 'commercialOrderId'>;
 
 /**
- * Maps a parsed shopify-orders-csv evidence extraction into commercial_orders
- * rows. The orders export carries no checkout reference (that only exists on
- * the payment-transactions export) — matching (Phase 2) joins on
- * externalOrderId/orderReference instead.
+ * SHOPIFY-02: one grouped order (order-level fields) plus its normalized
+ * order_lines rows, keyed by the order's own externalOrderId so the
+ * persistence layer can resolve the parent id after insert/lookup.
  */
-export function normalizeShopifyOrdersCsv(evidence: ShopifyOrdersCsvEvidence): NewCommercialOrderWithoutTenant[] {
-  return evidence.orders.map((order) => ({
-    sourceChannel: SOURCE_CHANNEL,
-    externalOrderId: order.orderId,
-    commercialDate: order.commercialDate ? new Date(order.commercialDate) : undefined,
-    // Real, already-present evidence (Shipping/Billing Country) — undefined
-    // when the export doesn't carry it, which is the honest signal that lets
-    // the tax-decision service (Phase 3) correctly return
-    // BLOCKED/MISSING_TAX_EVIDENCE instead of guessing a country.
-    customerCountry: order.customerCountry,
-    // Documented business-rule default, not fabricated per-row data: this
-    // connector processes a direct-to-consumer Shopify storefront export —
-    // there is no B2B/reseller distinction anywhere in the source data.
-    customerType: 'B2C',
-    // Shopify exports a real `Lineitem requires shipping` signal. The
-    // connector maps non-shipping products to ebook and shipping products
-    // to the conservative general category (which includes tapa blanda).
-    productNature: order.productNature ?? 'general',
-    // Real, already-present evidence (Shipping/Billing Name, Total, Taxes
-    // columns) — undefined when the export doesn't carry them. Numeric
-    // columns are strings in Drizzle's insert shape (mirrors the
-    // amount/feeAmount/netAmount handling in normalizeShopifyPaymentTransactions
-    // below, where the connector already returns string values).
-    customerName: order.customerName,
-    totalAmount: order.totalPrice !== undefined ? String(order.totalPrice) : undefined,
-    taxAmount: order.taxAmount !== undefined ? String(order.taxAmount) : undefined,
-    // Real Email/address evidence (Phase 5b) — undefined when the export
-    // doesn't carry these columns. No buyer tax ID (NIF/CIF) is captured;
-    // see the disclosed limitation comment in packages/core/src/invoicing.ts.
-    customerEmail: order.customerEmail,
-    customerAddress: order.customerAddress,
-  }));
+export interface NormalizedShopifyOrderGroup {
+  order: NewCommercialOrderWithoutTenant;
+  lines: NewOrderLineWithoutTenant[];
+}
+
+/**
+ * Maps a single grouped Shopify order (SHOPIFY-02 — rows already collapsed
+ * by `Name` in the connector) into a commercial_orders row plus its
+ * order_lines rows. Replaces the prior one-CSV-row-per-order mapping, which
+ * silently dropped every row after the first for a multi-lineitem order
+ * (onConflictDoNothing on externalOrderId).
+ */
+export function normalizeShopifyGroupedOrder(order: ShopifyGroupedOrder): NormalizedShopifyOrderGroup {
+  return {
+    order: {
+      sourceChannel: SOURCE_CHANNEL,
+      externalOrderId: order.orderId,
+      commercialDate: order.commercialDate ? new Date(order.commercialDate) : undefined,
+      // Real, already-present evidence (Shipping/Billing Country) — undefined
+      // when the export doesn't carry it, which is the honest signal that lets
+      // the tax-decision service (Phase 3) correctly return
+      // BLOCKED/MISSING_TAX_EVIDENCE instead of guessing a country.
+      customerCountry: order.customerCountry,
+      // Documented business-rule default, not fabricated per-row data: this
+      // connector processes a direct-to-consumer Shopify storefront export —
+      // there is no B2B/reseller distinction anywhere in the source data.
+      customerType: 'B2C',
+      productNature: order.productNature ?? 'general',
+      customerName: order.customerName,
+      totalAmount: order.totalPrice !== undefined ? String(order.totalPrice) : undefined,
+      taxAmount: order.taxAmount !== undefined ? String(order.taxAmount) : undefined,
+      customerEmail: order.customerEmail,
+      customerAddress: order.customerAddress,
+      // Real `Financial Status`/`Fulfillment Status` columns, verbatim.
+      financialStatus: order.financialStatus,
+      fulfillmentStatus: order.fulfillmentStatus,
+      // Raw as-reported reconciliation fields (SHOPIFY-02) — distinct from
+      // totalAmount/taxAmount above, which remain the canonical/reconciled
+      // fields consumed by matching/tax-decision. Never auto-corrected even
+      // when ORDER_TOTAL_MISMATCH fires.
+      reportedSubtotalAmount: order.reportedSubtotalAmount !== undefined ? String(order.reportedSubtotalAmount) : undefined,
+      discountAmount: order.discountAmount !== undefined ? String(order.discountAmount) : undefined,
+      shippingAmount: order.shippingAmount !== undefined ? String(order.shippingAmount) : undefined,
+      reportedTotalAmount: order.reportedTotalAmount !== undefined ? String(order.reportedTotalAmount) : undefined,
+      // Total=0: kept, flagged for manual review — never dropped, never
+      // auto-emitted. Note: no existing emission gate in this codebase reads
+      // commercial_orders.fiscalStatus today (issuance is driven by
+      // canonical_operations/anomalyFlags — see invoice-issuance-service.ts);
+      // this value is the documented marker for a future gate, not a
+      // currently-wired block.
+      ...(order.zeroValueReview ? { fiscalStatus: 'ZERO_VALUE_REVIEW' } : {}),
+    },
+    lines: order.lines.map((line): NewOrderLineWithoutTenant => ({
+      // externalLineId reused as the idempotency key: the real Shopify
+      // Lineitem ID when present, or the fingerprint when it's not (per
+      // SHOPIFY-02 — the fingerprint is NOT an official Shopify id, see
+      // shopify-orders-csv.ts).
+      externalLineId: line.externalLineId ?? line.sourceLineFingerprint,
+      sourceLineFingerprint: line.sourceLineFingerprint,
+      sourceRowNumber: line.sourceRowNumber,
+      sku: line.sku,
+      title: line.title,
+      quantity: String(line.quantity),
+      unitPrice: String(line.unitPrice),
+      discountAmount: String(line.discountAmount),
+      subtotalAmount: String(line.subtotalAmount),
+      requiresShipping: line.requiresShipping,
+    })),
+  };
+}
+
+/**
+ * Maps a full parsed shopify-orders-csv evidence extraction (all grouped
+ * orders) into normalized order groups, ready for
+ * DrizzleCommercialOrdersRepository.createManyWithLines.
+ */
+export function normalizeShopifyOrdersCsv(groupedOrders: ShopifyGroupedOrder[]): NormalizedShopifyOrderGroup[] {
+  return groupedOrders.map(normalizeShopifyGroupedOrder);
 }
 
 /**

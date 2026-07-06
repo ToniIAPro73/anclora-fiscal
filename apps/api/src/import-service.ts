@@ -6,17 +6,33 @@ import {
   normalizeShopifyPaymentTransactions,
   type NewCommercialOrderWithoutTenant,
   type NewFinancialEventWithoutTenant,
+  type NormalizedShopifyOrderGroup,
 } from './ingestion-normalization-service.js';
+
+/**
+ * SHOPIFY-02 requirement 12: lets a caller distinguish rows analyzed (raw
+ * CSV row count) from orders grouped (unique `Name` groups) from lines
+ * (total order_lines across all groups) from duplicates skipped
+ * (already-imported orders filtered out by the preview-time dedup lookup).
+ */
+export interface ImportGroupingSummary {
+  rowsAnalyzed: number;
+  ordersGrouped: number;
+  lines: number;
+  duplicatesSkipped: number;
+}
 
 export interface ImportPreviewResponse {
   jobId: string;
   status: 'PREVIEW_READY';
   connector: 'shopify-csv' | 'shopify-orders-csv' | 'kdp-xlsx';
   evidence: { key: string; sha256: string; size: number; mimeType: string };
-  summary: { records: number; issues: number; orderIds: string[]; royaltyByFormat?: RoyaltyFormatSummary[]; alreadyImportedCount?: number; allAlreadyImported?: boolean };
+  summary: { records: number; issues: number; orderIds: string[]; royaltyByFormat?: RoyaltyFormatSummary[]; alreadyImportedCount?: number; allAlreadyImported?: boolean; grouping?: ImportGroupingSummary };
   issues: Array<{ code: string; severity: string; message: string; row?: number; sheet?: string }>;
   royalty?: { statement: RoyaltyStatement; lines: RoyaltyLine[] };
   commercialOrders?: NewCommercialOrderWithoutTenant[];
+  /** SHOPIFY-02: order + lines, paired — the shape persistFiscalRecords() actually writes. */
+  commercialOrderGroups?: NormalizedShopifyOrderGroup[];
   financialEvents?: NewFinancialEventWithoutTenant[];
 }
 
@@ -57,9 +73,12 @@ export async function previewImport(
     if (isShopifyOrdersCsvFile(input.bytes)) {
       const preview = extractShopifyOrdersCsv(input.bytes);
       const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });
-      const allOrderIds = preview.orders.map((order) => order.orderId);
-      const allCommercialOrders = normalizeShopifyOrdersCsv(preview);
-      const allIssues = preview.orders.flatMap((order) => order.issues.map((issue) => ({ ...issue, message: `${order.orderId}: ${issue.message}` })));
+      // SHOPIFY-02: grouped by `Name` (1 order + N lines), not 1-row-per-order.
+      const allOrderIds = preview.groupedOrders.map((order) => order.orderId);
+      const allGroups = normalizeShopifyOrdersCsv(preview.groupedOrders);
+      const allCommercialOrders = allGroups.map((group) => group.order);
+      const allIssues = preview.groupedOrders.flatMap((order) => order.issues.map((issue) => ({ ...issue, message: `${order.orderId}: ${issue.message}` })));
+      const rowsAnalyzed = preview.orders.length;
 
       const sourceChannel = allCommercialOrders[0]?.sourceChannel;
       const existingOrderIds = dependencies?.commercialOrdersRepository && sourceChannel
@@ -67,23 +86,43 @@ export async function previewImport(
         : undefined;
 
       if (!existingOrderIds) {
-        return { jobId, status: 'PREVIEW_READY', connector: 'shopify-orders-csv', evidence, summary: { records: preview.orders.length, issues: allIssues.length, orderIds: allOrderIds }, issues: allIssues, commercialOrders: allCommercialOrders };
+        const lines = allGroups.reduce((sum, group) => sum + group.lines.length, 0);
+        return {
+          jobId,
+          status: 'PREVIEW_READY',
+          connector: 'shopify-orders-csv',
+          evidence,
+          summary: { records: rowsAnalyzed, issues: allIssues.length, orderIds: allOrderIds, grouping: { rowsAnalyzed, ordersGrouped: allGroups.length, lines, duplicatesSkipped: 0 } },
+          issues: allIssues,
+          commercialOrders: allCommercialOrders,
+          commercialOrderGroups: allGroups,
+        };
       }
 
       const orderIds = allOrderIds.filter((id) => !existingOrderIds.has(id));
-      const commercialOrders = allCommercialOrders.filter((order) => !existingOrderIds.has(order.externalOrderId));
-      const issues = preview.orders
+      const groups = allGroups.filter((group) => !existingOrderIds.has(group.order.externalOrderId));
+      const commercialOrders = groups.map((group) => group.order);
+      const issues = preview.groupedOrders
         .filter((order) => !existingOrderIds.has(order.orderId))
         .flatMap((order) => order.issues.map((issue) => ({ ...issue, message: `${order.orderId}: ${issue.message}` })));
       const alreadyImportedCount = allOrderIds.length - orderIds.length;
+      const lines = groups.reduce((sum, group) => sum + group.lines.length, 0);
       return {
         jobId,
         status: 'PREVIEW_READY',
         connector: 'shopify-orders-csv',
         evidence,
-        summary: { records: preview.orders.length, issues: issues.length, orderIds, alreadyImportedCount, allAlreadyImported: allOrderIds.length > 0 && orderIds.length === 0 },
+        summary: {
+          records: rowsAnalyzed,
+          issues: issues.length,
+          orderIds,
+          alreadyImportedCount,
+          allAlreadyImported: allOrderIds.length > 0 && orderIds.length === 0,
+          grouping: { rowsAnalyzed, ordersGrouped: groups.length, lines, duplicatesSkipped: alreadyImportedCount },
+        },
         issues,
         commercialOrders,
+        commercialOrderGroups: groups,
       };
     }
     const preview = previewShopifyCsv(input.bytes);
