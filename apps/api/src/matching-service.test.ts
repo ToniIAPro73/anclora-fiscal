@@ -176,7 +176,7 @@ describe('MatchingService', () => {
     });
   });
 
-  it('invoca la emisión automática de factura después de la decisión fiscal cuando se inyecta invoiceIssuanceService', async () => {
+  it('nunca emite una factura como efecto colateral del matching legacy', async () => {
     const order = { id: 'order-5', sourceChannel: 'SHOPIFY', externalOrderId: 'AI-5005', checkoutReference: null };
     const event = {
       id: 'event-5',
@@ -208,10 +208,10 @@ describe('MatchingService', () => {
     const result = await service.runMatchingForOrder(tenantId, 'order-5');
 
     expect(result).toEqual({ status: 'MATCHED', canonicalOperationId: 'canonical-op-5' });
-    expect(runInvoiceIssuanceForOperation).toHaveBeenCalledWith(tenantId, { id: 'canonical-op-5', anomalyFlags: [] });
+    expect(runInvoiceIssuanceForOperation).not.toHaveBeenCalled();
   });
 
-  it('pasa anomalyFlags con FULL_REFUND_NET_ZERO al servicio de emisión cuando el evento neto es ~0 (reembolso total)', async () => {
+  it('un reembolso total tampoco dispara rectificativa automática desde matching', async () => {
     const order = { id: 'order-6', sourceChannel: 'SHOPIFY', externalOrderId: 'AI-6006', checkoutReference: null };
     const charge = { id: 'event-6a', eventType: 'charge', checkoutReference: null, amount: '10.00', feeAmount: '0.50', netAmount: '9.50', currency: 'EUR' };
     const refund = { id: 'event-6b', eventType: 'refund', checkoutReference: null, amount: '-10.00', feeAmount: '0.00', netAmount: '-9.50', currency: 'EUR' };
@@ -233,10 +233,7 @@ describe('MatchingService', () => {
 
     await service.runMatchingForOrder(tenantId, 'order-6');
 
-    expect(runInvoiceIssuanceForOperation).toHaveBeenCalledWith(
-      tenantId,
-      expect.objectContaining({ id: 'canonical-op-6', anomalyFlags: expect.arrayContaining(['FULL_REFUND_NET_ZERO']) }),
-    );
+    expect(runInvoiceIssuanceForOperation).not.toHaveBeenCalled();
   });
 
   it('no propaga un error de invoiceIssuanceService fuera de runMatchingForOrder (llamada no fatal)', async () => {

@@ -1,11 +1,10 @@
 import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type FiscalPersistencePort, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import { MatchingService } from './matching-service.js';
 import { TaxDecisionService } from './tax-decision-service.js';
-import { InvoiceIssuanceService } from './invoice-issuance-service.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import type { ReconciliationRepositoryPort } from './reconciliation-controller.js';
@@ -18,6 +17,7 @@ import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
 import type { FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
 import type { CommercialOrdersRepositoryPort } from './commercial-orders-controller.js';
+import type { ShopifyEvidenceLinksRepositoryPort } from './shopify-evidence-links-controller.js';
 
 // Reads env vars and wires storage/repositories/auth for production or the
 // local offline (PGlite) database, then builds the Fastify app. Shared by
@@ -63,6 +63,7 @@ export async function createProductionApp() {
   let importLifecycleRepository: ImportLifecycleRepositoryPort;
   let authService: AuthService;
   let fiscalConfigurationRepository: FiscalConfigurationRepositoryPort;
+  let shopifyEvidenceLinksRepository: ShopifyEvidenceLinksRepositoryPort;
   let importDedup: {
     commercialOrdersRepository: CommercialOrdersDedupPort;
     financialEventsRepository: FinancialEventsDedupPort;
@@ -78,16 +79,13 @@ export async function createProductionApp() {
     const fiscalConfigurationRepositoryForTax = new DrizzleFiscalConfigurationRepository(database.db);
     const shopifyOrderPaymentEventsRepositoryForPersistence = new DrizzleShopifyOrderPaymentEventsRepository(database.db);
     const shopifyPaymentsLedgerRepositoryForPersistence = new DrizzleShopifyPaymentsLedgerRepository(database.db);
+    const shopifyEvidenceLinksRepositoryForPersistence = new DrizzleShopifyEvidenceLinksRepository(database.db);
     const taxDecisionService = new TaxDecisionService({
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
       taxConfigurationRepository: fiscalConfigurationRepositoryForTax,
     });
     const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
-    const invoiceIssuanceService = new InvoiceIssuanceService({
-      fiscalDocumentsRepository: fiscalDocumentsRepositoryForMatching,
-      storage,
-    });
     const matchingService = new MatchingService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
@@ -95,7 +93,6 @@ export async function createProductionApp() {
       reconciliationRepository: new DrizzleReconciliationRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionService,
-      invoiceIssuanceService,
     });
     const importPreviewRepository = new DrizzleImportPreviewRepository(database.db);
     importPreviewPersistence = new ImportPreviewPersistenceService(
@@ -107,6 +104,7 @@ export async function createProductionApp() {
       matchingService,
       shopifyOrderPaymentEventsRepositoryForPersistence,
       shopifyPaymentsLedgerRepositoryForPersistence,
+      shopifyEvidenceLinksRepositoryForPersistence,
     );
     importLifecycleRepository = importPreviewRepository;
     importDedup = {
@@ -124,6 +122,7 @@ export async function createProductionApp() {
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
+    shopifyEvidenceLinksRepository = shopifyEvidenceLinksRepositoryForPersistence;
     closeDatabase = database.close;
   } else {
     const database = createOfflineDatabase(process.env.OFFLINE_DATABASE_PATH ?? resolve(process.cwd(), '.data/anclora-fiscal'));
@@ -136,16 +135,13 @@ export async function createProductionApp() {
     const fiscalConfigurationRepositoryForTax = new DrizzleFiscalConfigurationRepository(database.db);
     const shopifyOrderPaymentEventsRepositoryForPersistence = new DrizzleShopifyOrderPaymentEventsRepository(database.db);
     const shopifyPaymentsLedgerRepositoryForPersistence = new DrizzleShopifyPaymentsLedgerRepository(database.db);
+    const shopifyEvidenceLinksRepositoryForPersistence = new DrizzleShopifyEvidenceLinksRepository(database.db);
     const taxDecisionService = new TaxDecisionService({
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionsRepository: new DrizzleTaxDecisionsRepository(database.db),
       taxConfigurationRepository: fiscalConfigurationRepositoryForTax,
     });
     const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
-    const invoiceIssuanceService = new InvoiceIssuanceService({
-      fiscalDocumentsRepository: fiscalDocumentsRepositoryForMatching,
-      storage,
-    });
     const matchingService = new MatchingService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       financialEventsRepository: financialEventsRepositoryForMatching,
@@ -153,7 +149,6 @@ export async function createProductionApp() {
       reconciliationRepository: new DrizzleReconciliationRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionService,
-      invoiceIssuanceService,
     });
     const importPreviewRepository = new DrizzleImportPreviewRepository(database.db);
     importPreviewPersistence = new ImportPreviewPersistenceService(
@@ -165,6 +160,7 @@ export async function createProductionApp() {
       matchingService,
       shopifyOrderPaymentEventsRepositoryForPersistence,
       shopifyPaymentsLedgerRepositoryForPersistence,
+      shopifyEvidenceLinksRepositoryForPersistence,
     );
     importLifecycleRepository = importPreviewRepository;
     importDedup = {
@@ -182,10 +178,11 @@ export async function createProductionApp() {
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
+    shopifyEvidenceLinksRepository = shopifyEvidenceLinksRepositoryForPersistence;
     closeDatabase = () => database.client.close();
   }
 
-  const app = await buildApp({ storage, importPreviewPersistence, fiscalPersistence: importPreviewPersistence, importDedup, importLifecycleRepository, operationsRepository, commercialOrdersRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, fiscalConfigurationRepository, authService });
+  const app = await buildApp({ storage, importPreviewPersistence, fiscalPersistence: importPreviewPersistence, importDedup, importLifecycleRepository, operationsRepository, commercialOrdersRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, fiscalConfigurationRepository, shopifyEvidenceLinksRepository, authService });
   app.addHook('onClose', closeDatabase);
   return app;
 }

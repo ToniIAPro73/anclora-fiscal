@@ -174,6 +174,7 @@ export function normalizeShopifyPaymentsLedger(preview: ShopifyCsvPreview): NewS
     shopifyOrderName: row.Order,
     checkoutReference: row.Checkout,
     entryType: row.kind,
+    transactionAt: new Date(row['Transaction Date']),
     amount: row.Amount,
     feeAmount: row.Fee,
     netAmount: row.Net,

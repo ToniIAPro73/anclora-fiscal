@@ -252,3 +252,43 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   - Las filas de ledger sin `externalPayoutId` permanecen correctamente como liquidación
     pendiente; no representan payout ni cobro bancario.
 - **Siguiente fase:** SHOPIFY-05 — Enlaces de evidencia y conciliación segura.
+
+---
+
+## SHOPIFY-05 — Relaciones de evidencia y conciliación controlada
+
+- **Objetivo:** relacionar pedido, transacción de pedido y ledger Shopify con
+  enlaces explícitos, explicables y decidibles, sin crear facturas ni afirmar
+  conciliación bancaria.
+- **Archivos / migraciones:** migración aditiva
+  `packages/db/migrations/0015_shopify_evidence_links.sql`; esquema y repositorio
+  `shopify-evidence-links-repository.ts`; conservación de `Transaction Date` en
+  el ledger; reconstrucción idempotente tras confirmar cualquier stream Shopify;
+  API GET/PATCH en `shopify-evidence-links-controller.ts`; aislamiento del
+  matching legacy y eliminación de su emisión automática de facturas.
+- **Decisión de enlace:** el prompt nominal menciona el ID interno para
+  transaction→order, pero los exports verificados y la migración 0014 demuestran
+  que Orders no contiene ese ID numérico enlazable. Se mantiene la decisión
+  validada: `shopifyOrderName` resuelve exactamente a
+  `commercialOrders.externalOrderId`; `shopifyOrderId` se conserva como evidencia.
+- **Pruebas ejecutadas y resultado real:** `pnpm lint`, `pnpm typecheck`,
+  `pnpm test`, `pnpm build`, `pnpm test:e2e` y `git diff --check`:
+
+  ```text
+  lint — 7/7 tareas correctas
+  typecheck — 7/7 tareas correctas
+  @anclora/web:test — 25 archivos / 62 pruebas correctas
+  @anclora/db:test — 19 archivos / 100 pruebas correctas
+  @anclora/connectors:test — 5 archivos / 41 pruebas correctas
+  @anclora/api:test — 25 archivos / 162 pruebas correctas
+  build — 7/7 tareas correctas
+  Playwright — 33/33 pruebas correctas
+  ```
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/main`.
+- **Limitaciones abiertas:**
+  - `matching_candidates` permanece para lectura de datos legacy, pero no participa
+    en el nuevo flujo Shopify.
+  - `bankVerified` permanece siempre falso: la aplicación aún no ingiere extractos
+    bancarios.
+- **Siguiente fase:** SHOPIFY-06 — Ventas Shopify, conciliación y facturación segura.

@@ -81,6 +81,10 @@ export interface ShopifyPaymentsLedgerRepositoryPort {
   ): Promise<{ entries: PersistedShopifyPaymentsLedgerEntry[] }>;
 }
 
+export interface ShopifyEvidenceLinksRepositoryPort {
+  linkTenantEvidence(tenantId: string, input: { windowDays: number }): Promise<void>;
+}
+
 export interface ImportPreviewPersistencePort {
   persist(tenantId: string, filename: string, preview: ImportPreviewResponse): Promise<{ jobId: string; duplicate: boolean; issueIds?: string[] }>;
 }
@@ -128,6 +132,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly matchingService?: MatchingServicePort,
     private readonly shopifyOrderPaymentEventsRepository?: ShopifyOrderPaymentEventsRepositoryPort,
     private readonly shopifyPaymentsLedgerRepository?: ShopifyPaymentsLedgerRepositoryPort,
+    private readonly shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort,
   ) {}
 
   /**
@@ -198,6 +203,10 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       const rows = await this.resolveShopifyOrderName(tenantId, preview.paymentsLedger);
       const { entries } = await this.shopifyPaymentsLedgerRepository.createMany(tenantId, importFileId, rows);
       createdRecordIds.shopifyPaymentsLedgerEntries = entries.map((row) => row.id);
+    }
+
+    if (preview.connector.startsWith('shopify-') && this.shopifyEvidenceLinksRepository) {
+      await this.shopifyEvidenceLinksRepository.linkTenantEvidence(tenantId, { windowDays: 7 });
     }
 
     return { createdRecordIds };

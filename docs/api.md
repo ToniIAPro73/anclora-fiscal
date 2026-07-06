@@ -129,6 +129,25 @@ Requiere `reconciliation:read`. Filtro opcional `accepted` (query, `"true"` se
 interpreta como booleano; cualquier otro valor no filtra). Repositorio no
 cableado → `503 RECONCILIATION_REPOSITORY_UNAVAILABLE`.
 
+`matching_candidates` es un modelo legacy de solo compatibilidad. No se usa
+para crear los nuevos enlaces Shopify y el matching legacy ya no emite ni
+rectifica facturas automáticamente.
+
+### `GET /api/v1/shopify/evidence-links`
+
+Requiere `reconciliation:read`. Lista los enlaces explícitos y aislados por
+tenant. Admite `state=PROPOSED|AUTO_LINKED|CONFIRMED|REJECTED`. Los enlaces
+exactos pedido→transacción y pedido→ledger son `AUTO_LINKED`; la relación
+transacción→ledger siempre comienza como `PROPOSED`. Ningún estado significa
+conciliación bancaria.
+
+### `PATCH /api/v1/shopify/evidence-links/:id`
+
+Requiere `reconciliation:write`. Acepta exclusivamente
+`{"state":"CONFIRMED"}` o `{"state":"REJECTED"}`. Registra actor, fecha y
+evento de auditoría. Estados como `BANK_RECONCILED` son inválidos porque ni un
+ledger pendiente ni un payout sin extracto bancario prueban un cobro bancario.
+
 ### `GET /api/v1/issues`
 
 Requiere `issues:read`. Filtros opcionales `status` y `severity` (query).

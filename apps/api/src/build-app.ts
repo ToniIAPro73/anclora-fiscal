@@ -27,6 +27,7 @@ import { registerAuthRoutes } from './auth-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
 import { createFiscalConfigurationGetHandler, createFiscalConfigurationPutHandler, type FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
 import { createCommercialOrdersListHandler, type CommercialOrdersRepositoryPort } from './commercial-orders-controller.js';
+import { createShopifyEvidenceLinkDecisionHandler, createShopifyEvidenceLinksListHandler, type ShopifyEvidenceLinksRepositoryPort } from './shopify-evidence-links-controller.js';
 
 export interface UnmatchedOrder {
   id: string;
@@ -79,6 +80,7 @@ export async function buildApp(options: {
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
+  shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort | undefined;
   authService?: AuthService;
 } = {}) {
   const sessionSecret = process.env.SESSION_SECRET;
@@ -154,6 +156,16 @@ export async function buildApp(options: {
     '/api/v1/reconciliation/unmatched-orders',
     { preHandler: requireRole(['reconciliation:read']) },
     createUnmatchedOrdersListHandler({ repository: options.reconciliationRepository }),
+  );
+  app.get(
+    '/api/v1/shopify/evidence-links',
+    { preHandler: requireRole(['reconciliation:read']) },
+    createShopifyEvidenceLinksListHandler(options.shopifyEvidenceLinksRepository),
+  );
+  app.patch(
+    '/api/v1/shopify/evidence-links/:id',
+    { preHandler: requireRole(['reconciliation:write']) },
+    createShopifyEvidenceLinkDecisionHandler(options.shopifyEvidenceLinksRepository),
   );
   app.get(
     '/api/v1/issues',

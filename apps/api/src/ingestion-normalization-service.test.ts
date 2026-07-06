@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractShopifyOrdersCsv, previewShopifyCsv } from '@anclora/connectors';
-import { normalizeShopifyOrdersCsv, normalizeShopifyPaymentTransactions } from './ingestion-normalization-service.js';
+import { normalizeShopifyOrdersCsv, normalizeShopifyPaymentTransactions, normalizeShopifyPaymentsLedger } from './ingestion-normalization-service.js';
 
 const fixtures = resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures');
 
@@ -105,5 +105,14 @@ describe('normalizeShopifyPaymentTransactions', () => {
     expect(events.every((event) => event.checkoutReference === '#68683485610367')).toBe(true);
     // externalEventId reuses the connector's businessKey — same file, same ids.
     expect(new Set(events.map((event) => event.externalEventId)).size).toBe(events.length);
+  });
+});
+
+describe('normalizeShopifyPaymentsLedger', () => {
+  it('conserva Transaction Date para aplicar la ventana temporal de enlaces SHOPIFY-05', async () => {
+    const preview = previewShopifyCsv(await readFile(resolve(fixtures, 'shopify-ledger-charge-refund.csv')));
+    const entries = normalizeShopifyPaymentsLedger(preview);
+
+    expect(entries[0]?.transactionAt).toEqual(new Date(preview.rows[0]!['Transaction Date']));
   });
 });

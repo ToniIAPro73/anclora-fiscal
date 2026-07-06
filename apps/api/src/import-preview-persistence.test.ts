@@ -183,6 +183,32 @@ describe('ImportPreviewPersistenceService.persistFiscalRecords — SHOPIFY-03 pa
     expect(result).toEqual({ createdRecordIds: { shopifyOrderPaymentEvents: ['event-row-1'] } });
   });
 
+  it('reconstruye enlaces de evidencia tras confirmar cualquier stream Shopify sin invocar matching legacy', async () => {
+    const linkTenantEvidence = vi.fn().mockResolvedValue(undefined);
+    const runMatchingForOrder = vi.fn();
+    const service = new ImportPreviewPersistenceService(
+      { persist: vi.fn() },
+      new ImportMetadataCipher('a-secure-test-secret-with-32-characters'),
+      undefined,
+      { createMany: vi.fn().mockResolvedValue([]) },
+      undefined,
+      { runMatchingForOrder },
+      undefined,
+      undefined,
+      { linkTenantEvidence },
+    );
+    const preview = {
+      jobId: 'job-links', status: 'PREVIEW_READY' as const, connector: 'shopify-orders-csv' as const,
+      evidence: { key: 'evidence/key', sha256: 'd'.repeat(64), size: 42, mimeType: 'text/csv' },
+      summary: { records: 0, issues: 0, orderIds: [] }, issues: [], commercialOrders: [],
+    };
+
+    await service.persistFiscalRecords('01977d43-75de-7000-8000-000000000010', 'file-links', preview);
+
+    expect(linkTenantEvidence).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', { windowDays: 7 });
+    expect(runMatchingForOrder).not.toHaveBeenCalled();
+  });
+
   it('ORDER_EVIDENCE_MISSING: persiste commercial_order_id null cuando shopify_order_name no resuelve, sin bloquear el import', async () => {
     const findByExternalOrderId = vi.fn().mockResolvedValue(undefined);
     const shopifyOrderPaymentEventsCreateMany = vi.fn().mockResolvedValue([{ id: 'event-row-2' }]);
