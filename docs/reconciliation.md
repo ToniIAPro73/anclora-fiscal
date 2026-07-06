@@ -1,28 +1,34 @@
-# Conciliación
+# Cobros y liquidación Shopify
 
-## Algoritmo implementado
+## Alcance
 
-`matchOrder()` compara primero número de pedido y después checkout. Una señal
-exacta obtiene confianza 0,95; ambas señales obtienen 1,00. Los eventos sin
-señales no se enlazan.
+La conciliación Shopify relaciona evidencia comercial, transacciones de pedido
+y ledger de Shopify Payments. No ingiere extractos bancarios y ningún estado
+equivale a conciliación bancaria.
 
-El resultado separa bruto cobrado, fee de plataforma, neto comercial y monto
-de liquidación. Los cálculos se normalizan a céntimos.
+## Enlaces
 
-## Estados y anomalías
+- Pedido → transacción: enlace exacto por identidad Shopify preservada.
+- Pedido → ledger: enlace exacto mediante `orders.Name = ledger.Order`.
+- Transacción → ledger: propuesta explicable por pedido, tipo compatible,
+  moneda, importe y ventana temporal.
 
-El núcleo produce `MATCHED`, `PARTIALLY_MATCHED` o `UNMATCHED`. Detecta cantidad
-incoherente, refund total con neto comercial cero y necesidad de revisión de
-rectificativa.
+Los enlaces exactos son `AUTO_LINKED`. Los enlaces transacción → ledger nacen
+como `PROPOSED` y un operador con permiso puede marcarlos `CONFIRMED` o
+`REJECTED`; actor y fecha quedan auditados.
 
-## Cobertura demostrativa
+## Estados honestos
 
-La página `/reconciliation` presenta refund total, cobro normal y excepción sin
-pedido. No persiste decisiones de dividir, agrupar, confirmar o ignorar.
+- `LEDGER_MISSING`: falta importar la evidencia de liquidación.
+- `PAYOUT_PENDING`: existe ledger, pero no `Payout ID`.
+- `SETTLED`: existe referencia de payout; no implica banco verificado.
+- `PROPOSED`: enlace pendiente de revisión humana.
 
-## Diferencias respecto a la especificación
+El modelo legacy `matching_candidates` permanece sólo por compatibilidad y no
+crea enlaces Shopify ni documentos fiscales.
 
-Faltan matching por importe/moneda/ventana temporal, payouts multi-pedido,
-conciliación bancaria, decisiones manuales auditadas y reglas completas para
-regalías KDP. Estos flujos requieren la superficie REST y persistencia pendiente.
+## Reembolsos
 
+Un refund conserva el pedido y añade transacciones y ledger. Si existe factura,
+la corrección se realiza con documento rectificativo vinculado. Sin factura
+previa, el caso se envía a revisión. La factura original nunca se modifica.

@@ -314,3 +314,25 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
 - **Limitación explícita:** no se ingieren extractos bancarios; ningún estado de payout se
   presenta como cobro bancario verificado.
 - **Siguiente fase:** SHOPIFY-07 — Cierre de calidad, documentación y aceptación real.
+
+---
+
+## SHOPIFY-07 — Documentación y aceptación real
+
+- **Objetivo:** cerrar el flujo Shopify con documentación mantenible, decisiones
+  arquitectónicas explícitas y evidencia de aceptación reproducible.
+- **Documentación:** mapeos, conciliación, dominio, datos, API, limitaciones,
+  runbook de exports, cuatro ADR y reporte final actualizados.
+- **Privacidad:** los tres exports reales se retiraron del índice Git, se
+  conservaron localmente y quedaron protegidos por reglas específicas de
+  `.gitignore`.
+- **Aceptación local observada:** 4 pedidos, 2 transacciones, 2 movimientos de
+  ledger, enlaces por ID y nombre, refund en ambos streams, neto −0,45 EUR,
+  2 payouts pending sin ID y 3 pedidos de importe cero fuera de emisión.
+- **Calidad:** lint/typecheck/build 7/7; 429 pruebas; Playwright 33/33;
+  migraciones correctas sobre base limpia y segunda ejecución; 11 documentos
+  afectados sin warnings markdown; revisión manual desktop/móvil de imports,
+  ventas, detalle y conciliación sin errores ni overflow.
+- **SHA:** pendiente del commit final.
+- **Siguiente paso:** ninguno dentro del plan Shopify-first; cualquier despliegue
+  o trabajo KDP requiere instrucción separada.

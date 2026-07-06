@@ -48,8 +48,9 @@ ya aplicado y el bootstrap reutiliza el tenant, actor y rol existentes.
 ### `POST /api/v1/imports/preview`
 
 Acepta multipart con campo `file` (máximo 15 MB) y campo de texto
-**obligatorio** `connectorId`, uno de `shopify-orders`, `shopify-payments` o
-`amazon-kdp-royalties` (FASE 03 — ver
+**obligatorio** `connectorId`, uno de `shopify-orders`,
+`shopify-order-transactions`, `shopify-payments` o `amazon-kdp-royalties`
+(FASE 03 — ver
 `packages/db/src/import-issue-codes.ts`). MIME permitidos: CSV, PDF y XLSX.
 Requiere una sesión firmada cuyo actor tenga rol `FISCAL_OPERATOR` o `ADMIN`.
 El tenant de almacenamiento y persistencia se deriva exclusivamente de esa

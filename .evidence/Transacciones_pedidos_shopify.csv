@@ -1,3 +1,0 @@
-Order,Name,Kind,Gateway,Created At,Status,Amount,Currency,Card Type,Payment Method
-13367475634559,AI-1001,sale,shopify_payments,2026-07-01 07:33:07 +0200,success,6.99,EUR,master,card
-13367475634559,AI-1001,refund,shopify_payments,2026-07-01 07:51:24 +0200,success,6.99,EUR,master,card

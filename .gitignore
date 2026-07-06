@@ -22,3 +22,8 @@ apps/api/api/_handler.mjs
 apps/api/api/_handler.mjs.map
 .vercel
 .env*
+
+# Real Shopify acceptance exports (local evidence only; may contain PII)
+.evidence/Pedidos_shopify.csv
+.evidence/Transacciones_pedidos_shopify.csv
+.evidence/Transacciones_pagos_shopify.csv

@@ -1,34 +1,32 @@
 # Modelo de dominio
 
-## Contextos implementados
+## Agregados Shopify
 
-Identidad incluye `Tenant`, `LegalEntity`, `User`, `Role`, `Permission` y
-`AuditEvent`. Importación incluye jobs, archivos, filas, errores y evidencias.
-El contexto comercial contiene pedidos, eventos financieros, operaciones,
-candidatos de matching e incidencias.
-
-Fiscalidad incluye configuración, series, decisiones, documentos, cadena de
-integridad y envíos VERI*FACTU. Cierre incluye periodos y expedientes IVA.
-KDP usa `RoyaltyStatement` y `RoyaltyLine` en `packages/core/src/royalty.ts`.
-
-## Entidades implementadas solo como esquema
-
-Las tablas Drizzle existen y tienen migraciones versionadas, pero `apps/api`
-no crea repositorios ni conexiones a `@anclora/db`. Por ello no representan
-persistencia activa en los flujos actuales.
-
-## Entidades especificadas aún ausentes
-
-No existen todavía tablas específicas para `TaxProfile`, `InvoiceRender`,
-`Payout`, `PayoutLine`, `PlatformFee`, `BankTransaction`, `EvidenceLink`,
-`IssueComment`, `ReviewTask`, `Approval`, `VATDossierItem` o `ExportJob`.
-Tampoco hay modelos persistidos de `RoyaltyStatement` y `RoyaltyLine`.
+- `CommercialOrder` y `OrderLine`: evidencia de la venta y sus productos.
+- `ShopifyOrderPaymentEvent`: sale, capture, refund u otro evento del pedido.
+- `ShopifyPaymentsLedgerEntry`: importe, fee, neto y estado de payout.
+- `ShopifyEvidenceLink`: relación explícita, explicada y decidible.
+- `CanonicalOperation`: expediente fiscal nacido del pedido confirmado.
+- `TaxDecision`: decisión versionada basada en configuración y evidencia.
+- `FiscalDocument`: factura inmutable o rectificativa vinculada.
 
 ## Invariantes
 
-- Pedido, evento financiero, documento fiscal y payout son capas distintas.
-- Un refund añade eventos y rectificación; nunca elimina el original.
-- El VAT de plataforma no es el IVA fiscal calculado.
-- Una decisión conserva regla, versión y explicación.
-- Un documento emitido es inmutable y se corrige con otro documento.
+- Pedido, transacción, ledger, payout y banco son capas distintas.
+- `Name` e `Id` son identificadores Shopify con usos diferentes.
+- El caso fiscal nace del pedido confirmado, no del matching.
+- Matching o importación nunca emiten facturas.
+- Un pedido a cero permanece en revisión y fuera de emisión.
+- El VAT del ledger no sustituye al IVA fiscal decidido.
+- Un refund nunca elimina evidencia ni edita una factura emitida.
+- Toda lectura y mutación se limita al tenant de la sesión.
 
+## Ciclo operativo
+
+1. Analizar cada export con su conector específico.
+2. Confirmar para persistir la evidencia de ese stream.
+3. Construir enlaces exactos y propuestas entre evidencias.
+4. Revisar la venta aunque falten transacción, ledger o payout.
+5. Emitir manualmente sólo con rol, configuración, perfil, evidencia y
+   decisión fiscal suficientes.
+6. Rectificar explícitamente cuando un refund afecta a una factura existente.

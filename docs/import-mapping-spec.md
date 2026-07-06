@@ -1,64 +1,60 @@
 # Especificación de mapeo de importaciones
 
-## Principios
+## Principios comunes
 
-- La detección usa estructura, MIME y cabeceras; nunca el nombre por sí solo.
-- El binario original se custodia antes del análisis con SHA-256.
-- Una repetición del mismo hash dentro del tenant se marca como duplicada.
-- Ninguna fila se elimina: queda válida, inválida, duplicada o no clasificada.
-- La vista previa no expone nombres, direcciones, correos ni texto PDF original.
+- La detección usa cabeceras, no el nombre del archivo.
+- Preview y retry no crean registros fiscales; sólo confirm crea datos operativos.
+- El original se custodia con SHA-256 y el reimport es idempotente por tenant.
+- Los previews no devuelven nombres, direcciones, correos ni snapshots completos.
+- Los tres exports Shopify son evidencias independientes y no intercambiables.
 
-## Shopify Payments CSV v1
+## Shopify Orders CSV
 
-El contrato exige las 18 cabeceras canónicas, en orden. Las fechas conservan
-la zona horaria. `Amount`, `Fee`, `Net` y `VAT` se guardan como valores fuente.
-`VAT` es IVA informado por plataforma y no sustituye la decisión fiscal.
+Cabeceras distintivas: `Name`, `Financial Status`, `Fulfillment Status`,
+`Created at` y `Lineitem quantity`. Cada `Name` genera un `commercial_order` y
+las filas con el mismo `Name` generan sus `order_lines`.
 
-La clave de negocio se calcula con pedido, checkout, fecha, tipo, importe y
-moneda. El orden de las filas no tiene significado semántico.
+<!-- markdownlint-disable MD013 -->
 
-## Shopify pedido PDF v1
+| Campo fuente | Destino | Nota |
+| --- | --- | --- |
+| `Name` | `commercial_orders.external_order_id` | Referencia visible y enlace canónico del pedido. |
+| `Id` | Evidencia fuente | ID interno Shopify; no sustituye a `Name`. |
+| `Financial Status` | `financial_status` | Determina si el pedido está confirmado. |
+| `Total` / `Taxes` | `total_amount` / `tax_amount` | Valores comerciales informados. |
+| `Lineitem *` | `order_lines` | ID nativo si existe; fingerprint reproducible si falta. |
+| País y contacto | evidencia del cliente | Nunca infieren por sí solos B2B u OSS. |
 
-Un PDF puede contener varios pedidos. Cada bloque empieza por `Pedido AI-NNNN`
-y se normaliza como evidencia comercial independiente. No se extraen importes
-fiscales porque el documento no los contiene. `0 de 0` produce la incidencia
-`INCOHERENT_QUANTITY`.
+<!-- markdownlint-enable MD013 -->
 
-## Amazon KDP Regalías XLSX v1
+Un total cero conserva el pedido con `ZERO_VALUE_REVIEW`; nunca se elimina ni
+se factura automáticamente. Un refund actualiza el estado mediante nueva
+evidencia, sin borrar el pedido ni sus líneas.
 
-Amazon es el comerciante registrado en las ventas KDP a lectores finales
-(principio #7): las filas de regalías se modelan como `RoyaltyStatement` /
-`RoyaltyLine` en `packages/core`, nunca como `CanonicalOperation` facturadas al
-lector. La detección exige extensión/MIME `.xlsx` **y** al menos una hoja
-conocida (por nombre, tras recortar espacios) — la extensión sola no basta.
+## Shopify Order Transaction History CSV
 
-Los nombres de hoja se normalizan con `trim()` antes de cualquier búsqueda,
-porque el fichero real de Amazon incluye una hoja con espacio final
-(`"Regalías de los libros de tapa "`). Las fechas mensuales en español
-(`"junio 2026"`) se convierten a `"YYYY-MM"` mediante `parseSpanishMonth`.
+Cabeceras distintivas: `Order`, `Name`, `Kind`, `Gateway`, `Created At`,
+`Status`, `Amount` y `Currency`. Cada fila crea un
+`shopify_order_payment_event`. `Order` conserva el ID interno y `Name` permite
+resolver el pedido comercial. El signo de refunds se conserva.
 
-Mapeo hoja por hoja:
+## Shopify Payments Ledger CSV
 
-| Hoja | Uso |
-| --- | --- |
-| `Definiciones del informe` | Metadato only. Nunca se valida ni se normaliza a operaciones. |
-| `Resumen` | Solo para la comprobación de coherencia contra el detalle (no genera `RoyaltyLine`). |
-| `Ventas combinadas` | Detalle de venta multi-formato → `RoyaltyLine`. |
-| `Regalías de eBooks` | Detalle eBook → `RoyaltyLine` clasificada `ebook`. |
-| `Regalías de libros impresos` | Detalle impreso → `RoyaltyLine` clasificada `impreso`. |
-| `Regalías de los libros de tapa ` (espacio final) | Misma forma que la anterior; incluida vía normalización de nombre. |
-| `Pedidos procesados` / `Pedidos completados de eBooks` | Informativas: se validan pero no generan `RoyaltyLine` propia, para evitar doble conteo de la misma venta ya contada en las hojas de regalías (incidencia `INFO` `INFORMATIONAL_ONLY_NOT_COUNTED`). |
-| `KENP leídas` | Cada fila se convierte en `RoyaltyLine` con `classification: 'kenp_lectura'` y `status: 'PENDING_TAX_REVIEW'` siempre, hasta que el tenant configure el tratamiento fiscal. |
+Exige las 18 cabeceras canónicas de ledger. Cada fila crea un
+`shopify_payments_ledger_entry`. `Order` enlaza con `orders.Name`; `Fee`,
+`Net`, `VAT`, estado y referencia de payout se conservan como evidencia de
+Shopify. `VAT` no es una decisión fiscal.
 
-Cuando la misma venta aparece en más de una hoja de detalle (p. ej.
-`Ventas combinadas` y `Regalías de libros impresos`), la clave de negocio
-(periodo + ISBN/ASIN + unidades netas + regalías + moneda) deduplica la
-segunda aparición con la incidencia `INFO` `DUPLICATE_ACROSS_SHEETS`.
+Sin `Payout ID` no se crea un payout recibido: la fila permanece como
+liquidación pendiente. Un payout identificado tampoco prueba el abono bancario.
 
-La comprobación contra `Resumen` es solo de coherencia — nunca bloquea el
-import. Ver ADR-008 sobre la tolerancia elegida.
+## Contrato de detección
 
-## Estados
+La matriz válida es diagonal: Orders sólo lo acepta el detector Orders,
+Order Transactions sólo su detector y Ledger sólo el suyo. Cualquier cruce se
+rechaza antes de persistir datos operativos.
 
-`PENDING → PROCESSING → PREVIEW_READY → VALIDATED`. Un reproceso conserva el
-archivo y las filas anteriores y genera una nueva ejecución enlazada.
+## Amazon KDP
+
+KDP permanece separado del alcance Shopify. Se modela como regalía neta del
+merchant of record, no como venta al lector.

@@ -2,50 +2,41 @@
 
 ## Estado
 
-El esquema usa PostgreSQL mediante Drizzle y cinco migraciones incrementales.
-Está definido en `packages/db/src/schema.ts`, pero todavía no se usa desde la
-API. Los importes emplean `numeric` y todas las tablas operativas incluyen
-`tenant_id`.
+PostgreSQL y Drizzle usan migraciones versionadas 0001–0015. La API de
+producción conecta repositorios reales; todas las tablas operativas incluyen
+`tenant_id` y los importes usan `numeric`.
 
-## Grupos de tablas
+## Tablas Shopify
 
-- Identidad: `tenants`, `legal_entities`, `users`, `roles`, `permissions`,
-  `user_roles`, `audit_events`.
-- Configuración: `fiscal_configurations`, `invoice_series`.
-- Importación: `import_jobs`, `import_files`, `import_rows`, `import_errors`,
-  `evidence_documents`.
-- Operaciones: `commercial_orders`, `financial_events`,
-  `canonical_operations`, `matching_candidates`, `issues`.
-- Fiscal: `tax_decisions`, `fiscal_documents`, `integrity_chain_records`,
-  `verifactu_submissions`.
-- Cierre: `period_closes`, `vat_dossiers`.
+| Tabla | Responsabilidad |
+| --- | --- |
+| `commercial_orders` | Pedido, estado comercial, cliente e importes fuente. |
+| `order_lines` | Líneas idempotentes y trazables del pedido. |
+| `shopify_order_payment_events` | Eventos de pago/reembolso por pedido. |
+| `shopify_payments_ledger_entries` | Ledger, fee, neto y datos de payout. |
+| `payouts` | Sólo referencias con `external_payout_id` real. |
+| `shopify_evidence_links` | Enlaces exactos, propuestos y decididos. |
+| `canonical_operations` | Expediente fiscal derivado del pedido confirmado. |
+| `tax_decisions` | Resultado fiscal versionado y explicado. |
+| `fiscal_documents` | Facturas y rectificativas inmutables. |
 
-## Relaciones principales
+## Relaciones
 
 ```mermaid
 erDiagram
-  TENANTS ||--o{ LEGAL_ENTITIES : owns
-  TENANTS ||--o{ USERS : contains
-  USERS }o--o{ ROLES : user_roles
-  TENANTS ||--o{ IMPORT_JOBS : runs
-  IMPORT_JOBS ||--o{ IMPORT_FILES : contains
-  IMPORT_FILES ||--o{ IMPORT_ROWS : parses
-  IMPORT_FILES ||--o{ EVIDENCE_DOCUMENTS : preserves
-  EVIDENCE_DOCUMENTS ||--o{ COMMERCIAL_ORDERS : supports
-  COMMERCIAL_ORDERS ||--o{ MATCHING_CANDIDATES : proposes
-  FINANCIAL_EVENTS ||--o{ MATCHING_CANDIDATES : proposes
-  LEGAL_ENTITIES ||--o{ CANONICAL_OPERATIONS : owns
+  COMMERCIAL_ORDERS ||--o{ ORDER_LINES : contains
+  COMMERCIAL_ORDERS ||--o{ SHOPIFY_ORDER_PAYMENT_EVENTS : identifies
+  COMMERCIAL_ORDERS ||--o{ SHOPIFY_PAYMENTS_LEDGER_ENTRIES : identifies
+  SHOPIFY_ORDER_PAYMENT_EVENTS ||--o{ SHOPIFY_EVIDENCE_LINKS : explains
+  SHOPIFY_PAYMENTS_LEDGER_ENTRIES ||--o{ SHOPIFY_EVIDENCE_LINKS : explains
+  COMMERCIAL_ORDERS ||--o| CANONICAL_OPERATIONS : creates_case
   CANONICAL_OPERATIONS ||--o{ TAX_DECISIONS : evaluates
-  CANONICAL_OPERATIONS ||--o{ FISCAL_DOCUMENTS : issues
-  CANONICAL_OPERATIONS ||--o{ ISSUES : raises
-  FISCAL_DOCUMENTS ||--o{ INTEGRITY_CHAIN_RECORDS : chains
-  INTEGRITY_CHAIN_RECORDS ||--o{ VERIFACTU_SUBMISSIONS : queues
-  PERIOD_CLOSES ||--o{ VAT_DOSSIERS : exports
+  CANONICAL_OPERATIONS ||--o{ FISCAL_DOCUMENTS : documents
+  FISCAL_DOCUMENTS ||--o{ FISCAL_DOCUMENTS : rectifies
 ```
 
-## Integridad y aislamiento
+## Idempotencia y aislamiento
 
-Índices únicos protegen slugs, referencias externas, hashes y números de
-factura dentro de su ámbito. El aislamiento por tenant está modelado, pero no
-puede considerarse aplicado hasta que la API use repositorios persistentes.
-
+Pedidos, líneas, eventos, ledger y enlaces tienen claves únicas tenant-scoped.
+Reimportar el mismo export no duplica entidades. Los repositorios y
+controladores derivan el tenant de la sesión y prueban aislamiento cruzado.
