@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import medal from '../../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
-import tenantMedal from '../../../../packages/ui/assets/brand/anclora-insights-medalla-oro-transparente.png';
 import { LogoutButton } from '../logout-button';
 import { navigation, type NavPendingCounts } from '../lib/navigation';
 
@@ -218,18 +217,9 @@ export function AppShell({
           })}
         </nav>
 
-        <div className="tenant">
-          <span className="tenant-medal">
-            <Image src={tenantMedal} alt="" />
-          </span>
-
-          <div>
-            <strong>Anclora Insights</strong>
-            <small>Entidad activa · EUR</small>
-          </div>
+        <div className="sidebar-footer">
+          <LogoutButton compact={isSidebarCollapsed} />
         </div>
-
-        <LogoutButton compact={isSidebarCollapsed} />
       </aside>
 
       <section className="workspace">{children}</section>
