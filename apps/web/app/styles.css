@@ -511,15 +511,15 @@ body {
 
 /* ─────────────────────────────────────────────────────────────
    Collapsible desktop sidebar
-   The explicit collapsed state replaces the old automatic
-   medium-screen rail behaviour.
    ───────────────────────────────────────────────────────────── */
 
 @media (min-width: 781px) {
   .app-shell {
     --sidebar-width: 286px;
     grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-    transition: grid-template-columns 280ms var(--fiscal-ease);
+    transition:
+      grid-template-columns 280ms
+      var(--fiscal-ease, cubic-bezier(.22, .61, .36, 1));
   }
 
   .sidebar {
@@ -527,8 +527,8 @@ body {
     width: var(--sidebar-width);
     overflow: visible;
     transition:
-      width 280ms var(--fiscal-ease),
-      padding 280ms var(--fiscal-ease);
+      width 280ms var(--fiscal-ease, cubic-bezier(.22, .61, .36, 1)),
+      padding 280ms var(--fiscal-ease, cubic-bezier(.22, .61, .36, 1));
   }
 
   .sidebar-toggle {
@@ -548,7 +548,7 @@ body {
       rgb(27 43 62 / 98%),
       rgb(12 23 37 / 98%)
     );
-    color: var(--fiscal-gold);
+    color: var(--fiscal-gold, #d7a957);
     box-shadow:
       0 8px 24px rgb(0 0 0 / 30%),
       inset 0 1px rgb(255 255 255 / 6%);
@@ -569,6 +569,11 @@ body {
       0 0 0 4px rgb(215 169 87 / 8%);
   }
 
+  .sidebar-toggle:focus-visible {
+    outline: 2px solid var(--fiscal-gold, #d7a957);
+    outline-offset: 3px;
+  }
+
   .sidebar-toggle svg {
     width: 16px;
     height: 16px;
@@ -583,8 +588,8 @@ body {
     width: auto;
     overflow: visible;
     transition:
-      justify-content 280ms var(--fiscal-ease),
-      gap 280ms var(--fiscal-ease);
+      justify-content 280ms var(--fiscal-ease, cubic-bezier(.22, .61, .36, 1)),
+      gap 280ms var(--fiscal-ease, cubic-bezier(.22, .61, .36, 1));
   }
 
   .brand-lockup > span:last-child {
@@ -630,6 +635,12 @@ body {
   .nav-badge,
   .nav-badge-soon {
     margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding-top: 18px;
   }
 
   .app-shell.sidebar-collapsed {
@@ -649,7 +660,6 @@ body {
   .sidebar-collapsed .nav-label,
   .sidebar-collapsed .nav-badge,
   .sidebar-collapsed .nav-badge-soon,
-  .sidebar-collapsed .tenant > div,
   .sidebar-collapsed .logout-button-label {
     display: none;
   }
@@ -684,7 +694,7 @@ body {
   .sidebar-collapsed .sidebar nav a.active .nav-rail-token {
     border-color: rgb(215 169 87 / 48%);
     background: rgb(215 169 87 / 15%);
-    color: var(--fiscal-gold);
+    color: var(--fiscal-gold, #d7a957);
     box-shadow: inset 0 1px rgb(255 255 255 / 7%);
   }
 
@@ -692,16 +702,6 @@ body {
     border-color: rgb(245 239 227 / 8%);
     background: transparent;
     color: rgb(245 239 227 / 36%);
-  }
-
-  .sidebar-collapsed .tenant {
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .sidebar-collapsed .tenant-medal {
-    width: 38px;
-    height: 38px;
   }
 
   .logout-button {
@@ -720,6 +720,11 @@ body {
     stroke-width: 1.7;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+
+  .sidebar-collapsed .sidebar-footer {
+    display: flex;
+    justify-content: center;
   }
 
   .sidebar-collapsed .logout-button {
