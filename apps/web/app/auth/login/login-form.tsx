@@ -42,7 +42,7 @@ export function LoginForm() {
       </header>
       <form className="login-form" onSubmit={submit}>
         <label htmlFor="email">Correo electrónico</label>
-        <input id="email" name="email" type="email" autoComplete="email" required aria-required="true" />
+        <input id="email" name="email" type="email" autoComplete="email" required aria-required="true" autoFocus />
         <label htmlFor="password">Contraseña</label>
         <div className="password-field">
           <input id="password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" required aria-required="true" />
