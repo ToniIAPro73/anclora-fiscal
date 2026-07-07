@@ -336,3 +336,105 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
 - **SHA:** pendiente del commit final.
 - **Siguiente paso:** ninguno dentro del plan Shopify-first; cualquier despliegue
   o trabajo KDP requiere instrucción separada.
+
+---
+
+## REFACTOR FISCAL SHOPIFY — FASE 0 — Baseline y decisiones de compatibilidad
+
+- **Objetivo:** establecer una línea base verificable para el prompt maestro
+  `PROMPT MAESTRO — CODEX / REFACTOR FISCAL SHOPIFY DE ANCLORA FISCAL`, confirmar
+  la rama `feature/fiscal-refactor-shopify`, registrar divergencias con documentación
+  antigua y fijar decisiones de compatibilidad antes de cambios funcionales.
+- **Preflight ejecutado antes de cambios funcionales:**
+
+  ```text
+  git status --short
+  salida: limpia
+
+  git branch --show-current
+  salida: feature/fiscal-refactor-shopify
+
+  git remote -v
+  salida:
+  origin https://github.com/ToniIAPro73/anclora-fiscal.git (fetch)
+  origin https://github.com/ToniIAPro73/anclora-fiscal.git (push)
+
+  git fetch origin --prune
+  salida: sin cambios
+
+  git log --oneline --decorate -20
+  salida: HEAD inicial d8a9915, origin/main en 5c08415, historial Shopify 01-07 presente
+
+  git diff --check
+  salida: sin errores
+  ```
+
+- **Sincronización no destructiva:** `origin/main` contenía el commit `5c08415`
+  de foco automático en login que no estaba integrado en la rama. Como el árbol
+  estaba limpio, se ejecutó merge normal:
+
+  ```text
+  git merge --no-ff origin/main -m "sync: merge main before fiscal refactor"
+  salida: Merge made by the 'ort' strategy.
+  ```
+
+- **SHA base de trabajo:** `763922d` tras el merge normal de `origin/main`.
+- **Lectura mínima realizada:** `README.md`, documentación de arquitectura,
+  dominio, datos, conciliación, motor fiscal, limitaciones, ADRs, prompt E2E
+  previo, migraciones 0000-0015 y módulos actuales de configuración fiscal,
+  emisión, decisión fiscal, caso fiscal, ciclo de importación, normalización
+  Shopify, ventas Shopify, facturación core y vistas operativas.
+- **Archivos / migraciones:** sin migración. Archivos docs-only:
+  `docs/adr/0010-shopify-fiscal-refactor-policy.md` y
+  `docs/implementation-phase-log.md`.
+- **Decisiones registradas:** `legal_entities` permanece como único emisor fiscal
+  persistente; la emisión Shopify futura se disparará por transacción de pedido
+  confirmada y no por payout/matching; OSS y B2B fallan de forma segura; los
+  valores nuevos del dominio fiscal se introducen en español; VERI*FACTU sigue
+  desactivado por defecto.
+- **Divergencias verificadas:** el repositorio ya separa tres evidencias Shopify,
+  pero la emisión manual aún exige ledger, el PDF aún usa “Emitida por Anclora
+  Insights”, `fiscal_documents` sólo distingue tipos legacy y la política de
+  emisión todavía no modela factura simplificada/completa/rectificativa con
+  contratos españoles.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm lint
+  Tasks: 7 successful, 7 total
+  Cached: 2 cached, 7 total
+  Time: 46.46s
+
+  pnpm typecheck
+  Tasks: 7 successful, 7 total
+  Cached: 3 cached, 7 total
+  Time: 1m27.796s
+
+  pnpm test
+  Tasks: 12 successful, 12 total
+  Cached: 4 cached, 12 total
+  Time: 5m0.566s
+  @anclora/ui:test — Test Files 11 passed / Tests 30 passed
+  @anclora/web:test — Test Files 26 passed / Tests 68 passed
+  @anclora/db:test — Test Files 19 passed / Tests 100 passed
+  @anclora/connectors:test — Test Files 5 passed / Tests 41 passed
+  @anclora/api:test — Test Files 25 passed / Tests 181 passed
+  @anclora/core:test — Test Files 6 passed / Tests 22 passed
+  @anclora/tax-engine:test — Test Files 1 passed / Tests 3 passed
+  WARNING no output files found for task @anclora/ui#build.
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/feature/fiscal-refactor-shopify`.
+- **Limitaciones abiertas:**
+  - La implementación funcional de emisor persona física, NIF/NIE, series `FS`,
+    `F`, `FR` y OSS corresponde a FASE 1.
+  - La clasificación fiscal y estados españoles del nuevo modelo corresponden a
+    FASE 2.
+  - PDF, numeración y rectificación completa corresponden a FASE 3.
+  - Orquestación post-transacción Shopify confirmada corresponde a FASE 4.
+  - Read models y UI operativa final corresponden a FASE 5.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 1 — Emisor fiscal,
+  configuración y migración aditiva.
