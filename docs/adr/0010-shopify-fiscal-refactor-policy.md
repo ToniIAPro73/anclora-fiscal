@@ -39,21 +39,20 @@ ledger, payout y banco.
 6. VERI*FACTU permanece desactivado por defecto. La aplicación no declarará
    certificación ni cumplimiento pleno futuro.
 
-## Divergencias verificadas con el código actual
+## Implementación cerrada
 
-- `DrizzleFiscalDocumentsRepository.issue()` emite sólo `FULL_INVOICE`; todavía
-  no distingue simplificada, completa y rectificativa con campos canónicos
-  españoles.
-- `InvoiceIssuanceService` y `createShopifySaleInvoiceHandler()` aún exigen
-  ledger para la emisión manual; esto debe eliminarse en las fases de emisión.
-- `packages/core/src/invoicing.ts` todavía renderiza el texto fijo
-  “Emitida por Anclora Insights”; debe sustituirse por el emisor legal
-  configurado.
-- `ConfirmedOrderFiscalCaseService` crea expediente desde pedido confirmado,
-  pero no desde evento Shopify confirmado ni con política fiscal completa.
-- `TaxDecisionService` usa el motor versionado existente, con estados legacy en
-  inglés; el refactor añadirá capa fiscal Shopify en español sin renombrar
-  masivamente contratos antiguos.
+- `DrizzleFiscalDocumentsRepository.issue()` emite `SIMPLIFICADA` o `COMPLETA`
+  según la decisión fiscal, y `rectify()` emite `RECTIFICATIVA`.
+- `InvoiceIssuanceService` y la acción manual de Ventas Shopify no exigen
+  ledger, payout ni banco; sólo pedido, transacción confirmada, configuración,
+  perfil y decisión fiscal.
+- `packages/core/src/invoicing.ts` renderiza el emisor legal configurado. El
+  nombre comercial puede aparecer como marca, pero no sustituye a nombre legal,
+  NIF/NIE configurado y domicilio.
+- `ConfirmedOrderFiscalCaseService` se orquesta desde eventos Shopify
+  confirmados de tipo `sale` o `capture` y estado correcto.
+- `TaxDecisionService` persiste decisiones con estados y tipos fiscales
+  españoles nuevos, manteniendo compatibilidad técnica con valores legacy.
 
 ## Consecuencias
 

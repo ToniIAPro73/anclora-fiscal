@@ -40,9 +40,10 @@ export interface InvoiceIssuanceServiceDependencies {
 
 /**
  * Snapshot of the checks the caller (the /sales/shopify/[orderId] detail
- * route, per Task 3) must gather before requesting manual issuance —
- * config, fiscal profile, the SHOPIFY-03 evidence chain (order + order
- * transactions + payments ledger), and a determined tax decision.
+ * route must gather before requesting manual issuance: config, fiscal
+ * profile, the commercial order, confirmed order transactions, and a
+ * determined tax decision. Ledger/payout evidence is useful for settlement
+ * review, but it is not a fiscal issuance prerequisite.
  */
 export interface ManualIssuanceOperation {
   id: string;
@@ -123,7 +124,7 @@ export class InvoiceIssuanceService {
   /**
    * Manual issuance: gated on role (documents:issue), ZERO_VALUE_REVIEW
    * exclusion, minimum fiscal configuration, fiscal profile, sufficient
-   * evidence (order + transactions + ledger), and a determined tax
+   * evidence (order + confirmed order transaction), and a determined tax
    * decision. Only once every check passes does this delegate to
    * fiscalDocumentsRepository.issue(), which independently re-verifies
    * config/tax-decision state server-side (defense in depth — the gate

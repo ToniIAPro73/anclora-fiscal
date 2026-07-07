@@ -9,8 +9,8 @@
 - El export puede no incluir un ID nativo de línea; en ese caso se usa un
   fingerprint reproducible, claramente diferenciado de un ID Shopify.
 - El VAT del ledger es evidencia de comisión/plataforma, no una decisión de IVA.
-- La emisión manual exige configuración, perfil, transacciones, ledger y decisión
-  fiscal. Esta política conservadora puede dejar ventas revisables pero no emitibles.
+- La emisión exige configuración, perfil, transacción Shopify confirmada y
+  decisión fiscal. No exige ledger, payout ni banco.
 - Un refund sin factura previa se clasifica para revisión; la cola de incidencias
   específica de refunds aún no tiene una pantalla dedicada.
 - `matching_candidates` continúa disponible para datos legacy, pero no participa
@@ -20,9 +20,12 @@
 
 - VERI\*FACTU permanece en modo preparación; no hay envío activo a la AEAT ni se
   declara cumplimiento normativo.
-- Las reglas internacionales incompletas producen `REVIEW_REQUIRED` o `BLOCKED`.
+- Las reglas internacionales incompletas producen revisión fiscal explícita,
+  por ejemplo `PENDIENTE_REVISION_OSS`, o bloqueo seguro.
 - La aplicación no debe inferir B2B, OSS o inversión del sujeto pasivo sólo por
   país, compañía, correo o IVA informado por Shopify.
+- VERI*FACTU no está certificado ni conectado a AEAT; el modo actual sólo
+  prepara datos internos.
 - Los textos de privacidad y términos requieren revisión legal antes de uso final.
 
 ## Plataforma

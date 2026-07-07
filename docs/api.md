@@ -100,6 +100,21 @@ archivo ya custodiado (mismo `sha256` + `mapping_version`, sin crear un nuevo
 - `200` → `{ jobId, status: 'ANALYZED' | 'FAILED', summary, issues }`
 - `404 IMPORT_JOB_NOT_FOUND` — el job o el archivo custodiado no existen.
 
+### `GET /api/v1/fiscal-configuration`
+
+Requiere `settings:read`. Devuelve la configuración fiscal del tenant,
+incluyendo `emisorFiscal`, series, perfiles de producto y readiness. No devuelve
+NIF/NIE ni identidad fiscal cifrada en claro; sólo expone flags como
+`nifConfigurado` o `taxIdentityConfigured`.
+
+### `PUT /api/v1/fiscal-configuration`
+
+Requiere `settings:write`. Acepta el contrato español del refactor:
+`datosEmisor`, `oss`, `perfilProducto` y `ejercicio`. Valida NIF/NIE español,
+cifra la identidad fiscal con secreto server-only y crea/actualiza
+idempotentemente las series `FS`, `F` y `FR`. También conserva el contrato legacy
+para compatibilidad técnica.
+
 ## Paginación
 
 Las rutas de listado comparten `parsePagination()`
@@ -234,8 +249,10 @@ documentos y auditoría. Un payout identificado no equivale a verificación banc
 ### `POST /api/v1/shopify/sales/:orderId/invoice`
 
 Emisión manual con permiso `documents:issue`. El servidor exige expediente,
-importe distinto de cero, configuración y perfil fiscal, transacciones, ledger
-y decisión fiscal. Nunca se ejecuta automáticamente al importar o enlazar.
+importe distinto de cero, configuración y perfil fiscal, transacción Shopify
+confirmada y decisión fiscal. No exige ledger, payout ni banco. La emisión
+automática sólo puede ocurrir al persistir una transacción Shopify de cobro
+confirmada y nunca por pedido, matching, ledger, payout o banco.
 
 ## Recursos no implementados
 
