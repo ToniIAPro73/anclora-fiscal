@@ -1,13 +1,7 @@
-'use client';
+"use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
-import { Button, FileDropzone, StatusBadge } from '@anclora/ui';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Button, FileDropzone, StatusBadge } from "@anclora/ui";
 import {
   isBlockingIssue,
   issueKey,
@@ -17,27 +11,27 @@ import {
   type ImportIssue,
   type PreviewResponse,
   type RejectResponse,
-} from './types';
+} from "./types";
 
 type Phase =
-  | 'idle'
-  | 'analyzing'
-  | 'preview'
-  | 'confirming'
-  | 'confirmed'
-  | 'rejecting'
-  | 'rejected'
-  | 'error';
+  | "idle"
+  | "analyzing"
+  | "preview"
+  | "confirming"
+  | "confirmed"
+  | "rejecting"
+  | "rejected"
+  | "error";
 
 const phaseAnnouncements: Record<Phase, string> = {
-  idle: '',
-  analyzing: 'Detectando formato y analizando el archivo…',
-  preview: 'Vista previa lista para revisar.',
-  confirming: 'Confirmando importación…',
-  confirmed: 'Importación confirmada.',
-  rejecting: 'Rechazando importación…',
-  rejected: 'Importación rechazada.',
-  error: 'Se produjo un error.',
+  idle: "",
+  analyzing: "Detectando formato y analizando el archivo…",
+  preview: "Vista previa lista para revisar.",
+  confirming: "Confirmando importación…",
+  confirmed: "Importación confirmada.",
+  rejecting: "Rechazando importación…",
+  rejected: "Importación rechazada.",
+  error: "Se produjo un error.",
 };
 
 export interface ImportCardProps {
@@ -72,11 +66,11 @@ export function ImportCard({
 }: ImportCardProps) {
   const previewDialogRef = useRef<HTMLDialogElement>(null);
 
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<Phase>("idle");
   const [preview, setPreview] = useState<PreviewResponse>();
   const [confirmResult, setConfirmResult] = useState<ConfirmResponse>();
   const [rejectResult, setRejectResult] = useState<RejectResponse>();
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [acknowledged, setAcknowledged] = useState<Set<string>>(new Set());
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
@@ -84,10 +78,7 @@ export function ImportCard({
     const map = new Map<number, ImportIssue[]>();
 
     for (const issue of preview?.issues ?? []) {
-      map.set(issue.position, [
-        ...(map.get(issue.position) ?? []),
-        issue,
-      ]);
+      map.set(issue.position, [...(map.get(issue.position) ?? []), issue]);
     }
 
     return map;
@@ -100,12 +91,10 @@ export function ImportCard({
   );
 
   const confirmDisabled =
-    phase !== 'preview' || unacknowledgedBlocking.length > 0;
+    phase !== "preview" || unacknowledgedBlocking.length > 0;
 
   const busy =
-    phase === 'analyzing' ||
-    phase === 'confirming' ||
-    phase === 'rejecting';
+    phase === "analyzing" || phase === "confirming" || phase === "rejecting";
 
   useEffect(() => {
     const dialog = previewDialogRef.current;
@@ -113,9 +102,7 @@ export function ImportCard({
     if (!dialog) return;
 
     const shouldOpen =
-      phase === 'preview' &&
-      preview !== undefined &&
-      isPreviewOpen;
+      phase === "preview" && preview !== undefined && isPreviewOpen;
 
     if (shouldOpen) {
       if (!dialog.open) {
@@ -126,7 +113,7 @@ export function ImportCard({
         }
 
         if (!dialog.open) {
-          dialog.setAttribute('open', '');
+          dialog.setAttribute("open", "");
         }
       }
 
@@ -141,7 +128,7 @@ export function ImportCard({
       }
 
       if (dialog.open) {
-        dialog.removeAttribute('open');
+        dialog.removeAttribute("open");
       }
     }
   }, [isPreviewOpen, phase, preview]);
@@ -154,11 +141,21 @@ export function ImportCard({
     setIsPreviewOpen(false);
   }
 
-  async function submit(formData: FormData) {
-    formData.set('connectorId', connectorId);
+  function resetImportFlow() {
+    setPhase("idle");
+    setPreview(undefined);
+    setConfirmResult(undefined);
+    setRejectResult(undefined);
+    setError("");
+    setAcknowledged(new Set());
+    setIsPreviewOpen(false);
+  }
 
-    setPhase('analyzing');
-    setError('');
+  async function submit(formData: FormData) {
+    formData.set("connectorId", connectorId);
+
+    setPhase("analyzing");
+    setError("");
     setPreview(undefined);
     setConfirmResult(undefined);
     setRejectResult(undefined);
@@ -166,30 +163,28 @@ export function ImportCard({
     setIsPreviewOpen(false);
 
     try {
-      const response = await fetch('/api/v1/imports/preview', {
-        method: 'POST',
-        credentials: 'include',
+      const response = await fetch("/api/v1/imports/preview", {
+        method: "POST",
+        credentials: "include",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error(
-          'El archivo no supera la validación estructural',
-        );
+        throw new Error("El archivo no supera la validación estructural");
       }
 
       const data = (await response.json()) as PreviewResponse;
 
       setPreview(data);
-      setPhase('preview');
+      setPhase("preview");
       setIsPreviewOpen(true);
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : 'No se pudo procesar el archivo',
+          : "No se pudo procesar el archivo",
       );
-      setPhase('error');
+      setPhase("error");
     }
   }
 
@@ -211,52 +206,45 @@ export function ImportCard({
   async function handleConfirm() {
     if (!preview) return;
 
-    setPhase('confirming');
-    setError('');
+    setPhase("confirming");
+    setError("");
 
     try {
-      const response = await fetch(
-        `/api/v1/imports/${preview.jobId}/confirm`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            acknowledgedIssueIds: [...acknowledged],
-          }),
+      const response = await fetch(`/api/v1/imports/${preview.jobId}/confirm`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          acknowledgedIssueIds: [...acknowledged],
+        }),
+      });
 
       if (response.status === 422) {
-        throw new Error(
-          'Quedan incidencias bloqueantes sin confirmar',
-        );
+        throw new Error("Quedan incidencias bloqueantes sin confirmar");
       }
 
       if (response.status === 409) {
-        throw new Error(
-          'Esta importación ya fue confirmada o rechazada',
-        );
+        throw new Error("Esta importación ya fue confirmada o rechazada");
       }
 
       if (!response.ok) {
-        throw new Error('No se pudo confirmar la importación');
+        throw new Error("No se pudo confirmar la importación");
       }
 
       const data = (await response.json()) as ConfirmResponse;
 
       setConfirmResult(data);
-      setPhase('confirmed');
+      setPhase("confirmed");
       setIsPreviewOpen(false);
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : 'No se pudo confirmar la importación',
+          : "No se pudo confirmar la importación",
       );
-      setPhase('preview');
+      setPhase("preview");
       setIsPreviewOpen(true);
     }
   }
@@ -264,44 +252,39 @@ export function ImportCard({
   async function handleReject() {
     if (!preview) return;
 
-    setPhase('rejecting');
-    setError('');
+    setPhase("rejecting");
+    setError("");
 
     try {
-      const response = await fetch(
-        `/api/v1/imports/${preview.jobId}/reject`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({}),
+      const response = await fetch(`/api/v1/imports/${preview.jobId}/reject`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({}),
+      });
 
       if (response.status === 409) {
-        throw new Error(
-          'Esta importación ya fue confirmada o rechazada',
-        );
+        throw new Error("Esta importación ya fue confirmada o rechazada");
       }
 
       if (!response.ok) {
-        throw new Error('No se pudo rechazar la importación');
+        throw new Error("No se pudo rechazar la importación");
       }
 
       const data = (await response.json()) as RejectResponse;
 
       setRejectResult(data);
-      setPhase('rejected');
+      setPhase("rejected");
       setIsPreviewOpen(false);
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : 'No se pudo rechazar la importación',
+          : "No se pudo rechazar la importación",
       );
-      setPhase('preview');
+      setPhase("preview");
       setIsPreviewOpen(true);
     }
   }
@@ -309,40 +292,37 @@ export function ImportCard({
   async function handleRetry() {
     if (!preview) return;
 
-    setPhase('analyzing');
-    setError('');
+    setPhase("analyzing");
+    setError("");
     setIsPreviewOpen(false);
 
     try {
-      const response = await fetch(
-        `/api/v1/imports/${preview.jobId}/retry`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({}),
+      const response = await fetch(`/api/v1/imports/${preview.jobId}/retry`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({}),
+      });
 
       if (!response.ok) {
-        throw new Error('No se pudo reintentar el análisis');
+        throw new Error("No se pudo reintentar el análisis");
       }
 
       const data = (await response.json()) as PreviewResponse;
 
       setPreview(data);
       setAcknowledged(new Set());
-      setPhase('preview');
+      setPhase("preview");
       setIsPreviewOpen(true);
     } catch (reason) {
       setError(
         reason instanceof Error
           ? reason.message
-          : 'No se pudo reintentar el análisis',
+          : "No se pudo reintentar el análisis",
       );
-      setPhase('preview');
+      setPhase("preview");
       setIsPreviewOpen(true);
     }
   }
@@ -353,30 +333,21 @@ export function ImportCard({
         <h2>{title}</h2>
         <p>{description}</p>
 
-        {disabled ? (
-          <StatusBadge tone="info">Próximamente</StatusBadge>
-        ) : null}
+        {disabled ? <StatusBadge tone="info">Próximamente</StatusBadge> : null}
       </header>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className="visually-hidden"
-      >
+      <p role="status" aria-live="polite" className="visually-hidden">
         {phaseAnnouncements[phase]}
       </p>
 
       {disabled ? (
         <p className="import-card-disabled-reason">
-          {disabledReason ??
-            'Este conector aún no está disponible.'}
+          {disabledReason ?? "Este conector aún no está disponible."}
         </p>
       ) : null}
 
       {!disabled &&
-      (phase === 'idle' ||
-        phase === 'analyzing' ||
-        phase === 'error') ? (
+      (phase === "idle" || phase === "analyzing" || phase === "error") ? (
         <form action={submit} className="drop-panel">
           <FileDropzone
             label={fileFieldLabel}
@@ -387,48 +358,32 @@ export function ImportCard({
             hint={hint}
           />
 
-          {error ? (
-            <p className="import-error">{error}</p>
-          ) : null}
+          {error ? <p className="import-error">{error}</p> : null}
 
           <Button type="submit" disabled={busy}>
-            {phase === 'analyzing'
-              ? 'Analizando…'
-              : 'Generar vista previa'}
+            {phase === "analyzing" ? "Analizando…" : "Generar vista previa"}
           </Button>
         </form>
       ) : null}
 
-      {!disabled &&
-      phase === 'preview' &&
-      preview &&
-      !isPreviewOpen ? (
+      {!disabled && phase === "preview" && preview && !isPreviewOpen ? (
         <section
           className="preview-pending-panel"
           aria-label={`Vista previa pendiente de ${title}`}
         >
-          <StatusBadge
-            tone={
-              blockingIssues.length > 0
-                ? 'warning'
-                : 'info'
-            }
-          >
+          <StatusBadge tone={blockingIssues.length > 0 ? "warning" : "info"}>
             {statusLabel(preview.status)}
           </StatusBadge>
 
           <div>
             <strong>Vista previa pendiente de decisión</strong>
             <p>
-              {preview.summary.records} registros analizados.
-              Revisa el detalle antes de confirmar o rechazar la
-              importación.
+              {preview.summary.records} registros analizados. Revisa el detalle
+              antes de confirmar o rechazar la importación.
             </p>
           </div>
 
-          {error ? (
-            <p className="import-error">{error}</p>
-          ) : null}
+          {error ? <p className="import-error">{error}</p> : null}
 
           <div className="import-actions">
             <Button
@@ -452,7 +407,7 @@ export function ImportCard({
         </section>
       ) : null}
 
-      {phase === 'confirmed' && confirmResult ? (
+      {phase === "confirmed" && confirmResult ? (
         <section
           className="result-panel"
           aria-label="Resultado de la importación"
@@ -477,7 +432,7 @@ export function ImportCard({
         </section>
       ) : null}
 
-      {phase === 'rejected' && rejectResult ? (
+      {phase === "rejected" && rejectResult ? (
         <section
           className="result-panel"
           aria-label="Resultado de la importación"
@@ -487,13 +442,19 @@ export function ImportCard({
           </StatusBadge>
 
           <p>
-            Importación rechazada. El archivo original se conserva
-            como evidencia.
+            Importación rechazada. El archivo original se conserva como
+            evidencia.
           </p>
+
+          <div className="import-actions">
+            <Button type="button" variant="primary" onClick={resetImportFlow}>
+              Nueva importación
+            </Button>
+          </div>
         </section>
       ) : null}
 
-      {phase === 'preview' && preview ? (
+      {phase === "preview" && preview ? (
         <dialog
           ref={previewDialogRef}
           className="preview-dialog"
@@ -512,17 +473,14 @@ export function ImportCard({
           <div className="preview-dialog-shell">
             <header className="preview-dialog-header">
               <div>
-                <span className="eyebrow">
-                  Importación pendiente
-                </span>
+                <span className="eyebrow">Importación pendiente</span>
 
                 <h2 id={`preview-title-${connectorId}`}>
                   Vista previa · {title}
                 </h2>
 
                 <p>
-                  Revisa los datos antes de confirmar su persistencia
-                  fiscal.
+                  Revisa los datos antes de confirmar su persistencia fiscal.
                 </p>
               </div>
 
@@ -542,11 +500,7 @@ export function ImportCard({
               >
                 <div className="preview-heading">
                   <StatusBadge
-                    tone={
-                      blockingIssues.length > 0
-                        ? 'warning'
-                        : 'info'
-                    }
+                    tone={blockingIssues.length > 0 ? "warning" : "info"}
                   >
                     {statusLabel(preview.status)}
                   </StatusBadge>
@@ -557,9 +511,7 @@ export function ImportCard({
                   </strong>
                 </div>
 
-                {error ? (
-                  <p className="import-error">{error}</p>
-                ) : null}
+                {error ? <p className="import-error">{error}</p> : null}
 
                 <div className="preview-table-scroll">
                   {renderPreviewTable(preview, issuesByPosition)}
@@ -568,14 +520,12 @@ export function ImportCard({
                 {blockingIssues.length > 0 ? (
                   <fieldset className="issue-acknowledgements">
                     <legend>
-                      Incidencias bloqueantes — confírmalas para poder
-                      importar
+                      Incidencias bloqueantes — confírmalas para poder importar
                     </legend>
 
                     {blockingIssues.map((issue) => {
                       const key = issueKey(issue);
-                      const descriptionId =
-                        `issue-desc-${connectorId}-${key}`;
+                      const descriptionId = `issue-desc-${connectorId}-${key}`;
 
                       return (
                         <div key={key} className="issue-ack-row">
@@ -584,14 +534,10 @@ export function ImportCard({
                             id={`issue-ack-${connectorId}-${key}`}
                             checked={acknowledged.has(key)}
                             aria-describedby={descriptionId}
-                            onChange={() =>
-                              toggleAcknowledge(issue)
-                            }
+                            onChange={() => toggleAcknowledge(issue)}
                           />
 
-                          <label
-                            htmlFor={`issue-ack-${connectorId}-${key}`}
-                          >
+                          <label htmlFor={`issue-ack-${connectorId}-${key}`}>
                             Fila {issue.position} — {issue.code}
                           </label>
 
