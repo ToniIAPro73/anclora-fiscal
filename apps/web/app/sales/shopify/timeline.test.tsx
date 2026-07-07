@@ -13,6 +13,11 @@ const sale = {
   externalOrderId: "AI-1001",
   commercialDate: "2026-07-01",
   totalAmount: "6.99",
+  discountCode: null,
+  discountAmount: "0",
+  customerName: "Ana García",
+  customerEmail: "ana@example.test",
+  customerCountry: "ES",
   paymentStatus: "PAID",
   refundStatus: "NONE",
   fiscalStatus: "PENDING",
@@ -47,9 +52,33 @@ describe("OperationsTimeline SHOPIFY-06", () => {
     mock({ items: [sale], metrics });
     render(<OperationsTimeline />);
     await screen.findByText("AI-1001");
+    expect(screen.getByText("Comprador")).toBeInTheDocument();
+    expect(screen.getByText("Ana García")).toBeInTheDocument();
     expect(screen.getAllByText("Liquidación pendiente")).toHaveLength(2);
     expect(screen.getAllByText("Pendiente").length).toBeGreaterThan(0);
     expect(screen.getAllByText("6.99 €")).toHaveLength(2);
+  });
+  it("explica pedidos de importe cero por descuento y evita 'faltan movimientos'", async () => {
+    mock({
+      items: [{
+        ...sale,
+        externalOrderId: "AI-1002",
+        totalAmount: "0",
+        discountCode: "PRUEBA100",
+        discountAmount: "6.99",
+        fiscalStatus: "ZERO_VALUE_REVIEW",
+        transactionCount: 0,
+        ledgerCount: 0,
+        payoutStatus: "LEDGER_MISSING",
+      }],
+      metrics,
+    });
+    render(<OperationsTimeline />);
+    await screen.findByText("AI-1002");
+    expect(screen.getAllByText("Descuento aplicado · PRUEBA100").length).toBeGreaterThan(0);
+    expect(screen.getByText("Falta importar Shopify Payments")).toBeInTheDocument();
+    expect(screen.queryByText("Faltan movimientos")).not.toBeInTheDocument();
+    expect(screen.getByText("Estado fiscal")).toBeInTheDocument();
   });
   it("no afirma banco al identificar la liquidación", async () => {
     mock({ items: [{ ...sale, payoutStatus: "SETTLED" }], metrics });

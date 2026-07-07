@@ -45,6 +45,15 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
 
+  async findById(tenantId: string, fiscalDocumentId: string): Promise<FiscalDocument | null> {
+    const [document] = await this.db
+      .select()
+      .from(fiscalDocuments)
+      .where(and(eq(fiscalDocuments.tenantId, tenantId), eq(fiscalDocuments.id, fiscalDocumentId)))
+      .limit(1);
+    return document ?? null;
+  }
+
   /**
    * Issues a full invoice for a canonical operation, tenant-scoped end to
    * end. Idempotent: if a FULL_INVOICE fiscalDocuments row already exists

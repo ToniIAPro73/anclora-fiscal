@@ -42,7 +42,7 @@ export interface ImportPreviewResponse {
   /** SHOPIFY-03: platform settlement-ledger evidence, computed alongside financialEvents from the same shopify-csv (Payments Ledger) rows. */
   paymentsLedger?: NewShopifyPaymentsLedgerEntryWithoutTenant[];
   /** SHOPIFY-04: safe, source-specific preview contract exposed to clients. */
-  shopifyOrders?: { orders: Array<{ orderName: string; commercialDate?: string; totalAmount?: string; taxAmount?: string; financialStatus?: string; fulfillmentStatus?: string; productNature?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
+  shopifyOrders?: { orders: Array<{ orderName: string; commercialDate?: string; totalAmount?: string; taxAmount?: string; financialStatus?: string; fulfillmentStatus?: string; productNature?: string; customerName?: string; customerEmail?: string; customerAddress?: string; customerCountry?: string; customerType?: string; discountCode?: string; discountAmount?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
   shopifyOrderTransactions?: { events: NewShopifyOrderPaymentEventWithoutTenant[] };
   shopifyPaymentsLedger?: { entries: NewShopifyPaymentsLedgerEntryWithoutTenant[] };
 }
@@ -115,6 +115,13 @@ export async function previewImport(
         ...(group.order.financialStatus ? { financialStatus: group.order.financialStatus } : {}),
         ...(group.order.fulfillmentStatus ? { fulfillmentStatus: group.order.fulfillmentStatus } : {}),
         ...(group.order.productNature ? { productNature: group.order.productNature } : {}),
+        ...(group.order.customerName ? { customerName: group.order.customerName } : {}),
+        ...(group.order.customerEmail ? { customerEmail: group.order.customerEmail } : {}),
+        ...(group.order.customerAddress ? { customerAddress: group.order.customerAddress } : {}),
+        ...(group.order.customerCountry ? { customerCountry: group.order.customerCountry } : {}),
+        ...(group.order.customerType ? { customerType: group.order.customerType } : {}),
+        ...(group.order.discountCode ? { discountCode: group.order.discountCode } : {}),
+        ...(group.order.discountAmount ? { discountAmount: group.order.discountAmount } : {}),
         lines: group.lines.map((line) => ({ title: line.title, quantity: line.quantity, unitPrice: line.unitPrice, discountAmount: line.discountAmount ?? '0', subtotalAmount: line.subtotalAmount })),
       })) };
 

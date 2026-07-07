@@ -18,7 +18,7 @@ import { createReconciliationCandidatesListHandler, type ReconciliationRepositor
 import { parsePagination } from './pagination.js';
 import type { Paginated } from './pagination.js';
 import { createIssueResolveHandler, createIssuesListHandler, type IssuesRepositoryPort } from './issues-controller.js';
-import { createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
+import { createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
@@ -206,6 +206,14 @@ export async function buildApp(options: {
     '/api/v1/fiscal-documents/:id/rectify',
     { preHandler: requireRole(['documents:rectify']) },
     createInvoiceRectifyHandler({
+      repository: options.fiscalDocumentsRepository,
+      storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+    }),
+  );
+  app.get(
+    '/api/v1/fiscal-documents/:id/download',
+    { preHandler: requireRole(['documents:read']) },
+    createInvoiceDownloadHandler({
       repository: options.fiscalDocumentsRepository,
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
     }),

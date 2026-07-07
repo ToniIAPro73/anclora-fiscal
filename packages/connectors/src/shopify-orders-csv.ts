@@ -46,6 +46,8 @@ export interface ShopifyOrderEvidence {
    * (packages/core/src/invoicing.ts).
    */
   customerAddress?: string;
+  /** Optional real discount-code column when the Shopify export includes it. */
+  discountCode?: string;
   /** Derived from Shopify's real `Lineitem requires shipping` column. */
   productNature?: 'ebook' | 'general';
   /** Real `Financial Status` column value (paid/refunded/pending/...), verbatim. */
@@ -112,6 +114,14 @@ const requiredHeaders = ['Name', 'Financial Status', 'Fulfillment Status', 'Crea
 // their presence signals the wrong file was fed to this connector, even if
 // it happens to also carry some of the Orders required columns.
 const ledgerOrTransactionsSignatureColumns = ['Checkout', 'Payout Status', 'Kind', 'Gateway'];
+
+function firstNonEmpty(record: Record<string, string>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
 
 function parseHeaderLine(bytes: Uint8Array): string[] {
   const firstLine = Buffer.from(bytes).toString('utf8').replace(/^\uFEFF/, '').split('\n')[0]?.replace(/\r$/, '') ?? '';
@@ -181,6 +191,7 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
     const taxAmount = record.Taxes !== undefined && record.Taxes !== '' ? Number(record.Taxes) : undefined;
     const customerEmail = record.Email || undefined;
     const customerAddress = buildAddressLine(record, 'Shipping') ?? buildAddressLine(record, 'Billing');
+    const discountCode = firstNonEmpty(record, ['Discount Code', 'Discount code', 'Discount Codes', 'Discount codes', 'Discount Name', 'Discount name']);
     const requiresShipping = record['Lineitem requires shipping']?.trim().toLowerCase();
     const productNature = requiresShipping === 'false' ? 'ebook' : requiresShipping === 'true' ? 'general' : undefined;
 
@@ -196,6 +207,7 @@ export function extractShopifyOrdersCsv(bytes: Uint8Array): ShopifyOrdersCsvEvid
       ...(taxAmount !== undefined && Number.isFinite(taxAmount) ? { taxAmount } : {}),
       ...(customerEmail ? { customerEmail } : {}),
       ...(customerAddress ? { customerAddress } : {}),
+      ...(discountCode ? { discountCode } : {}),
       ...(productNature ? { productNature } : {}),
       ...(record['Financial Status'] ? { financialStatus: record['Financial Status'] } : {}),
       ...(record['Fulfillment Status'] ? { fulfillmentStatus: record['Fulfillment Status'] } : {}),

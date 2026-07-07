@@ -9,6 +9,11 @@ interface Sale {
   externalOrderId: string;
   commercialDate: string | null;
   totalAmount: string | null;
+  discountCode: string | null;
+  discountAmount: string | null;
+  customerName: string | null;
+  customerEmail: string | null;
+  customerCountry: string | null;
   paymentStatus: string;
   refundStatus: string;
   fiscalStatus: string;
@@ -34,6 +39,27 @@ const emptyFilters = {
   settlementStatus: "",
   zeroAmount: "",
 };
+
+function formatEuros(value: string | null | undefined) {
+  return `${Number(value ?? 0).toFixed(2)} €`;
+}
+
+function buyerLabel(sale: Sale) {
+  return sale.customerName || sale.customerEmail || "Comprador no informado";
+}
+
+function discountLabel(sale: Sale) {
+  if (Number(sale.discountAmount ?? 0) <= 0 && !sale.discountCode) return null;
+  return sale.discountCode
+    ? `Descuento aplicado · ${sale.discountCode}`
+    : `Descuento aplicado · ${formatEuros(sale.discountAmount)}`;
+}
+
+function settlementLabel(sale: Sale) {
+  if (sale.payoutStatus === "SETTLED") return "Liquidación identificada";
+  if (sale.payoutStatus === "LEDGER_MISSING") return "Falta importar Shopify Payments";
+  return "Liquidación pendiente";
+}
 
 export function OperationsTimeline() {
   const [data, setData] = useState<Response>();
@@ -141,7 +167,7 @@ export function OperationsTimeline() {
         caption="Ventas Shopify"
         rows={data.items}
         rowKey={(sale) => sale.id}
-        minWidth={920}
+        minWidth={1080}
         emptyMessage="No hay pedidos Shopify para los filtros seleccionados."
         className="shopify-sales-table"
         columns={[
@@ -149,9 +175,21 @@ export function OperationsTimeline() {
             key: "order",
             header: "Pedido",
             render: (sale) => (
-              <a href={`/sales/shopify/${sale.id}`}>
-                <strong>{sale.externalOrderId}</strong>
-              </a>
+              <div className="cell-stack">
+                <a href={`/sales/shopify/${sale.id}`}>
+                  <strong>{sale.externalOrderId}</strong>
+                </a>
+              </div>
+            ),
+          },
+          {
+            key: "buyer",
+            header: "Comprador",
+            render: (sale) => (
+              <div className="cell-stack">
+                <strong>{buyerLabel(sale)}</strong>
+                <span>{sale.customerEmail ?? sale.customerCountry ?? "Sin email ni país"}</span>
+              </div>
             ),
           },
           {
@@ -165,7 +203,14 @@ export function OperationsTimeline() {
           {
             key: "amount",
             header: "Importe",
-            render: (sale) => `${Number(sale.totalAmount ?? 0).toFixed(2)} €`,
+            render: (sale) => (
+              <div className="cell-stack">
+                <strong>{formatEuros(sale.totalAmount)}</strong>
+                {Number(sale.totalAmount ?? 0) === 0 && discountLabel(sale) ? (
+                  <span>{discountLabel(sale)}</span>
+                ) : null}
+              </div>
+            ),
           },
           {
             key: "evidence",
@@ -184,18 +229,21 @@ export function OperationsTimeline() {
               <StatusBadge
                 tone={sale.payoutStatus === "SETTLED" ? "info" : "warning"}
               >
-                {sale.payoutStatus === "SETTLED"
-                  ? "Liquidación identificada"
-                  : sale.payoutStatus === "LEDGER_MISSING"
-                    ? "Faltan movimientos"
-                    : "Liquidación pendiente"}
+                {settlementLabel(sale)}
               </StatusBadge>
             ),
           },
           {
             key: "fiscal",
-            header: "Fiscal",
-            render: (sale) => statusLabel(sale.fiscalStatus),
+            header: "Estado fiscal",
+            render: (sale) => (
+              <div className="cell-stack">
+                <strong>{statusLabel(sale.fiscalStatus)}</strong>
+                {Number(sale.totalAmount ?? 0) === 0 ? (
+                  <span>{discountLabel(sale) ?? "Importe cero: requiere revisión"}</span>
+                ) : null}
+              </div>
+            ),
           },
         ]}
       />

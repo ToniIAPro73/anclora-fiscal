@@ -62,9 +62,15 @@ export interface CommercialOrderPreview {
   externalOrderId: string;
   commercialDate?: string;
   customerName?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerCountry?: string;
+  customerType?: string;
   totalAmount?: string;
   taxAmount?: string;
   productNature?: string;
+  discountCode?: string;
+  discountAmount?: string;
 }
 
 export interface PreviewResponse {

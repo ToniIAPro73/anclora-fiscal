@@ -14,6 +14,8 @@ const STATUS_LABELS: Record<string, string> = {
   IMPORTED_WITH_ISSUES: "Importado con incidencias",
   ISSUED: "Emitida",
   LEDGER_MISSING: "Faltan movimientos",
+  ORDER_TO_LEDGER: "Pedido → movimiento",
+  ORDER_TO_TRANSACTION: "Pedido → transacción",
   MATCHED: "Conciliada",
   NONE: "Sin reembolso",
   PAID: "Pagado",

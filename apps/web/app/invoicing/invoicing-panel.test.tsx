@@ -32,6 +32,9 @@ const sampleOperation = {
   platformFeeAmount: '0.35',
   netAmount: '6.64',
   originalCurrency: 'EUR',
+  customerName: 'Ana García',
+  customerEmail: 'ana@example.test',
+  customerAddress: 'Calle Mayor 1, Madrid',
   createdAt: new Date().toISOString(),
 };
 
@@ -74,6 +77,8 @@ describe('InvoicingPanel', () => {
     ]);
     render(<InvoicingPanel />);
     await waitFor(() => expect(screen.getByText('Shopify')).toBeInTheDocument());
+    expect(screen.getByText('Ana García')).toBeInTheDocument();
+    expect(screen.getByText('ana@example.test')).toBeInTheDocument();
     expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument();
     expect(screen.getByText('Lista para facturar')).toBeInTheDocument();
     expect(screen.getByText('Conciliada')).toBeInTheDocument();
@@ -90,6 +95,7 @@ describe('InvoicingPanel', () => {
     await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
     screen.getByRole('button', { name: 'Emitir factura' }).click();
     await waitFor(() => expect(screen.getByText('AF-2026-0001')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: 'Descargar factura' })).toHaveAttribute('href', '/api/v1/fiscal-documents/doc-1/download');
   });
 
   it('muestra la insignia de revisión recomendada cuando anomalyFlags incluye RECTIFICATION_REVIEW_REQUIRED', async () => {

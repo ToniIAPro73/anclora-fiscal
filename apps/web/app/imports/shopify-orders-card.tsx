@@ -108,7 +108,17 @@ function OrdersPreviewTable({
             render: (order) =>
               order.financialStatus
                 ? statusLabel(order.financialStatus)
-                : order.customerName ?? "-",
+                : "-",
+          },
+          {
+            key: "buyer",
+            header: "Comprador",
+            render: (order) => (
+              <div className="cell-stack">
+                <strong>{order.customerName ?? "Sin nombre"}</strong>
+                <span>{order.customerEmail ?? order.customerCountry ?? "Sin email ni país"}</span>
+              </div>
+            ),
           },
           {
             key: "lines",
@@ -118,7 +128,18 @@ function OrdersPreviewTable({
           {
             key: "total",
             header: "Total",
-            render: (order) => order.totalAmount ?? "-",
+            render: (order) => (
+              <div className="cell-stack">
+                <strong>{order.totalAmount ?? "-"}</strong>
+                {Number(order.discountAmount ?? 0) > 0 || order.discountCode ? (
+                  <span>
+                    {order.discountCode
+                      ? `Descuento · ${order.discountCode}`
+                      : `Descuento · ${order.discountAmount}`}
+                  </span>
+                ) : null}
+              </div>
+            ),
           },
           {
             key: "tax",

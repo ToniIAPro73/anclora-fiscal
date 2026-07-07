@@ -34,9 +34,10 @@ export class DrizzleShopifySalesRepository<TQueryResult extends PgQueryResultHKT
     const [items, [totalRow], [metrics]] = await Promise.all([
       this.db.select({
         id: commercialOrders.id, externalOrderId: commercialOrders.externalOrderId, commercialDate: commercialOrders.commercialDate,
-        totalAmount: commercialOrders.totalAmount, taxAmount: commercialOrders.taxAmount, discountAmount: commercialOrders.discountAmount,
+        totalAmount: commercialOrders.totalAmount, taxAmount: commercialOrders.taxAmount, discountCode: commercialOrders.discountCode, discountAmount: commercialOrders.discountAmount,
+        customerName: commercialOrders.customerName, customerEmail: commercialOrders.customerEmail, customerAddress: commercialOrders.customerAddress,
         paymentStatus: commercialOrders.paymentStatus, financialStatus: commercialOrders.financialStatus, refundStatus: commercialOrders.refundStatus,
-        fiscalStatus: commercialOrders.fiscalStatus, customerCountry: commercialOrders.customerCountry,
+        fiscalStatus: commercialOrders.fiscalStatus, customerCountry: commercialOrders.customerCountry, customerType: commercialOrders.customerType,
         transactionCount: sql<number>`(select count(*) from ${shopifyOrderPaymentEvents} pe where pe.tenant_id = ${commercialOrders.tenantId} and pe.commercial_order_id = ${commercialOrders.id})`,
         ledgerCount: sql<number>`(select count(*) from ${shopifyPaymentsLedgerEntries} le where le.tenant_id = ${commercialOrders.tenantId} and le.commercial_order_id = ${commercialOrders.id})`,
         feeAmount: sql<string>`coalesce((select sum(le.fee_amount) from ${shopifyPaymentsLedgerEntries} le where le.tenant_id = ${commercialOrders.tenantId} and le.commercial_order_id = ${commercialOrders.id}), 0)`,

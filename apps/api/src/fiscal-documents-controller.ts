@@ -31,6 +31,7 @@ export type RectifyInvoiceResult =
 
 export interface FiscalDocumentsRepositoryPort {
   issue(input: { tenantId: string; actorId: string; canonicalOperationId: string; storage: StoragePort }): Promise<IssueInvoiceResult>;
+  findById?(tenantId: string, fiscalDocumentId: string): Promise<FiscalDocument | null>;
   rectify?(input: { tenantId: string; actorId: string; fiscalDocumentId: string; storage: StoragePort }): Promise<RectifyInvoiceResult>;
 }
 
@@ -106,5 +107,30 @@ export function createInvoiceRectifyHandler(dependencies: {
     }
 
     return reply.code(result.alreadyRectified ? 200 : 201).send(result.document);
+  };
+}
+
+function invoiceFilename(number: string): string {
+  return `${number.replace(/[^A-Za-z0-9._-]+/g, '-')}.pdf`;
+}
+
+export function createInvoiceDownloadHandler(dependencies: {
+  repository?: FiscalDocumentsRepositoryPort | undefined;
+  storage: StoragePort;
+}) {
+  return async function invoiceDownloadHandler(request: FastifyRequest, reply: FastifyReply) {
+    const tenantId = request.authSession?.tenantId;
+    if (!tenantId) return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Debe iniciar sesión' });
+    if (!dependencies.repository?.findById) return reply.code(503).send({ code: 'FISCAL_DOCUMENTS_REPOSITORY_UNAVAILABLE', message: 'El servicio de facturación no está disponible' });
+
+    const { id } = request.params as { id: string };
+    const document = await dependencies.repository.findById(tenantId, id);
+    if (!document) return reply.code(404).send({ code: 'DOCUMENT_NOT_FOUND', message: 'El documento fiscal no existe' });
+
+    const bytes = await dependencies.storage.get(document.renderStorageKey);
+    return reply
+      .header('content-disposition', `attachment; filename="${invoiceFilename(document.number)}"`)
+      .type('application/pdf')
+      .send(Buffer.from(bytes));
   };
 }

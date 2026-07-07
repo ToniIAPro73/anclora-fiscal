@@ -54,6 +54,7 @@ export function normalizeShopifyGroupedOrder(order: ShopifyGroupedOrder): Normal
       taxAmount: order.taxAmount !== undefined ? String(order.taxAmount) : undefined,
       customerEmail: order.customerEmail,
       customerAddress: order.customerAddress,
+      discountCode: order.discountCode,
       // Real `Financial Status`/`Fulfillment Status` columns, verbatim.
       financialStatus: order.financialStatus,
       fulfillmentStatus: order.fulfillmentStatus,

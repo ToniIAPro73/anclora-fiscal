@@ -1,7 +1,7 @@
-import { and, count, desc, eq, getTableColumns, gte, lte } from 'drizzle-orm';
+import { and, count, desc, eq, getTableColumns, gte, lte, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { canonicalOperations, commercialOrders } from './schema.js';
+import { canonicalOperations, commercialOrders, fiscalDocuments } from './schema.js';
 import * as schema from './schema.js';
 
 export interface ListOperationsInput {
@@ -18,8 +18,22 @@ export interface ListOperationsInput {
 export type Operation = typeof canonicalOperations.$inferSelect;
 export type NewOperation = typeof canonicalOperations.$inferInsert;
 
+export type OperationListItem = Operation & {
+  customerName: string | null;
+  customerEmail: string | null;
+  customerAddress: string | null;
+  customerCountry: string | null;
+  customerType: string | null;
+  discountCode: string | null;
+  discountAmount: string | null;
+  issuedInvoiceId: string | null;
+  issuedInvoiceNumber: string | null;
+  issuedInvoiceTotalAmount: string | null;
+  issuedInvoiceCurrency: string | null;
+};
+
 export interface PaginatedOperations {
-  items: Operation[];
+  items: OperationListItem[];
   page: number;
   pageSize: number;
   total: number;
@@ -112,7 +126,52 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
 
     const [items, [totalRow]] = await Promise.all([
       this.db
-        .select(getTableColumns(canonicalOperations))
+        .select({
+          ...getTableColumns(canonicalOperations),
+          customerName: commercialOrders.customerName,
+          customerEmail: commercialOrders.customerEmail,
+          customerAddress: commercialOrders.customerAddress,
+          customerCountry: commercialOrders.customerCountry,
+          customerType: commercialOrders.customerType,
+          discountCode: commercialOrders.discountCode,
+          discountAmount: commercialOrders.discountAmount,
+          issuedInvoiceId: sql<string | null>`(
+            select fd.id
+            from ${fiscalDocuments} fd
+            where fd.tenant_id = ${canonicalOperations.tenantId}
+              and fd.canonical_operation_id = ${canonicalOperations.id}
+              and fd.document_type = 'FULL_INVOICE'
+            order by fd.issued_at desc
+            limit 1
+          )`,
+          issuedInvoiceNumber: sql<string | null>`(
+            select fd.number
+            from ${fiscalDocuments} fd
+            where fd.tenant_id = ${canonicalOperations.tenantId}
+              and fd.canonical_operation_id = ${canonicalOperations.id}
+              and fd.document_type = 'FULL_INVOICE'
+            order by fd.issued_at desc
+            limit 1
+          )`,
+          issuedInvoiceTotalAmount: sql<string | null>`(
+            select fd.total_amount
+            from ${fiscalDocuments} fd
+            where fd.tenant_id = ${canonicalOperations.tenantId}
+              and fd.canonical_operation_id = ${canonicalOperations.id}
+              and fd.document_type = 'FULL_INVOICE'
+            order by fd.issued_at desc
+            limit 1
+          )`,
+          issuedInvoiceCurrency: sql<string | null>`(
+            select fd.currency
+            from ${fiscalDocuments} fd
+            where fd.tenant_id = ${canonicalOperations.tenantId}
+              and fd.canonical_operation_id = ${canonicalOperations.id}
+              and fd.document_type = 'FULL_INVOICE'
+            order by fd.issued_at desc
+            limit 1
+          )`,
+        })
         .from(canonicalOperations)
         .leftJoin(commercialOrders, and(
           eq(commercialOrders.tenantId, canonicalOperations.tenantId),

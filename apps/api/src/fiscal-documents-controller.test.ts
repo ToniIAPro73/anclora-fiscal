@@ -166,3 +166,71 @@ describe('POST /api/v1/fiscal-documents/:id/rectify', () => {
     expect(response.json()).toMatchObject({ code: 'INVALID_DOCUMENT_STATE' });
   });
 });
+
+describe('GET /api/v1/fiscal-documents/:id/download', () => {
+  it('devuelve 401 cuando no existe sesión autenticada', async () => {
+    const findById = vi.fn();
+    const app = await buildApp({ fiscalDocumentsRepository: { issue: vi.fn(), findById }, storage: noopStorage });
+    apps.push(app);
+    const response = await app.inject({ method: 'GET', url: '/api/v1/fiscal-documents/doc-1/download' });
+    expect(response.statusCode).toBe(401);
+    expect(findById).not.toHaveBeenCalled();
+  });
+
+  it('descarga el PDF tenant-scoped desde storage', async () => {
+    const pdfBytes = new TextEncoder().encode('%PDF-1.4');
+    const storage: StoragePort = {
+      put: vi.fn(),
+      get: vi.fn().mockResolvedValue(pdfBytes),
+    };
+    const document = {
+      id: 'doc-1',
+      tenantId: '01977d43-75de-7000-8000-000000000010',
+      canonicalOperationId: 'op-1',
+      number: 'F-00001',
+      documentType: 'FULL_INVOICE',
+      status: 'ISSUED',
+      issuedAt: new Date(),
+      taxBase: '6.35',
+      taxAmount: '0.64',
+      totalAmount: '6.99',
+      currency: 'EUR',
+      renderStorageKey: 'tenant/doc-1.pdf',
+      renderSha256: 'sha',
+      locked: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const findById = vi.fn().mockResolvedValue(document);
+    const app = await buildApp({
+      fiscalDocumentsRepository: { issue: vi.fn(), findById },
+      storage,
+      authService: new AuthService({ authenticate: async () => ({
+        actorId: '01977d43-75de-7000-8000-000000000020',
+        tenantId: '01977d43-75de-7000-8000-000000000010',
+        email: 'operator@example.test', displayName: 'Operador', role: 'FISCAL_OPERATOR',
+      }) }, { record: async () => undefined }),
+    });
+    apps.push(app);
+    const login = await app.inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email: 'operator@example.test', password: 'valid-password' } });
+    const setCookie = login.headers['set-cookie'];
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(';')[0] ?? '';
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/fiscal-documents/doc-1/download', headers: { cookie } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('application/pdf');
+    expect(response.headers['content-disposition']).toBe('attachment; filename="F-00001.pdf"');
+    expect(response.body).toBe('%PDF-1.4');
+    expect(findById).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', 'doc-1');
+    expect(storage.get).toHaveBeenCalledWith('tenant/doc-1.pdf');
+  });
+
+  it('devuelve 404 si el documento no pertenece al tenant autenticado', async () => {
+    const findById = vi.fn().mockResolvedValue(null);
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), findById });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/fiscal-documents/doc-missing/download', headers: { cookie } });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ code: 'DOCUMENT_NOT_FOUND' });
+  });
+});

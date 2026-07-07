@@ -18,6 +18,15 @@ interface Operation {
   platformFeeAmount: string | null;
   netAmount: string | null;
   originalCurrency: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
+  customerCountry?: string | null;
+  customerType?: string | null;
+  issuedInvoiceId?: string | null;
+  issuedInvoiceNumber?: string | null;
+  issuedInvoiceTotalAmount?: string | null;
+  issuedInvoiceCurrency?: string | null;
   createdAt: string;
   anomalyFlags?: string[];
 }
@@ -51,6 +60,14 @@ function invoiceErrorMessage(body: { code?: string; message?: string }): string 
     return 'La operación no existe o ya no está disponible para facturación.';
   }
   return body.message ?? 'No se pudo emitir la factura.';
+}
+
+function buyerLabel(operation: Operation): string {
+  return operation.customerName || operation.customerEmail || 'Comprador no informado';
+}
+
+function documentDownloadHref(documentId: string) {
+  return `/api/v1/fiscal-documents/${encodeURIComponent(documentId)}/download`;
 }
 
 export function InvoicingPanel() {
@@ -112,23 +129,35 @@ export function InvoicingPanel() {
       const gross = operation.grossAmount !== null ? Number(operation.grossAmount).toFixed(2) : '—';
       const currency = operation.originalCurrency ?? 'EUR';
       const needsReview = Boolean(operation.anomalyFlags?.includes(RECTIFICATION_REVIEW_FLAG));
+      const issuedDocument = outcome?.kind === 'success' ? outcome.document : operation.issuedInvoiceId ? {
+        id: operation.issuedInvoiceId,
+        number: operation.issuedInvoiceNumber ?? 'Factura emitida',
+        status: 'ISSUED',
+        taxBase: '0',
+        taxAmount: '0',
+        totalAmount: operation.issuedInvoiceTotalAmount ?? '0',
+        currency: operation.issuedInvoiceCurrency ?? currency,
+      } satisfies FiscalDocument : null;
       return <article key={operation.id} className="invoice-card">
         <StatusBadge tone="info">{operation.sourceOrderId ?? operation.id}</StatusBadge>
         {needsReview ? <StatusBadge tone="warning">Revisión recomendada: posible rectificación por reembolso</StatusBadge> : null}
         <h2>{channelLabel(operation.sourceChannel)}</h2>
         <dl>
           <div><dt>Bruto</dt><dd>{gross} {currency}</dd></div>
+          <div><dt>Comprador</dt><dd>{buyerLabel(operation)}</dd></div>
+          <div><dt>Email</dt><dd>{operation.customerEmail ?? 'No informado'}</dd></div>
+          <div><dt>Dirección</dt><dd>{operation.customerAddress ?? operation.customerCountry ?? 'No informada'}</dd></div>
           <div><dt>Estado de revisión</dt><dd>{statusLabel(operation.reviewStatus)}</dd></div>
           <div><dt>Estado operativo</dt><dd>{statusLabel(operation.operationStatus)}</dd></div>
           <div><dt>Conciliación</dt><dd>{statusLabel(operation.reconciliationStatus)}</dd></div>
         </dl>
-        <button type="button" disabled={Boolean(issuing[operation.id])} onClick={() => void issueInvoiceFor(operation.id)}>
-          {issuing[operation.id] ? 'Emitiendo…' : 'Emitir factura'}
-        </button>
+        {issuedDocument ? <a className="btn invoice-download" href={documentDownloadHref(issuedDocument.id)}>Descargar factura</a> : <button type="button" disabled={Boolean(issuing[operation.id])} onClick={() => void issueInvoiceFor(operation.id)}>
+            {issuing[operation.id] ? 'Emitiendo…' : 'Emitir factura'}
+          </button>}
         {outcome?.kind === 'error' ? <p className="import-error" role="status">{outcome.message}</p> : null}
-        {outcome?.kind === 'success' ? <dl>
-          <div><dt>Factura</dt><dd>{outcome.document.number}{outcome.alreadyIssued ? ' (ya emitida)' : ''}</dd></div>
-          <div><dt>Total</dt><dd>{Number(outcome.document.totalAmount).toFixed(2)} {outcome.document.currency}</dd></div>
+        {issuedDocument ? <dl>
+          <div><dt>Factura</dt><dd>{issuedDocument.number}{outcome?.kind === 'success' && outcome.alreadyIssued ? ' (ya emitida)' : ''}</dd></div>
+          <div><dt>Total</dt><dd>{Number(issuedDocument.totalAmount).toFixed(2)} {issuedDocument.currency}</dd></div>
         </dl> : null}
       </article>;
     })}</div> : null}
