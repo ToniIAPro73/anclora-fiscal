@@ -5,7 +5,9 @@ import { LoginForm } from './login-form';
 describe('LoginForm contract', () => {
   it('renderiza el orden funcional, accesibilidad, legales y OAuth deshabilitado', () => {
     render(<LoginForm />);
-    expect(screen.getByLabelText('Correo electrónico')).toHaveAttribute('type', 'email');
+    const email = screen.getByLabelText('Correo electrónico');
+    expect(email).toHaveAttribute('type', 'email');
+    expect(email).toHaveFocus();
     const password = screen.getByLabelText('Contraseña');
     expect(password).toHaveAttribute('type', 'password');
     fireEvent.click(screen.getByRole('button', { name: 'Mostrar contraseña' }));
