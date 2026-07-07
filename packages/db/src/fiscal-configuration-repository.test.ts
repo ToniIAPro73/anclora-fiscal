@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createOfflineDatabase } from './index';
 import { migrateOfflineDatabase } from './migrations';
 import { DrizzleFiscalConfigurationRepository } from './fiscal-configuration-repository';
-import { auditEvents, tenants, users } from './schema';
+import { auditEvents, invoiceSeries, legalEntities, tenants, users } from './schema';
 import { eq } from 'drizzle-orm';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
@@ -35,5 +35,60 @@ describe('DrizzleFiscalConfigurationRepository', () => {
     await repository.saveMinimum(minimum(a.tenantId, a.actorId));
     expect((await repository.get(b.tenantId)).readiness.ready).toBe(false);
     expect((await repository.get(b.tenantId)).legalEntity).toBeNull();
+  });
+
+  it('guarda emisor persona física, OSS y series FS/F/FR con valores fiscales españoles', async () => {
+    const { client, db } = createOfflineDatabase(); clients.push(client); await migrateOfflineDatabase(client);
+    const ids = await seed(db, 'tenant-fiscal-real'); const repository = new DrizzleFiscalConfigurationRepository(db);
+    const result = await repository.saveIssuerConfiguration({
+      tenantId: ids.tenantId,
+      actorId: ids.actorId,
+      datosEmisor: {
+        tipoEmisor: 'PERSONA_FISICA',
+        nombreLegal: 'Antonio Ballesteros Alonso',
+        nombreComercial: 'Anclora Fiscal',
+        pais: 'ES',
+        moneda: 'EUR',
+        direccionFiscal: 'Calle Fiscal 1',
+        emailContacto: 'antonio@example.test',
+        nifCifrado: 'ciphertext-nif',
+        epigrafeIAE: '861.1',
+        regimenIVA: 'REGIMEN_REDUCIDO_LIBROS_ES',
+      },
+      oss: { activo: true, vigenteDesde: '2026-01-01' },
+      perfilProducto: {
+        selector: 'ebook-*',
+        naturalezaProducto: 'LIBRO_ELECTRONICO',
+        descripcionFactura: 'Libro electrónico',
+        codigoIVA: 'ES_IVA_4',
+        tipoIVA: '0.04',
+        elegibleOSS: true,
+        requiereEnvio: false,
+        vigenteDesde: '2026-01-01',
+      },
+      ejercicio: 2026,
+    });
+
+    expect(result.readiness).toEqual({ ready: true, missing: [] });
+    expect(result.emisorFiscal).toMatchObject({
+      tipoEmisor: 'PERSONA_FISICA',
+      nifConfigurado: true,
+      epigrafeIAE: '861.1',
+      regimenIVA: 'REGIMEN_REDUCIDO_LIBROS_ES',
+      oss: { activo: true, vigenteDesde: '2026-01-01' },
+      estadoConfiguracion: 'COMPLETA',
+    });
+    expect((await db.select().from(legalEntities).where(eq(legalEntities.tenantId, ids.tenantId)))[0]).toMatchObject({
+      issuerType: 'PERSONA_FISICA',
+      taxIdentityEncrypted: 'ciphertext-nif',
+      taxIdentityConfigured: true,
+      fiscalConfigurationStatus: 'COMPLETA',
+    });
+    expect((await db.select().from(invoiceSeries).where(eq(invoiceSeries.tenantId, ids.tenantId))).map((series) => [series.code, series.documentType]).sort()).toEqual([
+      ['F', 'COMPLETA'],
+      ['FR', 'RECTIFICATIVA'],
+      ['FS', 'SIMPLIFICADA'],
+    ]);
+    expect((await db.select().from(auditEvents).where(eq(auditEvents.tenantId, ids.tenantId))).at(-1)?.action).toBe('CONFIGURACION_FISCAL_EMISOR_GUARDADA');
   });
 });

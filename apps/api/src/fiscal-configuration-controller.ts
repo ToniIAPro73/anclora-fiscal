@@ -1,4 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { isValidSpanishNifNie, normalizeSpanishTaxId } from '@anclora/core';
 import { z } from 'zod';
 
 const payloadSchema = z.object({
@@ -15,10 +17,64 @@ const payloadSchema = z.object({
   kdpPolicy: z.object({ version: z.string().trim().min(1), effectiveFrom: z.string().date(), accountingPolicy: z.enum(['NET_ROYALTY_ONLY', 'GROSS_AND_COST_REVIEW_REQUIRED']), embeddedCostTreatment: z.string().trim().min(1), reviewLevel: z.string().trim().min(1) }),
 });
 
+const fiscalIssuerPayloadSchema = z.object({
+  datosEmisor: z.object({
+    tipoEmisor: z.literal('PERSONA_FISICA'),
+    nombreLegal: z.string().trim().min(1),
+    nombreComercial: z.string().trim().optional().nullable(),
+    pais: z.string().trim().length(2).default('ES'),
+    moneda: z.string().trim().length(3).default('EUR'),
+    direccionFiscal: z.string().trim().min(1),
+    emailContacto: z.string().email().optional().nullable(),
+    nifNie: z.string().trim().optional().nullable(),
+    epigrafeIAE: z.string().trim().min(1),
+    regimenIVA: z.literal('REGIMEN_REDUCIDO_LIBROS_ES'),
+  }),
+  oss: z.object({
+    activo: z.boolean(),
+    vigenteDesde: z.string().date().optional().nullable(),
+  }),
+  perfilProducto: z.object({
+    selector: z.string().trim().min(1),
+    naturalezaProducto: z.string().trim().min(1),
+    descripcionFactura: z.string().trim().min(1),
+    codigoIVA: z.string().trim().min(1),
+    tipoIVA: z.string().regex(/^\d+(\.\d{1,6})?$/),
+    elegibleOSS: z.boolean(),
+    requiereEnvio: z.boolean(),
+    vigenteDesde: z.string().date(),
+  }),
+  ejercicio: z.number().int().min(2020),
+}).superRefine((payload, context) => {
+  if (payload.datosEmisor.nifNie && !isValidSpanishNifNie(payload.datosEmisor.nifNie)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['datosEmisor', 'nifNie'],
+      message: 'NIF/NIE no válido',
+    });
+  }
+});
+
 export type FiscalConfigurationPayload = z.infer<typeof payloadSchema>;
+export type FiscalIssuerConfigurationPayload = z.infer<typeof fiscalIssuerPayloadSchema>;
 export interface FiscalConfigurationRepositoryPort {
   get(tenantId: string): Promise<unknown>;
   saveMinimum(input: FiscalConfigurationPayload & { tenantId: string; actorId: string | null }): Promise<unknown>;
+  saveIssuerConfiguration?(input: Omit<FiscalIssuerConfigurationPayload, 'datosEmisor'> & {
+    tenantId: string;
+    actorId: string | null;
+    datosEmisor: Omit<FiscalIssuerConfigurationPayload['datosEmisor'], 'nifNie'> & { nifCifrado?: string | null };
+  }): Promise<unknown>;
+}
+
+function encryptTaxIdentity(value: string): string {
+  const secret = process.env.IMPORT_METADATA_SECRET ?? 'development-only-import-metadata-secret';
+  if (secret.length < 32) throw new Error('IMPORT_METADATA_SECRET debe contener al menos 32 caracteres');
+  const key = createHash('sha256').update(`fiscal-tax-identity:${secret}`).digest();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+  return ['v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), encrypted.toString('base64url')].join(':');
 }
 
 function redactEncryptedFields(value: unknown): unknown {
@@ -43,6 +99,19 @@ export function createFiscalConfigurationPutHandler(repository?: FiscalConfigura
     const tenantId = request.authSession?.tenantId;
     const actorId = request.authSession?.actorId;
     if (!tenantId || !actorId) return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Debe iniciar sesión' });
+    if (request.body && typeof request.body === 'object' && 'datosEmisor' in request.body) {
+      const parsed = fiscalIssuerPayloadSchema.safeParse(request.body);
+      if (!parsed.success) return reply.code(400).send({ code: 'CONFIGURACION_FISCAL_INVALIDA', message: 'Revise los campos obligatorios', issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) });
+      if (!repository?.saveIssuerConfiguration) return reply.code(503).send({ code: 'CONFIGURACION_FISCAL_NO_DISPONIBLE', message: 'La configuración fiscal del emisor no está disponible' });
+      const { nifNie: rawTaxIdentity, ...datosEmisor } = parsed.data.datosEmisor;
+      const nifCifrado = rawTaxIdentity ? encryptTaxIdentity(normalizeSpanishTaxId(rawTaxIdentity)) : undefined;
+      return redactEncryptedFields(await repository.saveIssuerConfiguration({
+        ...parsed.data,
+        tenantId,
+        actorId,
+        datosEmisor: { ...datosEmisor, ...(nifCifrado ? { nifCifrado } : {}) },
+      }));
+    }
     const parsed = payloadSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ code: 'INVALID_FISCAL_CONFIGURATION', message: 'Revise los campos obligatorios', issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })) });
     if (!repository) return reply.code(503).send({ code: 'FISCAL_CONFIGURATION_UNAVAILABLE', message: 'La configuración fiscal no está disponible' });

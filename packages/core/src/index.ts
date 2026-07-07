@@ -8,6 +8,7 @@ import { z } from 'zod';
 // behind the `@anclora/core/server` subpath — see `./server.ts`.
 export * from './matching.js';
 export * from './royalty.js';
+export * from './spanish-tax-id.js';
 
 export const importStatusSchema = z.enum([
   'PENDING', 'PROCESSING', 'PREVIEW_READY', 'VALIDATED', 'PARTIALLY_IMPORTED', 'FAILED', 'REPROCESSED',

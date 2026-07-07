@@ -3,60 +3,147 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { FieldLabel, StatusBadge, TextField } from '@anclora/ui';
 
-interface Snapshot { readiness: { ready: boolean; missing: string[] }; legalEntity?: { legalName?: string; tradeName?: string; countryCode?: string; currencyCode?: string; address?: string; contactEmail?: string } | null }
+interface Snapshot {
+  readiness: { ready: boolean; missing: string[] };
+  emisorFiscal?: {
+    tipoEmisor: 'PERSONA_FISICA';
+    nombreLegal: string;
+    nombreComercial: string | null;
+    nifConfigurado: boolean;
+    direccionFiscal: string | null;
+    emailContacto: string | null;
+    pais: string;
+    moneda: string;
+    epigrafeIAE: string | null;
+    regimenIVA: 'REGIMEN_REDUCIDO_LIBROS_ES';
+    oss: { activo: boolean; vigenteDesde: string | null };
+    estadoConfiguracion: 'COMPLETA' | 'INCOMPLETA';
+  } | null;
+  legalEntity?: {
+    legalName?: string;
+    tradeName?: string | null;
+    countryCode?: string;
+    currencyCode?: string;
+    address?: string | null;
+    contactEmail?: string | null;
+    taxIdentityConfigured?: boolean;
+  } | null;
+}
+
+const missingLabels: Record<string, string> = {
+  ISSUER: 'emisor fiscal',
+  INVOICE_SERIES: 'series fiscales',
+  PRODUCT_TAX_PROFILE: 'perfil fiscal del producto',
+  KDP_POLICY: 'política Amazon KDP',
+};
+
+function defaultDate() {
+  return `${new Date().getFullYear()}-01-01`;
+}
 
 export function FiscalConfigurationForm() {
   const [snapshot, setSnapshot] = useState<Snapshot>();
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { void fetch('/api/v1/fiscal-configuration', { credentials: 'include' }).then(async (response) => {
-    if (response.ok) setSnapshot(await response.json() as Snapshot);
-  }); }, []);
+  useEffect(() => {
+    void fetch('/api/v1/fiscal-configuration', { credentials: 'include' }).then(async (response) => {
+      if (response.ok) setSnapshot(await response.json() as Snapshot);
+    });
+  }, []);
 
   async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setMessage('');
+    event.preventDefault();
+    setSaving(true);
+    setMessage('');
     const data = new FormData(event.currentTarget);
     const payload = {
-      legalEntity: { legalName: data.get('legalName'), tradeName: data.get('tradeName') || null, countryCode: data.get('countryCode'), currencyCode: data.get('currencyCode'), address: data.get('address'), contactEmail: data.get('contactEmail') || null },
-      series: { code: data.get('seriesCode'), fiscalYear: Number(data.get('fiscalYear')), documentType: 'FULL_INVOICE' },
-      productProfile: { selector: data.get('selector'), productNature: data.get('productNature'), invoiceDescription: data.get('invoiceDescription'), domesticTaxCode: data.get('domesticTaxCode'), domesticTaxRate: data.get('domesticTaxRate'), ossEligible: data.get('ossEligible') === 'on', shippingRequired: data.get('shippingRequired') === 'on', effectiveFrom: data.get('effectiveFrom') },
-      kdpPolicy: { version: data.get('kdpVersion'), effectiveFrom: data.get('effectiveFrom'), accountingPolicy: data.get('accountingPolicy'), embeddedCostTreatment: 'INCLUDED_IN_NET', reviewLevel: 'REVIEW_REQUIRED' },
+      datosEmisor: {
+        tipoEmisor: 'PERSONA_FISICA',
+        nombreLegal: data.get('nombreLegal'),
+        nombreComercial: data.get('nombreComercial') || null,
+        nifNie: data.get('nifNie') || null,
+        direccionFiscal: data.get('direccionFiscal'),
+        emailContacto: data.get('emailContacto') || null,
+        pais: data.get('pais'),
+        moneda: data.get('moneda'),
+        epigrafeIAE: data.get('epigrafeIAE'),
+        regimenIVA: data.get('regimenIVA'),
+      },
+      oss: {
+        activo: data.get('ossActivo') === 'on',
+        vigenteDesde: data.get('ossVigenteDesde') || null,
+      },
+      perfilProducto: {
+        selector: data.get('selector'),
+        naturalezaProducto: data.get('naturalezaProducto'),
+        descripcionFactura: data.get('descripcionFactura'),
+        codigoIVA: data.get('codigoIVA'),
+        tipoIVA: data.get('tipoIVA'),
+        elegibleOSS: data.get('elegibleOSS') === 'on',
+        requiereEnvio: data.get('requiereEnvio') === 'on',
+        vigenteDesde: data.get('vigenteDesde'),
+      },
+      ejercicio: Number(data.get('ejercicio')),
     };
-    const response = await fetch('/api/v1/fiscal-configuration', { method: 'PUT', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    const response = await fetch('/api/v1/fiscal-configuration', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
     const body = await response.json() as Snapshot & { message?: string };
-    if (response.ok) { setSnapshot(body); setMessage('Configuración fiscal guardada y auditada.'); } else setMessage(body.message ?? 'No se pudo guardar la configuración.');
+    if (response.ok) {
+      setSnapshot(body);
+      setMessage('Configuración fiscal guardada y auditada.');
+    } else {
+      setMessage(body.message ?? 'No se pudo guardar la configuración fiscal.');
+    }
     setSaving(false);
   }
 
-  const issuer = snapshot?.legalEntity;
+  const issuer = snapshot?.emisorFiscal;
+  const legacyIssuer = snapshot?.legalEntity;
+  const nifConfigured = issuer?.nifConfigurado ?? legacyIssuer?.taxIdentityConfigured ?? false;
+
   return <section className="settings-config fiscal-settings-panel">
-    <div className="settings-readiness"><span className="section-index">CONFIGURACIÓN MÍNIMA</span><StatusBadge tone={snapshot?.readiness.ready ? 'info' : 'warning'}>{snapshot?.readiness.ready ? 'Lista para emitir' : 'Incompleta'}</StatusBadge></div>
-    {snapshot && !snapshot.readiness.ready ? <p>Falta: {snapshot.readiness.missing.join(', ')}.</p> : null}
+    <div className="settings-readiness">
+      <span className="section-index">CONFIGURACIÓN FISCAL REAL</span>
+      <StatusBadge tone={snapshot?.readiness.ready ? 'info' : 'warning'}>{snapshot?.readiness.ready ? 'Lista para emitir' : 'Incompleta'}</StatusBadge>
+    </div>
+    {snapshot && !snapshot.readiness.ready ? <p>Falta: {snapshot.readiness.missing.map((item) => missingLabels[item] ?? item).join(', ')}.</p> : null}
     <form onSubmit={save} className="fiscal-settings-form">
-      <fieldset><legend>Entidad emisora</legend>
-        <TextField label="Nombre legal" name="legalName" defaultValue={issuer?.legalName ?? ''} required />
-        <TextField label="Nombre comercial" name="tradeName" defaultValue={issuer?.tradeName ?? ''} />
-        <TextField label="Domicilio fiscal" name="address" defaultValue={issuer?.address ?? ''} required />
-        <TextField label="Email de contacto" name="contactEmail" type="email" defaultValue={issuer?.contactEmail ?? ''} />
-        <TextField label="País (ISO 2)" name="countryCode" defaultValue={issuer?.countryCode ?? 'ES'} required />
-        <TextField label="Moneda (ISO 3)" name="currencyCode" defaultValue={issuer?.currencyCode ?? 'EUR'} required />
+      <fieldset><legend>Datos fiscales del emisor</legend>
+        <TextField label="Nombre legal" name="nombreLegal" defaultValue={issuer?.nombreLegal ?? legacyIssuer?.legalName ?? ''} required />
+        <TextField label="Nombre comercial" name="nombreComercial" defaultValue={issuer?.nombreComercial ?? legacyIssuer?.tradeName ?? ''} />
+        <TextField label={nifConfigured ? 'NIF/NIE configurado (escribe uno nuevo para sustituirlo)' : 'NIF/NIE'} name="nifNie" autoComplete="off" />
+        <TextField label="Domicilio fiscal" name="direccionFiscal" defaultValue={issuer?.direccionFiscal ?? legacyIssuer?.address ?? ''} required />
+        <TextField label="Email de contacto" name="emailContacto" type="email" defaultValue={issuer?.emailContacto ?? legacyIssuer?.contactEmail ?? ''} />
+        <TextField label="País (ISO 2)" name="pais" defaultValue={issuer?.pais ?? legacyIssuer?.countryCode ?? 'ES'} required />
+        <TextField label="Moneda (ISO 3)" name="moneda" defaultValue={issuer?.moneda ?? legacyIssuer?.currencyCode ?? 'EUR'} required />
+        <TextField label="Epígrafe IAE" name="epigrafeIAE" defaultValue={issuer?.epigrafeIAE ?? ''} required />
+        <div className="field">
+          <FieldLabel htmlFor="regimenIVA" required>Régimen de IVA</FieldLabel>
+          <select id="regimenIVA" name="regimenIVA" defaultValue={issuer?.regimenIVA ?? 'REGIMEN_REDUCIDO_LIBROS_ES'} required>
+            <option value="REGIMEN_REDUCIDO_LIBROS_ES">Régimen reducido para libros electrónicos en España</option>
+          </select>
+        </div>
       </fieldset>
-      <fieldset><legend>Serie y perfil fiscal</legend>
-        <TextField label="Prefijo de serie" name="seriesCode" defaultValue="F" required />
-        <TextField label="Ejercicio" name="fiscalYear" type="number" defaultValue={String(new Date().getFullYear())} required />
+      <fieldset><legend>OSS y series fiscales</legend>
+        <TextField label="Ejercicio fiscal" name="ejercicio" type="number" defaultValue={String(new Date().getFullYear())} required />
+        <TextField label="OSS vigente desde" name="ossVigenteDesde" type="date" defaultValue={issuer?.oss.vigenteDesde ?? defaultDate()} />
+        <label className="checkbox-field"><input name="ossActivo" type="checkbox" defaultChecked={issuer?.oss.activo ?? false} /> Alta OSS activa</label>
+        <p>Series: FS · factura simplificada, F · factura completa, FR · factura rectificativa.</p>
+      </fieldset>
+      <fieldset><legend>Perfil fiscal del producto</legend>
         <TextField label="SKU o selector" name="selector" defaultValue="ebook-*" required />
-        <TextField label="Naturaleza de producto" name="productNature" defaultValue="ebook" required />
-        <TextField label="Descripción en factura" name="invoiceDescription" defaultValue="Libro electrónico" required />
-        <TextField label="Código de IVA" name="domesticTaxCode" defaultValue="ES_IVA_4" required />
-        <TextField label="Tipo de IVA" name="domesticTaxRate" type="number" step="0.000001" defaultValue="0.04" required />
-        <TextField label="Vigente desde" name="effectiveFrom" type="date" defaultValue={`${new Date().getFullYear()}-01-01`} required />
-        <label className="checkbox-field"><input name="ossEligible" type="checkbox" /> Elegible para OSS</label>
-        <label className="checkbox-field"><input name="shippingRequired" type="checkbox" /> Requiere envío</label>
-      </fieldset>
-      <fieldset><legend>Política Amazon KDP</legend>
-        <TextField label="Versión de política" name="kdpVersion" defaultValue="1" required />
-        <div className="field"><FieldLabel htmlFor="accountingPolicy" required>Tratamiento contable</FieldLabel><select id="accountingPolicy" name="accountingPolicy" defaultValue="NET_ROYALTY_ONLY" required><option value="NET_ROYALTY_ONLY">Regalía neta únicamente</option><option value="GROSS_AND_COST_REVIEW_REQUIRED">Bruto y coste — revisión requerida</option></select></div>
+        <TextField label="Naturaleza del producto" name="naturalezaProducto" defaultValue="LIBRO_ELECTRONICO" required />
+        <TextField label="Descripción en factura" name="descripcionFactura" defaultValue="Libro electrónico" required />
+        <TextField label="Código de IVA" name="codigoIVA" defaultValue="ES_IVA_4" required />
+        <TextField label="Tipo de IVA" name="tipoIVA" type="number" step="0.000001" defaultValue="0.04" required />
+        <TextField label="Vigente desde" name="vigenteDesde" type="date" defaultValue={defaultDate()} required />
+        <label className="checkbox-field"><input name="elegibleOSS" type="checkbox" defaultChecked /> Elegible para OSS</label>
+        <label className="checkbox-field"><input name="requiereEnvio" type="checkbox" /> Requiere envío físico</label>
       </fieldset>
       <button className="btn btn-primary" type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar configuración'}</button>
       {message ? <p role="status">{message}</p> : null}

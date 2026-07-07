@@ -33,7 +33,7 @@ class InMemoryStorage implements StoragePort {
 async function seedOperationWithDecision(
   db: ReturnType<typeof createOfflineDatabase>['db'],
   slug: string,
-  buyerInfo?: { customerAddress?: string; customerEmail?: string; skipFiscalConfiguration?: boolean },
+  buyerInfo?: { customerAddress?: string; customerEmail?: string; skipFiscalConfiguration?: boolean; documentType?: string },
 ) {
   const [tenant] = await db.insert(tenants).values({ name: slug, slug }).returning({ id: tenants.id });
   if (!tenant) throw new Error('No se pudo crear el tenant de prueba');
@@ -55,7 +55,11 @@ async function seedOperationWithDecision(
   }).returning({ id: legalEntities.id });
   if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
   if (!buyerInfo?.skipFiscalConfiguration) {
-    await db.insert(invoiceSeries).values({ tenantId: tenant.id, legalEntityId: legalEntity.id, code: 'FULL_INVOICE', fiscalYear: new Date().getFullYear(), documentType: 'FULL_INVOICE' });
+    await db.insert(invoiceSeries).values([
+      { tenantId: tenant.id, legalEntityId: legalEntity.id, code: 'FS', fiscalYear: new Date().getFullYear(), documentType: 'SIMPLIFICADA' },
+      { tenantId: tenant.id, legalEntityId: legalEntity.id, code: 'F', fiscalYear: new Date().getFullYear(), documentType: 'COMPLETA' },
+      { tenantId: tenant.id, legalEntityId: legalEntity.id, code: 'FR', fiscalYear: new Date().getFullYear(), documentType: 'RECTIFICATIVA' },
+    ]);
     await db.insert(productTaxProfiles).values({ tenantId: tenant.id, legalEntityId: legalEntity.id, selector: 'ebook-*', productNature: 'ebook', invoiceDescription: 'Libro electrónico', domesticTaxCode: 'ES_IVA_4', domesticTaxRate: '0.04', effectiveFrom: `${new Date().getFullYear()}-01-01` });
   }
 
@@ -77,7 +81,8 @@ async function seedOperationWithDecision(
   await db.insert(taxDecisions).values({
     tenantId: tenant.id,
     canonicalOperationId: operation.id,
-    status: 'DECIDED',
+    status: 'DETERMINADA',
+    documentType: buyerInfo?.documentType ?? 'SIMPLIFICADA',
     taxBase: '6.72',
     taxRate: '0.04',
     taxAmount: '0.27',
@@ -109,7 +114,8 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error('expected ok result');
       expect(result.alreadyIssued).toBe(false);
-      expect(result.document.documentType).toBe('FULL_INVOICE');
+      expect(result.document.documentType).toBe('SIMPLIFICADA');
+      expect(result.document.number).toBe('FS-00001');
       expect(result.document.tenantId).toBe(tenantId);
       expect(storage.puts).toHaveLength(1);
 
@@ -210,6 +216,21 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       if (!resultWithoutContact.ok || !resultWithContact.ok) throw new Error('expected ok results');
       expect(resultWithContact.document.renderSha256).not.toBe(resultWithoutContact.document.renderSha256);
     });
+
+    it('emite factura completa cuando la decisión fiscal lo exige', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+      const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-completa', { documentType: 'COMPLETA' });
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+
+      const result = await repository.issue({ tenantId, actorId, canonicalOperationId: operationId, storage: new InMemoryStorage() });
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected ok result');
+      expect(result.document.documentType).toBe('COMPLETA');
+      expect(result.document.number).toBe('F-00001');
+    });
   });
 
   describe('rectify', () => {
@@ -230,7 +251,8 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error('expected ok result');
       expect(result.alreadyRectified).toBe(false);
-      expect(result.document.documentType).toBe('RECTIFYING_INVOICE');
+      expect(result.document.documentType).toBe('RECTIFICATIVA');
+      expect(result.document.number).toBe('FR-00001');
       expect(result.document.originalDocumentId).toBe(issued.document.id);
       expect(storage.puts).toHaveLength(2);
 

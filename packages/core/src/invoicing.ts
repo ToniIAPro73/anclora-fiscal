@@ -16,8 +16,9 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
  * capture becomes a real requirement and a different data source: a human
  * decision to make later, not silently worked around here.
  */
-export interface InvoiceInput { operationId: string; customerLabel: string; customerAddress?: string; customerEmail?: string; description: string; taxBase: number; taxRate: number; taxAmount: number; totalAmount: number; currency: 'EUR'; issuedAt: string; }
-export interface FiscalDocument { readonly id: string; readonly number: string; readonly type: 'FULL_INVOICE' | 'RECTIFYING_INVOICE'; readonly originalDocumentId?: string; readonly input: Readonly<InvoiceInput>; readonly pdfBytes: Uint8Array; readonly sha256: string; readonly status: 'ISSUED'; }
+export type FiscalDocumentType = 'SIMPLIFICADA' | 'COMPLETA' | 'RECTIFICATIVA' | 'FULL_INVOICE' | 'RECTIFYING_INVOICE';
+export interface InvoiceInput { operationId: string; customerLabel: string; customerAddress?: string; customerEmail?: string; issuerName?: string; issuerAddress?: string | null; description: string; taxBase: number; taxRate: number; taxAmount: number; totalAmount: number; currency: 'EUR'; issuedAt: string; }
+export interface FiscalDocument { readonly id: string; readonly number: string; readonly type: FiscalDocumentType; readonly originalDocumentId?: string; readonly input: Readonly<InvoiceInput>; readonly pdfBytes: Uint8Array; readonly sha256: string; readonly status: 'ISSUED'; }
 
 export class InvoiceSequence {
   private next: number;
@@ -26,10 +27,15 @@ export class InvoiceSequence {
 }
 
 const euro = (value: number) => `${value.toFixed(2)} EUR`;
+const documentTitle = (type: FiscalDocumentType) => {
+  if (type === 'RECTIFICATIVA' || type === 'RECTIFYING_INVOICE') return 'Factura rectificativa';
+  if (type === 'SIMPLIFICADA') return 'Factura simplificada';
+  return 'Factura completa';
+};
 
 export async function renderInvoicePdf(number: string, type: FiscalDocument['type'], input: InvoiceInput, originalNumber?: string): Promise<Uint8Array> {
   const document = await PDFDocument.create();
-  document.setTitle(`${type === 'RECTIFYING_INVOICE' ? 'Factura rectificativa' : 'Factura'} ${number}`);
+  document.setTitle(`${documentTitle(type)} ${number}`);
   document.setProducer('Anclora Fiscal · pdf-lib');
   const page = document.addPage([595.28, 841.89]);
   const display = await document.embedFont(StandardFonts.TimesRoman);
@@ -38,10 +44,11 @@ export async function renderInvoicePdf(number: string, type: FiscalDocument['typ
   const midnight = rgb(14 / 255, 27 / 255, 44 / 255); const gold = rgb(199 / 255, 150 / 255, 76 / 255); const ivory = rgb(245 / 255, 240 / 255, 230 / 255);
   page.drawRectangle({ x: 0, y: 700, width: 595.28, height: 141.89, color: midnight });
   page.drawText('A N C L O R A   F I S C A L', { x: 48, y: 785, size: 9, font: ui, color: gold });
-  page.drawText(type === 'RECTIFYING_INVOICE' ? 'Factura rectificativa' : 'Factura', { x: 48, y: 735, size: 30, font: displayBold, color: ivory });
+  page.drawText(documentTitle(type), { x: 48, y: 735, size: 30, font: displayBold, color: ivory });
   page.drawText(number, { x: 420, y: 742, size: 13, font: ui, color: ivory });
   page.drawLine({ start: { x: 48, y: 678 }, end: { x: 547, y: 678 }, thickness: 1, color: gold });
-  page.drawText('Emitida por Anclora Insights', { x: 48, y: 645, size: 11, font: ui, color: midnight });
+  page.drawText(`Emitida por ${input.issuerName ?? 'emisor fiscal configurado'}`, { x: 48, y: 645, size: 11, font: ui, color: midnight });
+  if (input.issuerAddress) page.drawText(input.issuerAddress, { x: 48, y: 628, size: 9, font: ui, color: midnight });
   page.drawText(`Fecha: ${input.issuedAt}`, { x: 390, y: 645, size: 10, font: ui, color: midnight });
   page.drawText('FACTURAR A', { x: 48, y: 590, size: 8, font: ui, color: gold });
   page.drawText(input.customerLabel, { x: 48, y: 568, size: 13, font: display, color: midnight });
@@ -62,14 +69,14 @@ export async function renderInvoicePdf(number: string, type: FiscalDocument['typ
   return document.save();
 }
 
-export async function issueInvoice(sequence: InvoiceSequence, input: InvoiceInput): Promise<FiscalDocument> {
-  const number = sequence.allocate(); const pdfBytes = await renderInvoicePdf(number, 'FULL_INVOICE', input);
-  return Object.freeze({ id: randomUUID(), number, type: 'FULL_INVOICE', input: Object.freeze({ ...input }), pdfBytes, sha256: createHash('sha256').update(pdfBytes).digest('hex'), status: 'ISSUED' });
+export async function issueInvoice(sequence: InvoiceSequence, input: InvoiceInput, type: FiscalDocumentType = 'COMPLETA'): Promise<FiscalDocument> {
+  const number = sequence.allocate(); const pdfBytes = await renderInvoicePdf(number, type, input);
+  return Object.freeze({ id: randomUUID(), number, type, input: Object.freeze({ ...input }), pdfBytes, sha256: createHash('sha256').update(pdfBytes).digest('hex'), status: 'ISSUED' });
 }
 
 export async function rectifyInvoice(sequence: InvoiceSequence, original: FiscalDocument, issuedAt: string): Promise<FiscalDocument> {
   if (original.status !== 'ISSUED') throw new Error('Solo puede rectificarse un documento emitido');
   const input = { ...original.input, taxBase: -original.input.taxBase, taxAmount: -original.input.taxAmount, totalAmount: -original.input.totalAmount, issuedAt };
-  const number = sequence.allocate(); const pdfBytes = await renderInvoicePdf(number, 'RECTIFYING_INVOICE', input, original.number);
-  return Object.freeze({ id: randomUUID(), number, type: 'RECTIFYING_INVOICE', originalDocumentId: original.id, input: Object.freeze(input), pdfBytes, sha256: createHash('sha256').update(pdfBytes).digest('hex'), status: 'ISSUED' });
+  const number = sequence.allocate(); const pdfBytes = await renderInvoicePdf(number, 'RECTIFICATIVA', input, original.number);
+  return Object.freeze({ id: randomUUID(), number, type: 'RECTIFICATIVA', originalDocumentId: original.id, input: Object.freeze(input), pdfBytes, sha256: createHash('sha256').update(pdfBytes).digest('hex'), status: 'ISSUED' });
 }

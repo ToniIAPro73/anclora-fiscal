@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parsePagination, type Paginated } from './pagination.js';
 import type { StoragePort } from '@anclora/core/server';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
+import { evaluateManualIssuanceGate } from './invoice-issuance-service.js';
 
 const filtersSchema = z.object({ dateFrom: z.coerce.date().optional(), dateTo: z.coerce.date().optional(), paymentStatus: z.string().optional(), refundStatus: z.string().optional(), fiscalStatus: z.string().optional(), settlementStatus: z.enum(['PENDING', 'SETTLED']).optional(), zeroAmount: z.enum(['true', 'false']).transform((v) => v === 'true').optional(), page: z.string().optional(), pageSize: z.string().optional() });
 const paramsSchema = z.object({ orderId: z.string().uuid() });
@@ -53,9 +54,17 @@ export function createShopifySaleInvoiceHandler(dependencies: { repository?: Sho
     const detail = await dependencies.repository.getById(session.tenantId, parsed.data.orderId) as { order?: { fiscalStatus?: string; totalAmount?: string }; operation?: { id: string } | null; eligibility?: Record<string, boolean> } | null;
     if (!detail) return reply.code(404).send({ code: 'SHOPIFY_ORDER_NOT_FOUND', message: 'Pedido no encontrado' });
     if (!detail.operation) return reply.code(422).send({ code: 'FISCAL_CASE_MISSING', message: 'El pedido aún no tiene expediente fiscal' });
-    if (detail.order?.fiscalStatus === 'ZERO_VALUE_REVIEW' || Number(detail.order?.totalAmount ?? 0) === 0) return reply.code(422).send({ code: 'ZERO_VALUE_REVIEW_EXCLUDED', message: 'Los pedidos de importe cero requieren revisión y no son facturables' });
     const eligibility = detail.eligibility ?? {};
-    if (!eligibility.hasFiscalConfiguration || !eligibility.hasFiscalProfile || !eligibility.hasTransactionsEvidence || !eligibility.hasLedgerEvidence || !eligibility.hasTaxDecision) return reply.code(422).send({ code: 'INVOICE_NOT_ELIGIBLE', message: 'Falta configuración, decisión fiscal o evidencia mínima para emitir' });
+    const gate = evaluateManualIssuanceGate(session.role, {
+      id: detail.operation.id,
+      fiscalStatus: Number(detail.order?.totalAmount ?? 0) === 0 ? 'REVISION_IMPORTE_CERO' : detail.order?.fiscalStatus ?? 'PENDIENTE_REVISION_FISCAL',
+      hasFiscalConfiguration: Boolean(eligibility.hasFiscalConfiguration),
+      hasFiscalProfile: Boolean(eligibility.hasFiscalProfile),
+      hasOrderEvidence: Boolean(eligibility.hasOrderEvidence),
+      hasTransactionsEvidence: Boolean(eligibility.hasTransactionsEvidence),
+      hasTaxDecision: Boolean(eligibility.hasTaxDecision),
+    });
+    if (!gate.allowed) return reply.code(422).send({ code: gate.reason, message: 'La política fiscal no permite emitir este pedido todavía' });
     const result = await dependencies.fiscalDocumentsRepository.issue({ tenantId: session.tenantId, actorId: session.actorId, canonicalOperationId: detail.operation.id, storage: dependencies.storage });
     if (!result.ok) return reply.code(422).send({ code: result.reason, message: 'No se pudo emitir la factura' });
     return reply.code(result.alreadyIssued ? 200 : 201).send(result.document);

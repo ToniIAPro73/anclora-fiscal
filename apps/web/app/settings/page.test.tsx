@@ -19,7 +19,9 @@ describe('SettingsPage', () => {
     render(<SettingsPage />);
     expect(screen.getByRole('heading', { level: 1, name: 'Configuración' })).toBeInTheDocument();
     expect(screen.getByLabelText(/^Nombre legal/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Tratamiento contable/)).toHaveValue('NET_ROYALTY_ONLY');
+    expect(screen.getByLabelText(/^NIF\/NIE/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Régimen de IVA/)).toHaveValue('REGIMEN_REDUCIDO_LIBROS_ES');
+    expect(screen.getByLabelText(/^Alta OSS activa/)).toBeInTheDocument();
     expect(screen.queryByText(/versionadas/)).not.toBeInTheDocument();
   });
 

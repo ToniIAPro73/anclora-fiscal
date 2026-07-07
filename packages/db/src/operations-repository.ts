@@ -28,6 +28,7 @@ export type OperationListItem = Operation & {
   discountAmount: string | null;
   issuedInvoiceId: string | null;
   issuedInvoiceNumber: string | null;
+  issuedInvoiceDocumentType: string | null;
   issuedInvoiceTotalAmount: string | null;
   issuedInvoiceCurrency: string | null;
 };
@@ -75,7 +76,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
    * than once for the same order (e.g. a refund event arriving after the
    * initial charge already produced an operation), so a repeat run must
    * update the existing row rather than insert a duplicate. reviewStatus
-   * resets to PENDING and verifactuStatus resets to PENDING on every
+   * resets reviewStatus and verifactuStatus on every
    * (re-)match — both are advanced by later stages (tax decisioning,
    * invoicing) not built yet in this phase.
    */
@@ -91,9 +92,9 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
       grossAmount: String(draft.grossAmount),
       platformFeeAmount: String(draft.platformFeeAmount),
       netAmount: String(draft.netAmount),
-      reviewStatus: 'PENDING',
+      reviewStatus: 'PENDIENTE',
       reconciliationStatus: draft.reconciliationStatus,
-      verifactuStatus: 'PENDING',
+      verifactuStatus: 'NO_CONFIGURADO',
       anomalyFlags: draft.anomalyFlags,
       customerCountry: draft.customerCountry,
       customerType: draft.customerType,
@@ -140,7 +141,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,
@@ -149,7 +150,16 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
+            order by fd.issued_at desc
+            limit 1
+          )`,
+          issuedInvoiceDocumentType: sql<string | null>`(
+            select fd.document_type
+            from ${fiscalDocuments} fd
+            where fd.tenant_id = ${canonicalOperations.tenantId}
+              and fd.canonical_operation_id = ${canonicalOperations.id}
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,
@@ -158,7 +168,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,
@@ -167,7 +177,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,

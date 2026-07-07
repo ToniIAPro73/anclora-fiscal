@@ -5,6 +5,7 @@ import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type FiscalPersistencePort, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
 import { ConfirmedOrderFiscalCaseService } from './confirmed-order-fiscal-case-service.js';
 import { TaxDecisionService } from './tax-decision-service.js';
+import { InvoiceIssuanceService } from './invoice-issuance-service.js';
 import type { OperationsRepositoryPort } from './operations-controller.js';
 import type { FinancialEventsRepositoryPort } from './financial-events-controller.js';
 import type { ReconciliationRepositoryPort } from './reconciliation-controller.js';
@@ -88,11 +89,16 @@ export async function createProductionApp() {
       taxConfigurationRepository: fiscalConfigurationRepositoryForTax,
     });
     const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
+    const invoiceIssuanceService = new InvoiceIssuanceService({
+      fiscalDocumentsRepository: fiscalDocumentsRepositoryForMatching,
+      storage,
+    });
     const confirmedOrderFiscalCaseService = new ConfirmedOrderFiscalCaseService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       operationsRepository: new DrizzleOperationsRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionService,
+      invoiceIssuanceService,
     });
     const importPreviewRepository = new DrizzleImportPreviewRepository(database.db);
     importPreviewPersistence = new ImportPreviewPersistenceService(
@@ -143,11 +149,16 @@ export async function createProductionApp() {
       taxConfigurationRepository: fiscalConfigurationRepositoryForTax,
     });
     const fiscalDocumentsRepositoryForMatching = new DrizzleFiscalDocumentsRepository(database.db);
+    const invoiceIssuanceService = new InvoiceIssuanceService({
+      fiscalDocumentsRepository: fiscalDocumentsRepositoryForMatching,
+      storage,
+    });
     const confirmedOrderFiscalCaseService = new ConfirmedOrderFiscalCaseService({
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       operationsRepository: new DrizzleOperationsRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
       taxDecisionService,
+      invoiceIssuanceService,
     });
     const importPreviewRepository = new DrizzleImportPreviewRepository(database.db);
     importPreviewPersistence = new ImportPreviewPersistenceService(

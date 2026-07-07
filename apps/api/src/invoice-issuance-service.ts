@@ -4,8 +4,9 @@ import type { StoragePort } from '@anclora/core/server';
 /** Permission checked against `packages/core/src/index.ts`'s `permissions` map — currently granted to FISCAL_OPERATOR and ADMIN (via '*'), not to REVIEWER or ADVISOR_READONLY. */
 const ISSUE_PERMISSION = 'documents:issue';
 
-/** Mirrors `commercial_orders.fiscalStatus`'s ZERO_VALUE_REVIEW value (set by ingestion-normalization-service.ts) — orders under review for a zero/near-zero total must never be issued, manually or automatically. */
+/** Zero-amount rows must never be issued, manually or automatically. */
 export const ZERO_VALUE_REVIEW_FISCAL_STATUS = 'ZERO_VALUE_REVIEW';
+export const REVISION_IMPORTE_CERO_FISCAL_STATUS = 'REVISION_IMPORTE_CERO';
 
 /**
  * Mirrors the relevant subset of IssueInvoiceResult/RectifyInvoiceResult
@@ -28,8 +29,8 @@ export interface InvoiceIssuanceRectifyResult {
 }
 
 export interface InvoiceIssuanceFiscalDocumentsPort {
-  issue(input: { tenantId: string; actorId: string; canonicalOperationId: string; storage: StoragePort }): Promise<InvoiceIssuanceIssueResult>;
-  rectify(input: { tenantId: string; actorId: string; fiscalDocumentId: string; storage: StoragePort }): Promise<InvoiceIssuanceRectifyResult>;
+  issue(input: { tenantId: string; actorId: string | null; canonicalOperationId: string; storage: StoragePort }): Promise<InvoiceIssuanceIssueResult>;
+  rectify(input: { tenantId: string; actorId: string | null; fiscalDocumentId: string; storage: StoragePort }): Promise<InvoiceIssuanceRectifyResult>;
 }
 
 export interface InvoiceIssuanceServiceDependencies {
@@ -50,7 +51,7 @@ export interface ManualIssuanceOperation {
   hasFiscalProfile: boolean;
   hasOrderEvidence: boolean;
   hasTransactionsEvidence: boolean;
-  hasLedgerEvidence: boolean;
+  hasLedgerEvidence?: boolean;
   hasTaxDecision: boolean;
 }
 
@@ -74,10 +75,16 @@ export type ManualIssuanceGateResult = { allowed: true } | { allowed: false; rea
  */
 export function evaluateManualIssuanceGate(role: Role, operation: ManualIssuanceOperation): ManualIssuanceGateResult {
   if (!can(role, ISSUE_PERMISSION)) return { allowed: false, reason: 'ROLE_NOT_AUTHORIZED' };
-  if (operation.fiscalStatus === ZERO_VALUE_REVIEW_FISCAL_STATUS) return { allowed: false, reason: 'ZERO_VALUE_REVIEW_EXCLUDED' };
+  return evaluateFiscalIssuancePolicy(operation);
+}
+
+export function evaluateFiscalIssuancePolicy(operation: ManualIssuanceOperation): ManualIssuanceGateResult {
+  if (operation.fiscalStatus === ZERO_VALUE_REVIEW_FISCAL_STATUS || operation.fiscalStatus === REVISION_IMPORTE_CERO_FISCAL_STATUS) {
+    return { allowed: false, reason: 'ZERO_VALUE_REVIEW_EXCLUDED' };
+  }
   if (!operation.hasFiscalConfiguration) return { allowed: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
   if (!operation.hasFiscalProfile) return { allowed: false, reason: 'FISCAL_PROFILE_MISSING' };
-  if (!operation.hasOrderEvidence || !operation.hasTransactionsEvidence || !operation.hasLedgerEvidence) {
+  if (!operation.hasOrderEvidence || !operation.hasTransactionsEvidence) {
     return { allowed: false, reason: 'INSUFFICIENT_EVIDENCE' };
   }
   if (!operation.hasTaxDecision) return { allowed: false, reason: 'TAX_DECISION_MISSING' };
@@ -134,6 +141,30 @@ export class InvoiceIssuanceService {
     const issueResult = await this.dependencies.fiscalDocumentsRepository.issue({
       tenantId: request.tenantId,
       actorId: request.actorId,
+      canonicalOperationId: request.operation.id,
+      storage: this.dependencies.storage,
+    });
+
+    if (!issueResult.ok || !issueResult.document) {
+      return { status: 'ISSUE_FAILED', reason: issueResult.reason ?? 'OPERATION_NOT_FOUND' };
+    }
+
+    return {
+      status: issueResult.alreadyIssued ? 'ALREADY_ISSUED' : 'ISSUED',
+      documentId: issueResult.document.id,
+    };
+  }
+
+  async issueAutomatically(request: {
+    tenantId: string;
+    operation: ManualIssuanceOperation;
+  }): Promise<ManualIssuanceResult> {
+    const gate = evaluateFiscalIssuancePolicy(request.operation);
+    if (!gate.allowed) return { status: 'BLOCKED', reason: gate.reason };
+
+    const issueResult = await this.dependencies.fiscalDocumentsRepository.issue({
+      tenantId: request.tenantId,
+      actorId: null,
       canonicalOperationId: request.operation.id,
       storage: this.dependencies.storage,
     });

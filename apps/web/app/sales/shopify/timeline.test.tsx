@@ -54,7 +54,7 @@ describe("OperationsTimeline SHOPIFY-06", () => {
     await screen.findByText("AI-1001");
     expect(screen.getByText("Comprador")).toBeInTheDocument();
     expect(screen.getByText("Ana García")).toBeInTheDocument();
-    expect(screen.getAllByText("Liquidación pendiente")).toHaveLength(2);
+    expect(screen.getByText("Payout Shopify pendiente")).toBeInTheDocument();
     expect(screen.getAllByText("Pendiente").length).toBeGreaterThan(0);
     expect(screen.getAllByText("6.99 €")).toHaveLength(2);
   });
@@ -76,7 +76,7 @@ describe("OperationsTimeline SHOPIFY-06", () => {
     render(<OperationsTimeline />);
     await screen.findByText("AI-1002");
     expect(screen.getAllByText("Descuento aplicado · PRUEBA100").length).toBeGreaterThan(0);
-    expect(screen.getByText("No requiere Shopify Payments")).toBeInTheDocument();
+    expect(screen.getByText("No requiere pago Shopify")).toBeInTheDocument();
     expect(screen.getByText("Pedido con importe cero · sin cobro requerido")).toBeInTheDocument();
     expect(screen.queryByText("Falta importar Shopify Payments")).not.toBeInTheDocument();
     expect(screen.queryByText("Faltan movimientos")).not.toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("OperationsTimeline SHOPIFY-06", () => {
   it("no afirma banco al identificar la liquidación", async () => {
     mock({ items: [{ ...sale, payoutStatus: "SETTLED" }], metrics });
     render(<OperationsTimeline />);
-    await screen.findByText("Liquidación identificada");
+    await screen.findByText("Payout Shopify identificado · banco sin conciliar");
     expect(screen.queryByText(/banco verificado/i)).not.toBeInTheDocument();
   });
   it("muestra error de API", async () => {

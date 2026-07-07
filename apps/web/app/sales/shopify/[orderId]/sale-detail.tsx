@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
-import { ledgerEntryLabel, statusLabel, transactionTypeLabel } from '../../../lib/display-labels';
+import { ledgerEntryLabel, settlementLabel, statusLabel, transactionTypeLabel } from '../../../lib/display-labels';
 
 type Row = Record<string, string | number | null>;
 interface Detail { order: Row; lines: Row[]; transactions: Row[]; ledger: Row[]; links: Row[]; operation: Row | null; taxDecision: Row | null; documents: Row[]; audit: Row[]; settlement: string; eligibility: Record<string, boolean>; }
@@ -13,16 +13,16 @@ export function ShopifySaleDetail({ orderId }: { orderId: string }) {
   const sections = [
     ['Pedido y líneas', data.lines, 'El pedido existe pero no contiene líneas.'],
     ['Transacciones del pedido', data.transactions, 'Falta importar el CSV de transacciones del pedido.'],
-    ['Movimientos de Shopify Payments', data.ledger, 'Falta importar los movimientos de Shopify Payments.'],
+    ['Movimientos de Shopify Payments', data.ledger, 'No hay movimientos de Shopify Payments; no bloquea la emisión fiscal si existe una transacción confirmada.'],
     ['Documentos fiscales', data.documents, 'No se ha emitido ningún documento fiscal.'],
     ['Trazabilidad', data.audit, 'Todavía no hay eventos de auditoría para este expediente.'],
   ] as const;
-  const eligible = data.operation && data.order.fiscalStatus !== 'ZERO_VALUE_REVIEW' && Object.values(data.eligibility).every(Boolean);
+  const eligible = Boolean(data.operation && data.order.fiscalStatus !== 'ZERO_VALUE_REVIEW' && data.eligibility.hasFiscalConfiguration && data.eligibility.hasFiscalProfile && data.eligibility.hasTransactionsEvidence && data.eligibility.hasTaxDecision);
   const issue = async () => { setAction('Emitiendo…'); const response = await fetch(`/api/v1/shopify/sales/${orderId}/invoice`, { method: 'POST', credentials: 'include' }); const body = await response.json(); setAction(response.ok ? `Factura ${body.number ?? 'emitida'}` : body.message ?? 'No se pudo emitir'); };
   const rowTitle = (row: Row, index: number) => String(row.title ?? (row.kind ? transactionTypeLabel(String(row.kind)) : row.entryType ? ledgerEntryLabel(String(row.entryType)) : row.number ?? row.action ?? `Registro ${index + 1}`));
   const rowValue = (row: Row) => String(row.amount ?? row.totalAmount ?? (row.status ? statusLabel(String(row.status)) : ''));
-  return <section className="reconciliation-workbench"><div className="summary-grid"><article><span>Pedido</span><strong>{data.order.externalOrderId}</strong></article><article><span>Total</span><strong>{Number(data.order.totalAmount ?? 0).toFixed(2)} €</strong></article><article><span>Liquidación</span><StatusBadge tone={data.settlement === 'SETTLED' ? 'info' : 'warning'}>{data.settlement === 'SETTLED' ? 'Liquidación identificada (sin verificación bancaria)' : data.settlement === 'PAYOUT_PENDING' ? 'Liquidación pendiente' : 'Movimientos pendientes'}</StatusBadge></article><article><span>Decisión fiscal</span><strong>{statusLabel(String(data.taxDecision?.status ?? 'PENDING'))}</strong></article></div>
-    <p><button type="button" disabled={!eligible} onClick={issue}>Emitir factura</button> {action || (!eligible ? 'La emisión requiere configuración, decisión fiscal y las tres evidencias.' : '')}</p>
+  return <section className="reconciliation-workbench"><div className="summary-grid"><article><span>Pedido</span><strong>{data.order.externalOrderId}</strong></article><article><span>Total</span><strong>{Number(data.order.totalAmount ?? 0).toFixed(2)} €</strong></article><article><span>Payout / banco</span><StatusBadge tone={data.settlement === 'SETTLED' ? 'info' : 'warning'}>{settlementLabel(data.settlement, Number(data.order.totalAmount ?? 0) === 0)}</StatusBadge></article><article><span>Decisión fiscal</span><strong>{statusLabel(String(data.taxDecision?.status ?? 'PENDING'))}</strong></article></div>
+    <p><button type="button" disabled={!eligible} onClick={issue}>Emitir factura</button> {action || (!eligible ? 'La emisión requiere configuración, decisión fiscal y transacción Shopify confirmada.' : '')}</p>
     {data.links.some(link => link.state === 'PROPOSED') ? <p className="workbench-notice">Hay enlaces de evidencia propuestos pendientes de revisión.</p> : null}
     {sections.map(([title, rows, empty]) => <section className="detail-section" key={title}><span className="section-index">{title}</span>{rows.length === 0 ? <p className="workbench-notice">{empty}</p> : <div className="reconciliation-table-panel"><table><tbody>{rows.map((row, index) => <tr key={String(row.id ?? index)}><td><strong>{rowTitle(row, index)}</strong></td><td>{rowValue(row)}</td></tr>)}</tbody></table></div>}</section>)}
   </section>;

@@ -35,6 +35,7 @@ const sampleOperation = {
   customerName: 'Ana García',
   customerEmail: 'ana@example.test',
   customerAddress: 'Calle Mayor 1, Madrid',
+  customerCountry: 'ES',
   createdAt: new Date().toISOString(),
 };
 
@@ -78,7 +79,8 @@ describe('InvoicingPanel', () => {
     render(<InvoicingPanel />);
     await waitFor(() => expect(screen.getByText('Shopify')).toBeInTheDocument());
     expect(screen.getByText('Ana García')).toBeInTheDocument();
-    expect(screen.getByText('ana@example.test')).toBeInTheDocument();
+    expect(screen.queryByText('ana@example.test')).not.toBeInTheDocument();
+    expect(screen.getByText('ES')).toBeInTheDocument();
     expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument();
     expect(screen.getByText('Lista para facturar')).toBeInTheDocument();
     expect(screen.getByText('Conciliada')).toBeInTheDocument();
@@ -89,12 +91,13 @@ describe('InvoicingPanel', () => {
   it('muestra el número de factura cuando la emisión tiene éxito', async () => {
     mockFetchSequence([
       { ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } },
-      { ok: true, status: 201, body: { id: 'doc-1', number: 'AF-2026-0001', status: 'ISSUED', taxBase: '6.35', taxAmount: '0.64', totalAmount: '6.99', currency: 'EUR', alreadyIssued: false } },
+      { ok: true, status: 201, body: { id: 'doc-1', number: 'FS-00001', documentType: 'SIMPLIFICADA', status: 'ISSUED', taxBase: '6.72', taxAmount: '0.27', totalAmount: '6.99', currency: 'EUR', alreadyIssued: false } },
     ]);
     render(<InvoicingPanel />);
     await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
     screen.getByRole('button', { name: 'Emitir factura' }).click();
-    await waitFor(() => expect(screen.getByText('AF-2026-0001')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('FS-00001')).toBeInTheDocument());
+    expect(screen.getByText('Factura simplificada')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Descargar factura' })).toHaveAttribute('href', '/api/v1/fiscal-documents/doc-1/download');
   });
 

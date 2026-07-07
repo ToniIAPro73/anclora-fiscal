@@ -3,9 +3,12 @@ const STATUS_LABELS: Record<string, string> = {
   AUTHORIZATION: "Autorización",
   AUTO_LINKED: "Enlace exacto",
   BLOCKED: "Bloqueada",
+  BLOQUEADA: "Bloqueada",
   CAPTURE: "Cobro",
   DETERMINED: "Determinada",
+  DETERMINADA: "Determinada",
   EVIDENCE_PENDING: "Evidencia pendiente",
+  EVIDENCIA_INTERNA_PENDIENTE: "Evidencia interna pendiente",
   FAILED: "Fallida",
   FULL: "Total",
   FULL_REFUND_NET_ZERO: "Reembolso total con neto cero",
@@ -19,13 +22,18 @@ const STATUS_LABELS: Record<string, string> = {
   ORDER_TO_TRANSACTION: "Pedido → transacción",
   MATCHED: "Conciliada",
   NONE: "Sin reembolso",
+  NO_CONFIGURADO: "No configurado",
   PAID: "Pagado",
   PARTIAL: "Parcial",
   PAYOUT_PENDING: "Liquidación pendiente",
   PENDING: "Pendiente",
+  PENDIENTE: "Pendiente",
   PENDING_CONFIRMATION: "Pendiente de confirmación",
   PENDING_TAX_REVIEW: "Pendiente de revisión fiscal",
+  PENDIENTE_DECISION_FISCAL: "Pendiente de decisión fiscal",
+  PENDIENTE_REVISION_FISCAL: "Pendiente de revisión fiscal",
   READY_FOR_INVOICING: "Lista para facturar",
+  REVISION_OSS_B2C_UE: "Revisión OSS B2C UE",
   REFUND: "Reembolso",
   REJECTED: "Importación rechazada",
   SALE: "Venta",
@@ -34,7 +42,21 @@ const STATUS_LABELS: Record<string, string> = {
   PROPOSED: "Propuesto",
   TAX_DECISION_MISSING: "Falta decisión fiscal",
   UNMATCHED: "Sin conciliar",
+  VENTA_NACIONAL_B2C_IVA_GENERAL: "Venta nacional B2C con IVA general",
+  VENTA_NACIONAL_B2C_IVA_REDUCIDO: "Venta nacional B2C con IVA reducido",
+  VENTA_SHOPIFY: "Venta Shopify",
   ZERO_VALUE_REVIEW: "Revisión por importe cero",
+  REVISION_IMPORTE_CERO: "Revisión por importe cero",
+  SIMPLIFICADA: "Factura simplificada",
+  COMPLETA: "Factura completa",
+  RECTIFICATIVA: "Factura rectificativa",
+  FACTURA_SIMPLIFICADA_EMITIDA: "Factura simplificada emitida",
+  FACTURA_COMPLETA_EMITIDA: "Factura completa emitida",
+  RECTIFICADA: "Rectificada",
+  PENDIENTE_CONFIGURACION_FISCAL: "Pendiente de configuración fiscal",
+  PENDIENTE_REVISION_OSS: "Pendiente de revisión OSS",
+  PENDIENTE_VALIDACION_B2B: "Pendiente de validación B2B",
+  REVISION_REEMBOLSO_REQUERIDA: "Revisión de reembolso requerida",
   ebook: "eBook",
   general: "Tapa blanda / general",
   paid: "Pagado",
@@ -137,4 +159,12 @@ export function ledgerEntryLabel(type: string | null | undefined): string {
 export function issueLabel(code: string | null | undefined): string {
   if (!code) return "Incidencia";
   return ISSUE_LABELS[code] ?? humanizeTechnicalValue(code);
+}
+
+export function settlementLabel(status: string | null | undefined, zeroAmount = false): string {
+  if (zeroAmount || status === "LEDGER_NOT_REQUIRED") return "No requiere pago Shopify";
+  if (status === "SETTLED") return "Payout Shopify identificado · banco sin conciliar";
+  if (status === "PAYOUT_PENDING" || status === "PENDING") return "Payout Shopify pendiente";
+  if (status === "LEDGER_MISSING") return "Sin evidencia de payout";
+  return statusLabel(status);
 }

@@ -52,7 +52,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   Las dos advertencias de `outputs` en `turbo.json` son preexistentes (configuración de caché
   de turbo, no un fallo de lint/typecheck/test) y no bloquearon la ejecución — 26/26 tareas
   completaron con éxito.
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `fa325db`.
 - **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition` (rama local
   `feat/anclora-fiscal-product-redefinition`, último commit previo a esta fase: `94dd1f7`).
 - **Limitaciones abiertas:**
@@ -114,7 +114,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   `/imports`, `/sales/shopify`, `/reconciliation`, `/invoicing`, `/verifactu`, `/tax-rules`,
   `/tax-periods` y `/settings` en escritorio, además de `/imports` a 390 px; no se detectó
   overflow horizontal (`scrollWidth === clientWidth`).
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `bc4aa2a`.
 - **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition`.
 - **Limitaciones abiertas:**
   - La navegación móvil prioriza marca, cierre de sesión y contenido; el menú completo requiere
@@ -158,7 +158,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   La migración se verificó desde base limpia y en segunda ejecución idempotente. La validación
   autenticada de `/settings` confirmó 18 controles etiquetados, estado de readiness honesto y
   ausencia de overflow horizontal (`scrollWidth === clientWidth`, 1265 px).
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `fa325db`.
 - **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition`.
 - **Limitaciones abiertas:**
   - `order_lines`, `tax_periods`, `payouts`, asignaciones y contrapartes quedan estructuralmente
@@ -244,7 +244,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   build — 7/7 tareas correctas
   Playwright — 33/33 pruebas correctas
   ```
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `bc4aa2a`.
 - **Rama remota:** `origin/main`.
 - **Limitaciones abiertas:**
   - Los enlaces explícitos entre las tres evidencias y la conciliación segura pertenecen a
@@ -336,3 +336,345 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
 - **SHA:** pendiente del commit final.
 - **Siguiente paso:** ninguno dentro del plan Shopify-first; cualquier despliegue
   o trabajo KDP requiere instrucción separada.
+
+---
+
+## REFACTOR FISCAL SHOPIFY — FASE 0 — Baseline y decisiones de compatibilidad
+
+- **Objetivo:** establecer una línea base verificable para el prompt maestro
+  `PROMPT MAESTRO — CODEX / REFACTOR FISCAL SHOPIFY DE ANCLORA FISCAL`, confirmar
+  la rama `feature/fiscal-refactor-shopify`, registrar divergencias con documentación
+  antigua y fijar decisiones de compatibilidad antes de cambios funcionales.
+- **Preflight ejecutado antes de cambios funcionales:**
+
+  ```text
+  git status --short
+  salida: limpia
+
+  git branch --show-current
+  salida: feature/fiscal-refactor-shopify
+
+  git remote -v
+  salida:
+  origin https://github.com/ToniIAPro73/anclora-fiscal.git (fetch)
+  origin https://github.com/ToniIAPro73/anclora-fiscal.git (push)
+
+  git fetch origin --prune
+  salida: sin cambios
+
+  git log --oneline --decorate -20
+  salida: HEAD inicial d8a9915, origin/main en 5c08415, historial Shopify 01-07 presente
+
+  git diff --check
+  salida: sin errores
+  ```
+
+- **Sincronización no destructiva:** `origin/main` contenía el commit `5c08415`
+  de foco automático en login que no estaba integrado en la rama. Como el árbol
+  estaba limpio, se ejecutó merge normal:
+
+  ```text
+  git merge --no-ff origin/main -m "sync: merge main before fiscal refactor"
+  salida: Merge made by the 'ort' strategy.
+  ```
+
+- **SHA base de trabajo:** `763922d` tras el merge normal de `origin/main`.
+- **Lectura mínima realizada:** `README.md`, documentación de arquitectura,
+  dominio, datos, conciliación, motor fiscal, limitaciones, ADRs, prompt E2E
+  previo, migraciones 0000-0015 y módulos actuales de configuración fiscal,
+  emisión, decisión fiscal, caso fiscal, ciclo de importación, normalización
+  Shopify, ventas Shopify, facturación core y vistas operativas.
+- **Archivos / migraciones:** sin migración. Archivos docs-only:
+  `docs/adr/0010-shopify-fiscal-refactor-policy.md` y
+  `docs/implementation-phase-log.md`.
+- **Decisiones registradas:** `legal_entities` permanece como único emisor fiscal
+  persistente; la emisión Shopify futura se disparará por transacción de pedido
+  confirmada y no por payout/matching; OSS y B2B fallan de forma segura; los
+  valores nuevos del dominio fiscal se introducen en español; VERI*FACTU sigue
+  desactivado por defecto.
+- **Divergencias verificadas:** el repositorio ya separa tres evidencias Shopify,
+  pero la emisión manual aún exige ledger, el PDF aún usa “Emitida por Anclora
+  Insights”, `fiscal_documents` sólo distingue tipos legacy y la política de
+  emisión todavía no modela factura simplificada/completa/rectificativa con
+  contratos españoles.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm lint
+  Tasks: 7 successful, 7 total
+  Cached: 2 cached, 7 total
+  Time: 46.46s
+
+  pnpm typecheck
+  Tasks: 7 successful, 7 total
+  Cached: 3 cached, 7 total
+  Time: 1m27.796s
+
+  pnpm test
+  Tasks: 12 successful, 12 total
+  Cached: 4 cached, 12 total
+  Time: 5m0.566s
+  @anclora/ui:test — Test Files 11 passed / Tests 30 passed
+  @anclora/web:test — Test Files 26 passed / Tests 68 passed
+  @anclora/db:test — Test Files 19 passed / Tests 100 passed
+  @anclora/connectors:test — Test Files 5 passed / Tests 41 passed
+  @anclora/api:test — Test Files 25 passed / Tests 181 passed
+  @anclora/core:test — Test Files 6 passed / Tests 22 passed
+  @anclora/tax-engine:test — Test Files 1 passed / Tests 3 passed
+  WARNING no output files found for task @anclora/ui#build.
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Rama remota:** `origin/feature/fiscal-refactor-shopify`.
+- **Limitaciones abiertas:**
+  - La implementación funcional de emisor persona física, NIF/NIE, series `FS`,
+    `F`, `FR` y OSS corresponde a FASE 1.
+  - La clasificación fiscal y estados españoles del nuevo modelo corresponden a
+    FASE 2.
+  - PDF, numeración y rectificación completa corresponden a FASE 3.
+  - Orquestación post-transacción Shopify confirmada corresponde a FASE 4.
+  - Read models y UI operativa final corresponden a FASE 5.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 1 — Emisor fiscal,
+  configuración y migración aditiva.
+
+## REFACTOR FISCAL SHOPIFY — FASE 1 — Emisor fiscal y configuración
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** introducir configuración fiscal real del emisor sin duplicar la
+  fuente persistente `legal_entities`.
+- **Migración aditiva:** `packages/db/migrations/0016_fiscal_issuer_refactor.sql`.
+  Añade tipo de emisor, IAE, régimen de IVA, OSS, estado fiscal configurado y
+  marca de NIF/NIE configurado.
+- **Contrato nuevo:** la API acepta payload español con `datosEmisor`, `oss`,
+  `perfilProducto` y `ejercicio`; el contrato legacy sigue disponible.
+- **Protección NIF/NIE:** la API valida NIF/NIE español y lo cifra con secreto de
+  servidor antes de persistir. GET no devuelve nunca el valor en claro ni el
+  cifrado.
+- **Series fiscales:** el guardado real crea de forma idempotente `FS`
+  simplificada, `F` completa y `FR` rectificativa sobre `invoice_series`.
+- **UI:** la pantalla de configuración muestra campos visibles para emisor
+  persona física, NIF/NIE sustituible, IAE, régimen IVA, OSS y resumen de series.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/core test -- spanish-tax-id
+  Test Files 7 passed / Tests 25 passed
+
+  pnpm --filter @anclora/db test -- fiscal-configuration-repository migrations
+  Test Files 19 passed / Tests 101 passed
+
+  pnpm --filter @anclora/api test -- fiscal-configuration-controller
+  Test Files 25 passed / Tests 183 passed
+
+  pnpm --filter @anclora/web test -- settings/page.test.tsx
+  Test Files 26 passed / Tests 68 passed
+
+  pnpm --filter @anclora/core typecheck
+  pnpm --filter @anclora/db typecheck
+  pnpm --filter @anclora/api typecheck
+  pnpm --filter @anclora/web typecheck
+  todos sin errores
+
+  pnpm --filter @anclora/core lint
+  pnpm --filter @anclora/db lint
+  pnpm --filter @anclora/api lint
+  pnpm --filter @anclora/web lint
+  todos sin errores
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 2 — Clasificación de ventas
+  Shopify y decisiones fiscales.
+
+## REFACTOR FISCAL SHOPIFY — FASE 2 — Clasificación y decisión fiscal
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** clasificar ventas Shopify confirmadas y persistir decisiones
+  fiscales con nuevos valores canónicos españoles.
+- **Motor fiscal:** `@anclora/tax-engine` devuelve `DETERMINADA`,
+  `PENDIENTE_REVISION_FISCAL` o `BLOQUEADA`, clasifica ventas nacionales B2C
+  con IVA reducido/general y emite tipo documental `SIMPLIFICADA`.
+- **Normalización de producto:** `ebook` y `LIBRO_ELECTRONICO` se tratan como
+  la misma naturaleza fiscal para que la configuración real de Fase 1 no rompa
+  importaciones Shopify existentes.
+- **Caso fiscal Shopify:** `ConfirmedOrderFiscalCaseService` crea operaciones
+  con `VENTA_SHOPIFY`, `PENDIENTE_DECISION_FISCAL` y
+  `EVIDENCIA_INTERNA_PENDIENTE`; los pedidos de importe cero quedan en revisión
+  y no generan operación fiscal.
+- **Persistencia:** `DrizzleOperationsRepository.create()` asigna a nuevos
+  registros `reviewStatus=PENDIENTE` y `verifactuStatus=NO_CONFIGURADO`.
+- **UI:** se añadieron traducciones para los estados y clasificaciones
+  españoles en `display-labels` y el simulador fiscal reconoce ambos esquemas.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/tax-engine test
+  Test Files 1 passed / Tests 4 passed
+
+  pnpm --filter @anclora/api test -- tax-decision-service confirmed-order-fiscal-case-service matching-service
+  Test Files 26 passed / Tests 185 passed
+
+  pnpm --filter @anclora/db test -- operations-repository
+  Test Files 19 passed / Tests 101 passed
+
+  pnpm --filter @anclora/web test -- tax-rules sales/shopify
+  Test Files 26 passed / Tests 68 passed
+
+  pnpm --filter @anclora/tax-engine typecheck
+  pnpm --filter @anclora/api typecheck
+  pnpm --filter @anclora/db typecheck
+  pnpm --filter @anclora/web typecheck
+  todos sin errores
+
+  pnpm --filter @anclora/tax-engine lint
+  pnpm --filter @anclora/api lint
+  pnpm --filter @anclora/db lint
+  pnpm --filter @anclora/web lint
+  todos sin errores
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** `365e154`.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 3 — Documentos fiscales
+  simplificados, completos y rectificativos.
+
+## REFACTOR FISCAL SHOPIFY — FASE 3 — Documentos fiscales
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** emitir documentos simplificados, completos y rectificativos con
+  tipos y series fiscales españolas, conservando compatibilidad con documentos
+  legacy.
+- **Migración aditiva:** `packages/db/migrations/0017_tax_decision_document_type.sql`.
+  Añade `tax_decisions.document_type` con valor por defecto `COMPLETA` para que
+  las decisiones previas sigan siendo emitibles.
+- **Emisión:** `DrizzleFiscalDocumentsRepository.issue()` selecciona el tipo
+  decidido (`SIMPLIFICADA` o `COMPLETA`), usa las series `FS` o `F`, renderiza el
+  emisor fiscal real en el PDF y mantiene idempotencia por tipo documental.
+- **Rectificación:** `rectify()` acepta originales simplificados/completos,
+  emite `RECTIFICATIVA` con serie `FR`, enlaza el documento original y conserva
+  compatibilidad de lectura con `FULL_INVOICE`/`RECTIFYING_INVOICE`.
+- **Read models:** las operaciones consideran emitidas las facturas
+  `SIMPLIFICADA`, `COMPLETA` y `FULL_INVOICE`, evitando que facturas españolas
+  desaparezcan de facturación.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/core build
+  correcto
+
+  pnpm --filter @anclora/core test -- invoicing
+  Test Files 7 passed / Tests 25 passed
+
+  pnpm --filter @anclora/db test -- fiscal-documents-repository
+  Test Files 19 passed / Tests 102 passed
+
+  pnpm --filter @anclora/core typecheck
+  pnpm --filter @anclora/db typecheck
+  pnpm --filter @anclora/api typecheck
+  todos sin errores
+
+  pnpm --filter @anclora/core lint
+  pnpm --filter @anclora/db lint
+  pnpm --filter @anclora/api lint
+  todos sin errores
+  ```
+
+- **SHA corto:** `98fb103`.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 4 — Orquestación de emisión
+  desde pagos Shopify confirmados.
+
+## REFACTOR FISCAL SHOPIFY — FASE 4 — Orquestación desde eventos Shopify
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** disparar expediente fiscal, decisión y emisión desde
+  transacciones Shopify confirmadas, sin depender de ledger, payout, banco ni
+  matching.
+- **Disparador:** `ImportPreviewPersistenceService` invoca el caso fiscal sólo
+  después de persistir `shopify_order_payment_events` con `kind` `sale` o
+  `capture` y estado `success`/`succeeded`; `authorization`, fallidos y
+  pendientes no emiten.
+- **Independencia semántica:** el CSV de pedidos, el ledger de Shopify
+  Payments, payout y conciliación reconstruyen evidencia y enlaces, pero no
+  disparan la emisión.
+- **Orquestación:** `ConfirmedOrderFiscalCaseService` crea o actualiza la
+  operación canónica, registra decisión fiscal y llama a
+  `InvoiceIssuanceService.issueAutomatically()` sólo si la decisión queda
+  `DETERMINADA`.
+- **Política compartida:** la emisión manual de Ventas Shopify usa la misma
+  política que la automática y deja de exigir ledger/payout; exige pedido,
+  transacción confirmada, configuración, perfil y decisión fiscal.
+- **Idempotencia:** dentro de un mismo import, `sale` y `capture` del mismo
+  pedido sólo provocan una orquestación; reintentos y duplicados siguen
+  protegidos por la idempotencia de repositorios y documentos.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/api typecheck
+  sin errores
+
+  pnpm --filter @anclora/api lint
+  sin errores
+
+  pnpm --filter @anclora/api test -- invoice-issuance-service confirmed-order-fiscal-case-service import-preview-persistence shopify-sales-controller
+  Test Files 26 passed / Tests 190 passed
+  ```
+
+- **SHA corto:** `9039c69`.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 5 — Read models y
+  experiencia operativa.
+
+## REFACTOR FISCAL SHOPIFY — FASE 5 — Read models y experiencia operativa
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** exponer de forma coherente el estado fiscal Shopify, el tipo de
+  documento emitido y la independencia entre payout, banco y documento fiscal en
+  Ventas Shopify, Conciliación y Facturación.
+- **Read models:** `operations-repository` expone el tipo de documento emitido
+  más reciente compatible con facturas españolas; los enlaces de evidencia
+  Shopify incorporan el estado fiscal del pedido para que conciliación no mezcle
+  pago, payout y revisión fiscal.
+- **UI:** Ventas Shopify y detalle de venta muestran el payout como evidencia de
+  liquidación, no como banco conciliado; los pedidos de importe cero se presentan
+  como revisión fiscal por descuento total y no como falta de pago Shopify; la
+  facturación muestra país del comprador y tipo/número de documento sin exponer
+  email o dirección en tarjetas de factura simplificada.
+- **Etiquetas:** se centralizan etiquetas españolas para estados de emisión,
+  tipos documentales, revisión fiscal y payout/banco, evitando valores internos
+  ingleses en las pantallas modificadas.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/web test -- sales/shopify reconciliation invoicing
+  Test Files 26 passed (26)
+  Tests 68 passed (68)
+
+  pnpm --filter @anclora/web typecheck
+  sin errores
+
+  pnpm --filter @anclora/db test -- operations-repository shopify-evidence-links-repository
+  Test Files 19 passed (19)
+  Tests 102 passed (102)
+
+  pnpm --filter @anclora/db typecheck
+  sin errores
+
+  pnpm --filter @anclora/web lint
+  sin errores
+
+  pnpm --filter @anclora/db lint
+  sin errores
+
+  pnpm --filter @anclora/api typecheck
+  sin errores
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 6 — Validación integral,
+  documentación y cierre.
