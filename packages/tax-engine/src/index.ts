@@ -12,13 +12,13 @@ export interface TaxContext {
 }
 
 export interface TaxDecision {
-  status: 'DETERMINED' | 'PENDING_TAX_REVIEW' | 'BLOCKED';
+  status: 'DETERMINADA' | 'PENDIENTE_REVISION_FISCAL' | 'BLOQUEADA' | 'DETERMINED' | 'PENDING_TAX_REVIEW' | 'BLOCKED';
   classification?: string;
   rate?: string;
   taxBase?: number;
   taxAmount?: number;
   totalAmount?: number;
-  documentType?: 'FULL_INVOICE' | 'SIMPLIFIED_INVOICE' | 'RECTIFYING_INVOICE' | 'NON_INVOICEABLE';
+  documentType?: 'SIMPLIFICADA' | 'COMPLETA' | 'RECTIFICATIVA' | 'NO_FACTURABLE' | 'FULL_INVOICE' | 'SIMPLIFIED_INVOICE' | 'RECTIFYING_INVOICE' | 'NON_INVOICEABLE';
   ruleId?: string;
   ruleVersion?: string;
   explanation: string[];
@@ -51,22 +51,29 @@ export const demoSpainConfig: FiscalDemoConfig = {
 
 const money = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+function normalizeProductNature(value: string): 'ebook' | 'general' | string {
+  const normalized = value.trim().toLowerCase().replaceAll('-', '_');
+  if (['ebook', 'e_book', 'libro_electronico', 'libro electrónico'].includes(normalized)) return 'ebook';
+  return normalized;
+}
+
 export class VersionedTaxEngine {
   constructor(private readonly config: FiscalDemoConfig) {}
 
   evaluate(context: TaxContext): TaxDecision {
-    if (!context.customerCountry || !context.customerType || !context.productNature) return { status: 'BLOCKED', explanation: ['Faltan país, tipo de cliente o naturaleza del producto'], blockingReason: 'MISSING_TAX_EVIDENCE' };
+    if (!context.customerCountry || !context.customerType || !context.productNature) return { status: 'BLOQUEADA', explanation: ['Faltan país, tipo de cliente o naturaleza del producto'], blockingReason: 'EVIDENCIA_FISCAL_INSUFICIENTE' };
     if (context.channel === 'amazon-kdp') {
-      if (!context.marketplaceMerchantOfRecordValidated) return { status: 'PENDING_TAX_REVIEW', explanation: ['El papel de Amazon como merchant of record no está validado'], blockingReason: 'MARKETPLACE_ROLE_UNVALIDATED' };
-      return { status: 'DETERMINED', classification: 'REGALIA_MARKETPLACE', rate: '0', taxBase: context.grossAmount ?? 0, taxAmount: 0, totalAmount: context.grossAmount ?? 0, documentType: 'NON_INVOICEABLE', ruleId: 'KDP_MOR_ROYALTY_DEMO', ruleVersion: this.config.version, explanation: ['Configuración DEMO: regalía marketplace con merchant of record validado'] };
+      if (!context.marketplaceMerchantOfRecordValidated) return { status: 'PENDIENTE_REVISION_FISCAL', explanation: ['El papel de Amazon como merchant of record no está validado'], blockingReason: 'ROL_MARKETPLACE_NO_VALIDADO' };
+      return { status: 'DETERMINADA', classification: 'REGALIA_MARKETPLACE', rate: '0', taxBase: context.grossAmount ?? 0, taxAmount: 0, totalAmount: context.grossAmount ?? 0, documentType: 'NO_FACTURABLE', ruleId: 'KDP_MOR_ROYALTY_DEMO', ruleVersion: this.config.version, explanation: ['Configuración DEMO: regalía marketplace con merchant of record validado'] };
     }
-    if (context.customerCountry !== 'ES' && context.customerType === 'B2C') return { status: 'PENDING_TAX_REVIEW', classification: 'CANDIDATO_OSS_B2C_UE', explanation: ['Operación B2C fuera de España: revisar país de consumo y configuración OSS'], blockingReason: 'OSS_CONFIGURATION_REQUIRED' };
-    const configured = this.config.rates.find((rate) => rate.customerCountry === context.customerCountry && (rate.productNature === context.productNature || rate.productNature === 'general'));
-    if (!configured) return { status: 'PENDING_TAX_REVIEW', explanation: ['No existe una regla fiscal versionada aplicable'], blockingReason: 'NO_APPLICABLE_RULE' };
+    if (context.customerCountry !== 'ES' && context.customerType === 'B2C') return { status: 'PENDIENTE_REVISION_FISCAL', classification: 'REVISION_OSS_B2C_UE', explanation: ['Operación B2C fuera de España: revisar país de consumo y configuración OSS'], blockingReason: 'CONFIGURACION_OSS_REQUERIDA' };
+    const contextProductNature = normalizeProductNature(context.productNature);
+    const configured = this.config.rates.find((rate) => rate.customerCountry === context.customerCountry && (normalizeProductNature(rate.productNature) === contextProductNature || normalizeProductNature(rate.productNature) === 'general'));
+    if (!configured) return { status: 'PENDIENTE_REVISION_FISCAL', explanation: ['No existe una regla fiscal versionada aplicable'], blockingReason: 'REGLA_FISCAL_NO_APLICABLE' };
     const total = money(context.grossAmount ?? 0);
     const taxBase = money(total / (1 + configured.rate));
     const taxAmount = money(total - taxBase);
-    return { status: 'DETERMINED', classification: 'VENTA_NACIONAL', rate: configured.rate.toString(), taxBase, taxAmount, totalAmount: total, documentType: 'FULL_INVOICE', ruleId: configured.id, ruleVersion: this.config.version, explanation: [`Regla ${configured.id} de ${this.config.id}`, 'Tipo obtenido de configuración versionada, no del VAT de plataforma'] };
+    return { status: 'DETERMINADA', classification: normalizeProductNature(configured.productNature) === 'ebook' ? 'VENTA_NACIONAL_B2C_IVA_REDUCIDO' : 'VENTA_NACIONAL_B2C_IVA_GENERAL', rate: configured.rate.toString(), taxBase, taxAmount, totalAmount: total, documentType: 'SIMPLIFICADA', ruleId: configured.id, ruleVersion: this.config.version, explanation: [`Regla ${configured.id} de ${this.config.id}`, 'Tipo obtenido de configuración versionada, no del VAT de plataforma'] };
   }
 }
 

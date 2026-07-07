@@ -31,15 +31,15 @@ describe('TaxDecisionService', () => {
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-1', baseOperation());
 
-    expect(result).toEqual({ status: 'DECIDED', taxDecisionStatus: 'DETERMINED' });
+    expect(result).toEqual({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'DETERMINADA' });
     expect(create).toHaveBeenCalledWith(tenantId, expect.objectContaining({
       canonicalOperationId: 'canonical-op-1',
-      status: 'DETERMINED',
+      status: 'DETERMINADA',
       taxRate: '0.21',
     }));
   });
 
-  it('marca PENDING_TAX_REVIEW para un pedido B2C fuera de España', async () => {
+  it('marca PENDIENTE_REVISION_FISCAL para un pedido B2C fuera de España', async () => {
     const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1', countryCode: 'ES' });
     const create = vi.fn().mockResolvedValue({ id: 'tax-decision-2' });
     const service = new TaxDecisionService({
@@ -50,11 +50,11 @@ describe('TaxDecisionService', () => {
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-2', baseOperation({ customerCountry: 'FR' }));
 
-    expect(result).toEqual({ status: 'DECIDED', taxDecisionStatus: 'PENDING_TAX_REVIEW' });
-    expect(create).toHaveBeenCalledWith(tenantId, expect.objectContaining({ status: 'PENDING_TAX_REVIEW' }));
+    expect(result).toEqual({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'PENDIENTE_REVISION_FISCAL' });
+    expect(create).toHaveBeenCalledWith(tenantId, expect.objectContaining({ status: 'PENDIENTE_REVISION_FISCAL' }));
   });
 
-  it('marca BLOCKED por evidencia fiscal faltante cuando falta el país del cliente', async () => {
+  it('marca BLOQUEADA por evidencia fiscal faltante cuando falta el país del cliente', async () => {
     const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1', countryCode: 'ES' });
     const create = vi.fn().mockResolvedValue({ id: 'tax-decision-3' });
     const service = new TaxDecisionService({
@@ -65,8 +65,8 @@ describe('TaxDecisionService', () => {
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-3', baseOperation({ customerCountry: undefined }));
 
-    expect(result).toEqual({ status: 'DECIDED', taxDecisionStatus: 'BLOCKED' });
-    expect(create).toHaveBeenCalledWith(tenantId, expect.objectContaining({ status: 'BLOCKED' }));
+    expect(result).toEqual({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'BLOQUEADA' });
+    expect(create).toHaveBeenCalledWith(tenantId, expect.objectContaining({ status: 'BLOQUEADA' }));
   });
 
   it('omite la persistencia (sin lanzar error) cuando el tenant no tiene entidad legal configurada', async () => {
@@ -80,7 +80,7 @@ describe('TaxDecisionService', () => {
 
     const result = await service.runTaxDecisionForOperation(tenantId, 'canonical-op-4', baseOperation());
 
-    expect(result).toEqual({ status: 'SKIPPED_NO_LEGAL_ENTITY' });
+    expect(result).toEqual({ status: 'EMISOR_NO_CONFIGURADO' });
     expect(create).not.toHaveBeenCalled();
   });
 });

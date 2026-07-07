@@ -489,3 +489,56 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
 - **SHA corto:** pendiente de commit.
 - **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 2 — Clasificación de ventas
   Shopify y decisiones fiscales.
+
+## REFACTOR FISCAL SHOPIFY — FASE 2 — Clasificación y decisión fiscal
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** clasificar ventas Shopify confirmadas y persistir decisiones
+  fiscales con nuevos valores canónicos españoles.
+- **Motor fiscal:** `@anclora/tax-engine` devuelve `DETERMINADA`,
+  `PENDIENTE_REVISION_FISCAL` o `BLOQUEADA`, clasifica ventas nacionales B2C
+  con IVA reducido/general y emite tipo documental `SIMPLIFICADA`.
+- **Normalización de producto:** `ebook` y `LIBRO_ELECTRONICO` se tratan como
+  la misma naturaleza fiscal para que la configuración real de Fase 1 no rompa
+  importaciones Shopify existentes.
+- **Caso fiscal Shopify:** `ConfirmedOrderFiscalCaseService` crea operaciones
+  con `VENTA_SHOPIFY`, `PENDIENTE_DECISION_FISCAL` y
+  `EVIDENCIA_INTERNA_PENDIENTE`; los pedidos de importe cero quedan en revisión
+  y no generan operación fiscal.
+- **Persistencia:** `DrizzleOperationsRepository.create()` asigna a nuevos
+  registros `reviewStatus=PENDIENTE` y `verifactuStatus=NO_CONFIGURADO`.
+- **UI:** se añadieron traducciones para los estados y clasificaciones
+  españoles en `display-labels` y el simulador fiscal reconoce ambos esquemas.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/tax-engine test
+  Test Files 1 passed / Tests 4 passed
+
+  pnpm --filter @anclora/api test -- tax-decision-service confirmed-order-fiscal-case-service matching-service
+  Test Files 26 passed / Tests 185 passed
+
+  pnpm --filter @anclora/db test -- operations-repository
+  Test Files 19 passed / Tests 101 passed
+
+  pnpm --filter @anclora/web test -- tax-rules sales/shopify
+  Test Files 26 passed / Tests 68 passed
+
+  pnpm --filter @anclora/tax-engine typecheck
+  pnpm --filter @anclora/api typecheck
+  pnpm --filter @anclora/db typecheck
+  pnpm --filter @anclora/web typecheck
+  todos sin errores
+
+  pnpm --filter @anclora/tax-engine lint
+  pnpm --filter @anclora/api lint
+  pnpm --filter @anclora/db lint
+  pnpm --filter @anclora/web lint
+  todos sin errores
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 3 — Documentos fiscales
+  simplificados, completos y rectificativos.

@@ -64,8 +64,8 @@ export interface TaxDecisionServiceDependencies {
 }
 
 export type TaxDecisionResult =
-  | { status: 'DECIDED'; taxDecisionStatus: TaxDecision['status'] }
-  | { status: 'SKIPPED_NO_LEGAL_ENTITY' };
+  | { status: 'DECISION_REGISTRADA'; taxDecisionStatus: TaxDecision['status'] }
+  | { status: 'EMISOR_NO_CONFIGURADO' };
 
 /**
  * Runs the versioned tax engine against an already-loaded canonical
@@ -90,7 +90,7 @@ export class TaxDecisionService {
       console.warn(
         `[tax-decision-service] No hay entidad legal configurada para el tenant ${tenantId}; se omite la decisión fiscal de la operación ${canonicalOperationId}`,
       );
-      return { status: 'SKIPPED_NO_LEGAL_ENTITY' };
+      return { status: 'EMISOR_NO_CONFIGURADO' };
     }
 
     const context: TaxContext = {
@@ -110,7 +110,7 @@ export class TaxDecisionService {
     const taxConfiguration = await this.dependencies.taxConfigurationRepository.getTaxEngineConfig(tenantId);
     const decision: TaxDecision = taxConfiguration
       ? new VersionedTaxEngine(taxConfiguration).evaluate(context)
-      : { status: 'BLOCKED', explanation: ['No existe una configuración fiscal persistida aplicable'], blockingReason: 'FISCAL_CONFIGURATION_MISSING' };
+      : { status: 'BLOQUEADA', explanation: ['No existe una configuración fiscal persistida aplicable'], blockingReason: 'CONFIGURACION_FISCAL_NO_DISPONIBLE' };
 
     await this.dependencies.taxDecisionsRepository.create(tenantId, {
       canonicalOperationId,
@@ -124,6 +124,6 @@ export class TaxDecisionService {
       explanation: decision.explanation,
     });
 
-    return { status: 'DECIDED', taxDecisionStatus: decision.status };
+    return { status: 'DECISION_REGISTRADA', taxDecisionStatus: decision.status };
   }
 }

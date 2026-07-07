@@ -14,15 +14,15 @@ export class ConfirmedOrderFiscalCaseService {
   constructor(private readonly dependencies: Dependencies) {}
   async createForConfirmedOrder(tenantId: string, commercialOrderId: string) {
     const order = await this.dependencies.commercialOrdersRepository.findById(tenantId, commercialOrderId);
-    if (!order) return { status: 'SKIPPED_ORDER_NOT_FOUND' } as const;
-    if (order.fiscalStatus === 'ZERO_VALUE_REVIEW' || Number(order.totalAmount ?? 0) === 0) return { status: 'SKIPPED_ZERO_VALUE_REVIEW' } as const;
+    if (!order) return { status: 'PEDIDO_NO_ENCONTRADO' } as const;
+    if (order.fiscalStatus === 'ZERO_VALUE_REVIEW' || Number(order.totalAmount ?? 0) === 0) return { status: 'REVISION_IMPORTE_CERO' } as const;
     const legalEntity = await this.dependencies.legalEntitiesRepository.findFirstByTenant(tenantId);
-    if (!legalEntity) return { status: 'SKIPPED_NO_LEGAL_ENTITY' } as const;
+    if (!legalEntity) return { status: 'EMISOR_NO_CONFIGURADO' } as const;
     const grossAmount = Number(order.totalAmount ?? 0);
     const operation = await this.dependencies.operationsRepository.create(tenantId, legalEntity.id, {
-      sourceChannel: order.sourceChannel, sourceOrderId: order.externalOrderId, operationType: 'SALE', operationStatus: 'PENDING_TAX_REVIEW', reconciliationStatus: 'EVIDENCE_PENDING', grossAmount, platformFeeAmount: 0, netAmount: grossAmount, currency: 'EUR', anomalyFlags: [], customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature, customerEmail: order.customerEmail, customerAddress: order.customerAddress,
+      sourceChannel: order.sourceChannel, sourceOrderId: order.externalOrderId, operationType: 'VENTA_SHOPIFY', operationStatus: 'PENDIENTE_DECISION_FISCAL', reconciliationStatus: 'EVIDENCIA_INTERNA_PENDIENTE', grossAmount, platformFeeAmount: 0, netAmount: grossAmount, currency: 'EUR', anomalyFlags: [], customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature, customerEmail: order.customerEmail, customerAddress: order.customerAddress,
     });
-    if (this.dependencies.taxDecisionService) await this.dependencies.taxDecisionService.runTaxDecisionForOperation(tenantId, operation.id, { id: operation.id, sourceChannel: order.sourceChannel, operationType: 'SALE', grossAmount, originalCurrency: 'EUR', customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature });
-    return { status: 'CREATED', canonicalOperationId: operation.id } as const;
+    if (this.dependencies.taxDecisionService) await this.dependencies.taxDecisionService.runTaxDecisionForOperation(tenantId, operation.id, { id: operation.id, sourceChannel: order.sourceChannel, operationType: 'VENTA_SHOPIFY', grossAmount, originalCurrency: 'EUR', customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature });
+    return { status: 'CREADA', canonicalOperationId: operation.id } as const;
   }
 }
