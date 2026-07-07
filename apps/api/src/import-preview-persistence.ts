@@ -1,12 +1,8 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import type { ImportPreviewResponse } from './import-service.js';
 
-/**
- * SHOPIFY-06: Shopify `Financial Status` values that indicate an order has
- * been confirmed (charge captured) — see
- * triggerFiscalOperationForConfirmedOrders below.
- */
-const CONFIRMED_ORDER_FINANCIAL_STATUSES = new Set(['paid', 'partially_refunded', 'refunded']);
+const CONFIRMED_PAYMENT_EVENT_KINDS = new Set(['sale', 'capture']);
+const CONFIRMED_PAYMENT_EVENT_STATUSES = new Set(['success', 'succeeded']);
 
 export interface ImportPreviewRepositoryPort {
   persist(input: {
@@ -56,7 +52,12 @@ export interface ConfirmedOrderFiscalCasePort {
   createForConfirmedOrder(tenantId: string, commercialOrderId: string): Promise<unknown>;
 }
 
-export interface PersistedShopifyOrderPaymentEvent { id: string; }
+export interface PersistedShopifyOrderPaymentEvent {
+  id: string;
+  commercialOrderId?: string | null;
+  kind?: string;
+  status?: string;
+}
 export interface PersistedShopifyPaymentsLedgerEntry { id: string; }
 
 /**
@@ -190,15 +191,9 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       // idempotent on both unique indexes — never overwrites existing rows.
       const result = await this.commercialOrdersRepository.createManyWithLines(tenantId, preview.commercialOrderGroups);
       createdRecordIds.commercialOrders = result.orders.map((order) => order.id);
-      await this.triggerFiscalOperationForConfirmedOrders(
-        tenantId,
-        result.orders,
-        preview.commercialOrderGroups.map((group) => group.order),
-      );
     } else if (this.commercialOrdersRepository && preview.commercialOrders) {
       const createdOrders = await this.commercialOrdersRepository.createMany(tenantId, preview.commercialOrders);
       createdRecordIds.commercialOrders = createdOrders.map((order) => order.id);
-      await this.triggerFiscalOperationForConfirmedOrders(tenantId, createdOrders, preview.commercialOrders);
     }
 
     if (this.financialEventsRepository && preview.financialEvents) {
@@ -210,6 +205,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
       const rows = await this.resolveShopifyOrderName(tenantId, preview.orderTransactions);
       const created = await this.shopifyOrderPaymentEventsRepository.createMany(tenantId, importFileId, rows);
       createdRecordIds.shopifyOrderPaymentEvents = created.map((row) => row.id);
+      await this.triggerFiscalOperationForConfirmedPaymentEvents(tenantId, created);
     }
 
     if (this.shopifyPaymentsLedgerRepository && preview.paymentsLedger) {
@@ -255,34 +251,31 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
   }
 
   /**
-   * SHOPIFY-06: fiscal-operation/sales-case creation now triggers from a
-   * *confirmed order*, not from a match event. Replaces the prior
-   * match-driven triggers (triggerMatchingForNewOrders/NewEvents, which ran
-   * matching the moment any counterpart financial_event existed, regardless
-   * of the order's own commercial state — and which, in this codebase, were
-   * never actually wired to a call site). "Confirmed" is read off Shopify's
-   * own `Financial Status` signal (financialStatus), already captured on
-   * commercial_orders per FASE 02/03 normalization: 'paid',
-   * 'partially_refunded', and 'refunded' all imply the order was captured
-   * (refunds only happen after a successful charge); 'pending', 'authorized',
-   * and 'voided' do not. Non-fatal per row — a matching/persistence failure
-   * for one order must never block the rest of the import commit.
+   * FASE 4: fiscal case creation and automatic issuance are triggered from a
+   * persisted Shopify payment transaction that proves a successful charge
+   * (`sale`/`capture` + success), never from the order CSV, ledger, payout or
+   * bank reconciliation. Non-fatal per event: an issuance failure must not
+   * roll back the confirmed evidence import.
    */
-  private async triggerFiscalOperationForConfirmedOrders(
+  private async triggerFiscalOperationForConfirmedPaymentEvents(
     tenantId: string,
-    createdOrders: PersistedCommercialOrder[],
-    sourceRows: ReadonlyArray<{ externalOrderId: string; financialStatus?: string | null | undefined }>,
+    events: PersistedShopifyOrderPaymentEvent[],
   ): Promise<void> {
     if (!this.confirmedOrderFiscalCaseService) return;
-    const financialStatusByExternalId = new Map(sourceRows.map((row) => [row.externalOrderId, row.financialStatus]));
-    for (const order of createdOrders) {
-      const financialStatus = financialStatusByExternalId.get(order.externalOrderId);
-      if (!financialStatus || !CONFIRMED_ORDER_FINANCIAL_STATUSES.has(financialStatus)) continue;
+    const processedOrderIds = new Set<string>();
+    for (const event of events) {
+      if (!event.commercialOrderId || processedOrderIds.has(event.commercialOrderId) || !isConfirmedPaymentEvent(event)) continue;
+      processedOrderIds.add(event.commercialOrderId);
       try {
-        await this.confirmedOrderFiscalCaseService.createForConfirmedOrder(tenantId, order.id);
+        await this.confirmedOrderFiscalCaseService.createForConfirmedOrder(tenantId, event.commercialOrderId);
       } catch (error) {
-        console.error(`[import-preview-persistence] Fallo al crear la operación fiscal para el pedido confirmado ${order.id}`, error);
+        console.error(`[import-preview-persistence] Fallo al crear la operación fiscal para el pago confirmado ${event.id}`, error);
       }
     }
   }
+}
+
+function isConfirmedPaymentEvent(event: PersistedShopifyOrderPaymentEvent): boolean {
+  return CONFIRMED_PAYMENT_EVENT_KINDS.has((event.kind ?? '').toLowerCase())
+    && CONFIRMED_PAYMENT_EVENT_STATUSES.has((event.status ?? '').toLowerCase());
 }

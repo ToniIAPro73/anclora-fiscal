@@ -55,10 +55,13 @@ describe('evaluateManualIssuanceGate (SHOPIFY-06 manual issuance gating)', () =>
   it.each([
     ['hasOrderEvidence' as const],
     ['hasTransactionsEvidence' as const],
-    ['hasLedgerEvidence' as const],
-  ])('bloquea por evidencia insuficiente cuando falta %s (orden + transacciones + ledger)', (flag) => {
+  ])('bloquea por evidencia insuficiente cuando falta %s (orden + transacción confirmada)', (flag) => {
     const operation = fullyEligibleOperation({ [flag]: false });
     expect(evaluateManualIssuanceGate('ADMIN', operation)).toEqual({ allowed: false, reason: 'INSUFFICIENT_EVIDENCE' });
+  });
+
+  it('no exige ledger ni payout para emitir cuando existe transacción Shopify confirmada', () => {
+    expect(evaluateManualIssuanceGate('ADMIN', fullyEligibleOperation({ hasLedgerEvidence: false }))).toEqual({ allowed: true });
   });
 
   it('bloquea cuando no hay una decisión fiscal determinada', () => {
@@ -106,6 +109,28 @@ describe('InvoiceIssuanceService.issueManually (explicit, role-gated action)', (
     const result = await service.issueManually({ tenantId, actorId, role: 'ADMIN', operation: fullyEligibleOperation() });
 
     expect(result).toEqual({ status: 'ISSUE_FAILED', reason: 'FISCAL_CONFIGURATION_INCOMPLETE' });
+  });
+});
+
+describe('InvoiceIssuanceService.issueAutomatically (confirmed Shopify payment)', () => {
+  it('emite con actorId null y sin exigir ledger/payout', async () => {
+    const issue = vi.fn().mockResolvedValue({ ok: true, document: { id: 'doc-auto' }, alreadyIssued: false });
+    const service = new InvoiceIssuanceService({ fiscalDocumentsRepository: { issue, rectify: vi.fn() }, storage: new InMemoryStorage() });
+
+    const result = await service.issueAutomatically({ tenantId, operation: fullyEligibleOperation({ hasLedgerEvidence: false }) });
+
+    expect(issue).toHaveBeenCalledWith({ tenantId, actorId: null, canonicalOperationId: 'op-1', storage: expect.anything() });
+    expect(result).toEqual({ status: 'ISSUED', documentId: 'doc-auto' });
+  });
+
+  it('bloquea automáticamente si no hay transacción confirmada', async () => {
+    const issue = vi.fn();
+    const service = new InvoiceIssuanceService({ fiscalDocumentsRepository: { issue, rectify: vi.fn() }, storage: new InMemoryStorage() });
+
+    const result = await service.issueAutomatically({ tenantId, operation: fullyEligibleOperation({ hasTransactionsEvidence: false }) });
+
+    expect(issue).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: 'BLOCKED', reason: 'INSUFFICIENT_EVIDENCE' });
   });
 });
 

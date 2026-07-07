@@ -584,6 +584,46 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   todos sin errores
   ```
 
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `98fb103`.
 - **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 4 — Orquestación de emisión
   desde pagos Shopify confirmados.
+
+## REFACTOR FISCAL SHOPIFY — FASE 4 — Orquestación desde eventos Shopify
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** disparar expediente fiscal, decisión y emisión desde
+  transacciones Shopify confirmadas, sin depender de ledger, payout, banco ni
+  matching.
+- **Disparador:** `ImportPreviewPersistenceService` invoca el caso fiscal sólo
+  después de persistir `shopify_order_payment_events` con `kind` `sale` o
+  `capture` y estado `success`/`succeeded`; `authorization`, fallidos y
+  pendientes no emiten.
+- **Independencia semántica:** el CSV de pedidos, el ledger de Shopify
+  Payments, payout y conciliación reconstruyen evidencia y enlaces, pero no
+  disparan la emisión.
+- **Orquestación:** `ConfirmedOrderFiscalCaseService` crea o actualiza la
+  operación canónica, registra decisión fiscal y llama a
+  `InvoiceIssuanceService.issueAutomatically()` sólo si la decisión queda
+  `DETERMINADA`.
+- **Política compartida:** la emisión manual de Ventas Shopify usa la misma
+  política que la automática y deja de exigir ledger/payout; exige pedido,
+  transacción confirmada, configuración, perfil y decisión fiscal.
+- **Idempotencia:** dentro de un mismo import, `sale` y `capture` del mismo
+  pedido sólo provocan una orquestación; reintentos y duplicados siguen
+  protegidos por la idempotencia de repositorios y documentos.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/api typecheck
+  sin errores
+
+  pnpm --filter @anclora/api lint
+  sin errores
+
+  pnpm --filter @anclora/api test -- invoice-issuance-service confirmed-order-fiscal-case-service import-preview-persistence shopify-sales-controller
+  Test Files 26 passed / Tests 190 passed
+  ```
+
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 5 — Read models y
+  experiencia operativa.

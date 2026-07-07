@@ -22,16 +22,18 @@ describe('ConfirmedOrderFiscalCaseService', () => {
     const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
     const create = vi.fn().mockResolvedValue({ id: 'canonical-op-1' });
     const runTaxDecisionForOperation = vi.fn().mockResolvedValue({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'DETERMINADA' });
+    const issueAutomatically = vi.fn().mockResolvedValue({ status: 'ISSUED', documentId: 'doc-1' });
     const service = new ConfirmedOrderFiscalCaseService({
       commercialOrdersRepository: { findById },
       legalEntitiesRepository: { findFirstByTenant },
       operationsRepository: { create },
       taxDecisionService: { runTaxDecisionForOperation },
+      invoiceIssuanceService: { issueAutomatically },
     });
 
     const result = await service.createForConfirmedOrder(tenantId, 'order-1');
 
-    expect(result).toEqual({ status: 'CREADA', canonicalOperationId: 'canonical-op-1' });
+    expect(result).toEqual({ status: 'CREADA', canonicalOperationId: 'canonical-op-1', issuance: { status: 'ISSUED', documentId: 'doc-1' } });
     expect(create).toHaveBeenCalledWith(tenantId, 'legal-entity-1', expect.objectContaining({
       sourceChannel: 'SHOPIFY',
       sourceOrderId: 'AI-1001',
@@ -48,6 +50,28 @@ describe('ConfirmedOrderFiscalCaseService', () => {
       customerType: 'B2C',
       productNature: 'ebook',
     }));
+    expect(issueAutomatically).toHaveBeenCalledWith({
+      tenantId,
+      operation: expect.objectContaining({
+        id: 'canonical-op-1',
+        hasTransactionsEvidence: true,
+        hasTaxDecision: true,
+      }),
+    });
+  });
+
+  it('no emite automáticamente si la decisión fiscal no está determinada', async () => {
+    const issueAutomatically = vi.fn();
+    const service = new ConfirmedOrderFiscalCaseService({
+      commercialOrdersRepository: { findById: vi.fn().mockResolvedValue(paidOrder) },
+      legalEntitiesRepository: { findFirstByTenant: vi.fn().mockResolvedValue({ id: 'legal-entity-1' }) },
+      operationsRepository: { create: vi.fn().mockResolvedValue({ id: 'canonical-op-1' }) },
+      taxDecisionService: { runTaxDecisionForOperation: vi.fn().mockResolvedValue({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'PENDIENTE_REVISION_OSS' }) },
+      invoiceIssuanceService: { issueAutomatically },
+    });
+
+    await expect(service.createForConfirmedOrder(tenantId, 'order-1')).resolves.toEqual({ status: 'CREADA', canonicalOperationId: 'canonical-op-1' });
+    expect(issueAutomatically).not.toHaveBeenCalled();
   });
 
   it('deriva pedidos de importe cero a revisión sin crear operación', async () => {

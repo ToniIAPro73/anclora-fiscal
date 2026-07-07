@@ -30,9 +30,9 @@ export type RectifyInvoiceResult =
   | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' };
 
 export interface FiscalDocumentsRepositoryPort {
-  issue(input: { tenantId: string; actorId: string; canonicalOperationId: string; storage: StoragePort }): Promise<IssueInvoiceResult>;
+  issue(input: { tenantId: string; actorId: string | null; canonicalOperationId: string; storage: StoragePort }): Promise<IssueInvoiceResult>;
   findById?(tenantId: string, fiscalDocumentId: string): Promise<FiscalDocument | null>;
-  rectify?(input: { tenantId: string; actorId: string; fiscalDocumentId: string; storage: StoragePort }): Promise<RectifyInvoiceResult>;
+  rectify?(input: { tenantId: string; actorId: string | null; fiscalDocumentId: string; storage: StoragePort }): Promise<RectifyInvoiceResult>;
 }
 
 export function createInvoiceIssueHandler(dependencies: {

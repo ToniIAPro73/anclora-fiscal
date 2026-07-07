@@ -6,7 +6,21 @@ interface Dependencies {
   commercialOrdersRepository: { findById(tenantId: string, id: string): Promise<Order | undefined> };
   legalEntitiesRepository: { findFirstByTenant(tenantId: string): Promise<{ id: string } | undefined> };
   operationsRepository: { create(tenantId: string, legalEntityId: string, draft: CanonicalOperationDraftInput): Promise<{ id: string }> };
-  taxDecisionService?: { runTaxDecisionForOperation(tenantId: string, operationId: string, operation: TaxDecisionCanonicalOperation): Promise<unknown> };
+  taxDecisionService?: { runTaxDecisionForOperation(tenantId: string, operationId: string, operation: TaxDecisionCanonicalOperation): Promise<{ status?: string; taxDecisionStatus?: string } | unknown> };
+  invoiceIssuanceService?: {
+    issueAutomatically(input: {
+      tenantId: string;
+      operation: {
+        id: string;
+        fiscalStatus: string;
+        hasFiscalConfiguration: boolean;
+        hasFiscalProfile: boolean;
+        hasOrderEvidence: boolean;
+        hasTransactionsEvidence: boolean;
+        hasTaxDecision: boolean;
+      };
+    }): Promise<unknown>;
+  };
 }
 
 /** Creates the fiscal case from confirmed commercial evidence; matching and bank evidence are not prerequisites. */
@@ -22,7 +36,28 @@ export class ConfirmedOrderFiscalCaseService {
     const operation = await this.dependencies.operationsRepository.create(tenantId, legalEntity.id, {
       sourceChannel: order.sourceChannel, sourceOrderId: order.externalOrderId, operationType: 'VENTA_SHOPIFY', operationStatus: 'PENDIENTE_DECISION_FISCAL', reconciliationStatus: 'EVIDENCIA_INTERNA_PENDIENTE', grossAmount, platformFeeAmount: 0, netAmount: grossAmount, currency: 'EUR', anomalyFlags: [], customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature, customerEmail: order.customerEmail, customerAddress: order.customerAddress,
     });
-    if (this.dependencies.taxDecisionService) await this.dependencies.taxDecisionService.runTaxDecisionForOperation(tenantId, operation.id, { id: operation.id, sourceChannel: order.sourceChannel, operationType: 'VENTA_SHOPIFY', grossAmount, originalCurrency: 'EUR', customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature });
+    const taxDecisionResult = this.dependencies.taxDecisionService
+      ? await this.dependencies.taxDecisionService.runTaxDecisionForOperation(tenantId, operation.id, { id: operation.id, sourceChannel: order.sourceChannel, operationType: 'VENTA_SHOPIFY', grossAmount, originalCurrency: 'EUR', customerCountry: order.customerCountry, customerType: order.customerType, productNature: order.productNature })
+      : undefined;
+    if (this.dependencies.invoiceIssuanceService && isDeterminedTaxDecision(taxDecisionResult)) {
+      const issuance = await this.dependencies.invoiceIssuanceService.issueAutomatically({
+        tenantId,
+        operation: {
+          id: operation.id,
+          fiscalStatus: order.fiscalStatus,
+          hasFiscalConfiguration: true,
+          hasFiscalProfile: true,
+          hasOrderEvidence: true,
+          hasTransactionsEvidence: true,
+          hasTaxDecision: true,
+        },
+      });
+      return { status: 'CREADA', canonicalOperationId: operation.id, issuance } as const;
+    }
     return { status: 'CREADA', canonicalOperationId: operation.id } as const;
   }
+}
+
+function isDeterminedTaxDecision(result: unknown): result is { taxDecisionStatus: 'DETERMINADA' } {
+  return Boolean(result && typeof result === 'object' && 'taxDecisionStatus' in result && result.taxDecisionStatus === 'DETERMINADA');
 }
