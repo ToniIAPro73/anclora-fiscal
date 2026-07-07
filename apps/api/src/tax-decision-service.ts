@@ -46,6 +46,7 @@ export interface NewTaxDecisionInput {
   taxRate?: string | null | undefined;
   taxAmount?: string | null | undefined;
   totalAmount?: string | null | undefined;
+  documentType?: TaxDecision['documentType'] | undefined;
   explanation: string[];
 }
 
@@ -121,6 +122,7 @@ export class TaxDecisionService {
       taxRate: decision.rate,
       taxAmount: decision.taxAmount !== undefined ? String(decision.taxAmount) : undefined,
       totalAmount: decision.totalAmount !== undefined ? String(decision.totalAmount) : undefined,
+      documentType: decision.documentType,
       explanation: decision.explanation,
     });
 

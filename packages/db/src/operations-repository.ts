@@ -140,7 +140,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,
@@ -149,7 +149,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,
@@ -158,7 +158,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,
@@ -167,7 +167,7 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}
-              and fd.document_type = 'FULL_INVOICE'
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
             order by fd.issued_at desc
             limit 1
           )`,

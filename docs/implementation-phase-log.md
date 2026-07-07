@@ -114,7 +114,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   `/imports`, `/sales/shopify`, `/reconciliation`, `/invoicing`, `/verifactu`, `/tax-rules`,
   `/tax-periods` y `/settings` en escritorio, además de `/imports` a 390 px; no se detectó
   overflow horizontal (`scrollWidth === clientWidth`).
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `bc4aa2a`.
 - **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition`.
 - **Limitaciones abiertas:**
   - La navegación móvil prioriza marca, cierre de sesión y contenido; el menú completo requiere
@@ -539,6 +539,51 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
 
   Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
   web y no bloquean la suite.
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `365e154`.
 - **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 3 — Documentos fiscales
   simplificados, completos y rectificativos.
+
+## REFACTOR FISCAL SHOPIFY — FASE 3 — Documentos fiscales
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** emitir documentos simplificados, completos y rectificativos con
+  tipos y series fiscales españolas, conservando compatibilidad con documentos
+  legacy.
+- **Migración aditiva:** `packages/db/migrations/0017_tax_decision_document_type.sql`.
+  Añade `tax_decisions.document_type` con valor por defecto `COMPLETA` para que
+  las decisiones previas sigan siendo emitibles.
+- **Emisión:** `DrizzleFiscalDocumentsRepository.issue()` selecciona el tipo
+  decidido (`SIMPLIFICADA` o `COMPLETA`), usa las series `FS` o `F`, renderiza el
+  emisor fiscal real en el PDF y mantiene idempotencia por tipo documental.
+- **Rectificación:** `rectify()` acepta originales simplificados/completos,
+  emite `RECTIFICATIVA` con serie `FR`, enlaza el documento original y conserva
+  compatibilidad de lectura con `FULL_INVOICE`/`RECTIFYING_INVOICE`.
+- **Read models:** las operaciones consideran emitidas las facturas
+  `SIMPLIFICADA`, `COMPLETA` y `FULL_INVOICE`, evitando que facturas españolas
+  desaparezcan de facturación.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/core build
+  correcto
+
+  pnpm --filter @anclora/core test -- invoicing
+  Test Files 7 passed / Tests 25 passed
+
+  pnpm --filter @anclora/db test -- fiscal-documents-repository
+  Test Files 19 passed / Tests 102 passed
+
+  pnpm --filter @anclora/core typecheck
+  pnpm --filter @anclora/db typecheck
+  pnpm --filter @anclora/api typecheck
+  todos sin errores
+
+  pnpm --filter @anclora/core lint
+  pnpm --filter @anclora/db lint
+  pnpm --filter @anclora/api lint
+  todos sin errores
+  ```
+
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 4 — Orquestación de emisión
+  desde pagos Shopify confirmados.

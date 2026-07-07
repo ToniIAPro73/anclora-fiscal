@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { createIntegrityRecord, InvoiceSequence, issueInvoice, rectifyInvoice, type StoragePort } from '@anclora/core/server';
@@ -37,8 +37,27 @@ export type RectifyInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyRectified: boolean }
   | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' };
 
-const FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
-const RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
+const SIMPLIFIED_DOCUMENT_TYPE = 'SIMPLIFICADA';
+const FULL_DOCUMENT_TYPE = 'COMPLETA';
+const RECTIFYING_DOCUMENT_TYPE = 'RECTIFICATIVA';
+const LEGACY_FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
+const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
+
+function issuedDocumentType(decision: { documentType?: string | null }): typeof SIMPLIFIED_DOCUMENT_TYPE | typeof FULL_DOCUMENT_TYPE {
+  if (decision.documentType === SIMPLIFIED_DOCUMENT_TYPE || decision.documentType === FULL_DOCUMENT_TYPE) return decision.documentType;
+  if (decision.documentType === 'SIMPLIFIED_INVOICE') return SIMPLIFIED_DOCUMENT_TYPE;
+  return FULL_DOCUMENT_TYPE;
+}
+
+function documentTypeSeriesCandidates(documentType: string): string[] {
+  if (documentType === SIMPLIFIED_DOCUMENT_TYPE) return [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE'];
+  if (documentType === RECTIFYING_DOCUMENT_TYPE) return [RECTIFYING_DOCUMENT_TYPE, LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE];
+  return [FULL_DOCUMENT_TYPE, LEGACY_FULL_INVOICE_DOCUMENT_TYPE];
+}
+
+function originalDocumentCanBeRectified(documentType: string) {
+  return [SIMPLIFIED_DOCUMENT_TYPE, FULL_DOCUMENT_TYPE, LEGACY_FULL_INVOICE_DOCUMENT_TYPE].includes(documentType);
+}
 
 export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResultHKT> {
   constructor(
@@ -55,8 +74,8 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
   }
 
   /**
-   * Issues a full invoice for a canonical operation, tenant-scoped end to
-   * end. Idempotent: if a FULL_INVOICE fiscalDocuments row already exists
+   * Issues the fiscal document decided for a canonical operation, tenant-scoped
+   * end to end. Idempotent: if a document for the same decided type already exists
    * for (tenantId, canonicalOperationId), it is returned unchanged — no
    * second invoice number is burned, no second PDF is written to storage,
    * and no second integrityChainRecords row is inserted. The invoiceSeries
@@ -73,17 +92,6 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .limit(1);
       if (!operation) return { ok: false, reason: 'OPERATION_NOT_FOUND' };
 
-      const [existing] = await transaction
-        .select()
-        .from(fiscalDocuments)
-        .where(and(
-          eq(fiscalDocuments.tenantId, input.tenantId),
-          eq(fiscalDocuments.canonicalOperationId, input.canonicalOperationId),
-          eq(fiscalDocuments.documentType, FULL_INVOICE_DOCUMENT_TYPE),
-        ))
-        .limit(1);
-      if (existing) return { ok: true, document: existing, alreadyIssued: true };
-
       const [decision] = await transaction
         .select()
         .from(taxDecisions)
@@ -91,6 +99,18 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .orderBy(desc(taxDecisions.decidedAt))
         .limit(1);
       if (!decision) return { ok: false, reason: 'TAX_DECISION_MISSING' };
+      const documentType = issuedDocumentType(decision);
+
+      const [existing] = await transaction
+        .select()
+        .from(fiscalDocuments)
+        .where(and(
+          eq(fiscalDocuments.tenantId, input.tenantId),
+          eq(fiscalDocuments.canonicalOperationId, input.canonicalOperationId),
+          inArray(fiscalDocuments.documentType, documentTypeSeriesCandidates(documentType)),
+        ))
+        .limit(1);
+      if (existing) return { ok: true, document: existing, alreadyIssued: true };
 
       const [issuer] = await transaction.select().from(legalEntities).where(and(
         eq(legalEntities.tenantId, input.tenantId),
@@ -110,7 +130,7 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .where(and(
           eq(invoiceSeries.tenantId, input.tenantId),
           eq(invoiceSeries.legalEntityId, operation.legalEntityId),
-          eq(invoiceSeries.documentType, FULL_INVOICE_DOCUMENT_TYPE),
+          inArray(invoiceSeries.documentType, documentTypeSeriesCandidates(documentType)),
         ))
         .limit(1);
 
@@ -124,14 +144,16 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         customerLabel: operation.sourceOrderId ? `Operación ${operation.sourceOrderId}` : `Operación ${operation.id}`,
         ...(operation.customerAddress ? { customerAddress: operation.customerAddress } : {}),
         ...(operation.customerEmail ? { customerEmail: operation.customerEmail } : {}),
-        description: `Operación ${operation.operationType}`,
+        issuerName: issuer.legalName,
+        issuerAddress: issuer.address,
+        description: productProfile.invoiceDescription,
         taxBase: Number(decision.taxBase ?? 0),
         taxRate: Number(decision.taxRate ?? 0),
         taxAmount: Number(decision.taxAmount ?? 0),
         totalAmount: Number(decision.totalAmount ?? 0),
         currency: 'EUR',
         issuedAt: issuedAt.toISOString(),
-      });
+      }, documentType);
 
       await transaction
         .update(invoiceSeries)
@@ -146,7 +168,7 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
           tenantId: input.tenantId,
           canonicalOperationId: input.canonicalOperationId,
           number: invoice.number,
-          documentType: FULL_INVOICE_DOCUMENT_TYPE,
+          documentType: invoice.type,
           status: 'ISSUED',
           issuedAt,
           taxBase: String(decision.taxBase ?? 0),
@@ -203,10 +225,10 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
   }
 
   /**
-   * Rectifies a previously issued full invoice, tenant-scoped end to end.
+   * Rectifies a previously issued simplified/full invoice, tenant-scoped end to end.
    * The original document must belong to the tenant, be `status: 'ISSUED'`
-   * and `documentType: 'FULL_INVOICE'` — anything else is
-   * `INVALID_DOCUMENT_STATE`. Idempotent: if a RECTIFYING_INVOICE row
+   * and a rectifiable document type — anything else is
+   * `INVALID_DOCUMENT_STATE`. Idempotent: if a rectifying document row
    * already exists for `originalDocumentId`, it is returned unchanged — no
    * second invoice number is burned, no second PDF is written to storage,
    * and no second integrityChainRecords row is inserted. The invoiceSeries
@@ -222,7 +244,7 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .where(and(eq(fiscalDocuments.tenantId, input.tenantId), eq(fiscalDocuments.id, input.fiscalDocumentId)))
         .limit(1);
       if (!original) return { ok: false, reason: 'DOCUMENT_NOT_FOUND' };
-      if (original.status !== 'ISSUED' || original.documentType !== FULL_INVOICE_DOCUMENT_TYPE) {
+      if (original.status !== 'ISSUED' || !originalDocumentCanBeRectified(original.documentType)) {
         return { ok: false, reason: 'INVALID_DOCUMENT_STATE' };
       }
 
@@ -232,7 +254,7 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .where(and(
           eq(fiscalDocuments.tenantId, input.tenantId),
           eq(fiscalDocuments.originalDocumentId, original.id),
-          eq(fiscalDocuments.documentType, RECTIFYING_INVOICE_DOCUMENT_TYPE),
+          inArray(fiscalDocuments.documentType, documentTypeSeriesCandidates(RECTIFYING_DOCUMENT_TYPE)),
         ))
         .limit(1);
       if (existing) return { ok: true, document: existing, alreadyRectified: true };
@@ -250,6 +272,11 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .where(and(eq(taxDecisions.tenantId, input.tenantId), eq(taxDecisions.canonicalOperationId, original.canonicalOperationId)))
         .orderBy(desc(taxDecisions.decidedAt))
         .limit(1);
+      const [issuer] = await transaction
+        .select()
+        .from(legalEntities)
+        .where(and(eq(legalEntities.tenantId, input.tenantId), eq(legalEntities.id, operation.legalEntityId)))
+        .limit(1);
 
       const [existingSeries] = await transaction
         .select()
@@ -257,7 +284,7 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .where(and(
           eq(invoiceSeries.tenantId, input.tenantId),
           eq(invoiceSeries.legalEntityId, operation.legalEntityId),
-          eq(invoiceSeries.documentType, RECTIFYING_INVOICE_DOCUMENT_TYPE),
+          inArray(invoiceSeries.documentType, documentTypeSeriesCandidates(RECTIFYING_DOCUMENT_TYPE)),
         ))
         .limit(1);
 
@@ -266,8 +293,8 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .values({
           tenantId: input.tenantId,
           legalEntityId: operation.legalEntityId,
-          code: RECTIFYING_INVOICE_DOCUMENT_TYPE,
-          documentType: RECTIFYING_INVOICE_DOCUMENT_TYPE,
+          code: 'FR',
+          documentType: RECTIFYING_DOCUMENT_TYPE,
           nextNumber: '1',
         })
         .returning())[0];
@@ -280,12 +307,14 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         {
           id: original.id,
           number: original.number,
-          type: FULL_INVOICE_DOCUMENT_TYPE,
+          type: original.documentType as 'SIMPLIFICADA' | 'COMPLETA' | 'FULL_INVOICE',
           input: {
             operationId: operation.id,
             customerLabel: operation.sourceOrderId ? `Operación ${operation.sourceOrderId}` : `Operación ${operation.id}`,
             ...(operation.customerAddress ? { customerAddress: operation.customerAddress } : {}),
             ...(operation.customerEmail ? { customerEmail: operation.customerEmail } : {}),
+            issuerName: issuer?.legalName ?? 'Emisor fiscal',
+            ...(issuer?.address ? { issuerAddress: issuer.address } : {}),
             description: `Operación ${operation.operationType}`,
             taxBase: Number(original.taxBase),
             taxRate: Number(decision?.taxRate ?? 0),
@@ -314,7 +343,7 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
           tenantId: input.tenantId,
           canonicalOperationId: original.canonicalOperationId,
           number: rectification.number,
-          documentType: RECTIFYING_INVOICE_DOCUMENT_TYPE,
+          documentType: rectification.type,
           status: 'ISSUED',
           originalDocumentId: original.id,
           issuedAt,
