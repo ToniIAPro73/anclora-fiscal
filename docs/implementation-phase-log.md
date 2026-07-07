@@ -52,7 +52,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   Las dos advertencias de `outputs` en `turbo.json` son preexistentes (configuración de caché
   de turbo, no un fallo de lint/typecheck/test) y no bloquearon la ejecución — 26/26 tareas
   completaron con éxito.
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `fa325db`.
 - **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition` (rama local
   `feat/anclora-fiscal-product-redefinition`, último commit previo a esta fase: `94dd1f7`).
 - **Limitaciones abiertas:**
@@ -438,3 +438,54 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   - Read models y UI operativa final corresponden a FASE 5.
 - **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 1 — Emisor fiscal,
   configuración y migración aditiva.
+
+## REFACTOR FISCAL SHOPIFY — FASE 1 — Emisor fiscal y configuración
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** introducir configuración fiscal real del emisor sin duplicar la
+  fuente persistente `legal_entities`.
+- **Migración aditiva:** `packages/db/migrations/0016_fiscal_issuer_refactor.sql`.
+  Añade tipo de emisor, IAE, régimen de IVA, OSS, estado fiscal configurado y
+  marca de NIF/NIE configurado.
+- **Contrato nuevo:** la API acepta payload español con `datosEmisor`, `oss`,
+  `perfilProducto` y `ejercicio`; el contrato legacy sigue disponible.
+- **Protección NIF/NIE:** la API valida NIF/NIE español y lo cifra con secreto de
+  servidor antes de persistir. GET no devuelve nunca el valor en claro ni el
+  cifrado.
+- **Series fiscales:** el guardado real crea de forma idempotente `FS`
+  simplificada, `F` completa y `FR` rectificativa sobre `invoice_series`.
+- **UI:** la pantalla de configuración muestra campos visibles para emisor
+  persona física, NIF/NIE sustituible, IAE, régimen IVA, OSS y resumen de series.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/core test -- spanish-tax-id
+  Test Files 7 passed / Tests 25 passed
+
+  pnpm --filter @anclora/db test -- fiscal-configuration-repository migrations
+  Test Files 19 passed / Tests 101 passed
+
+  pnpm --filter @anclora/api test -- fiscal-configuration-controller
+  Test Files 25 passed / Tests 183 passed
+
+  pnpm --filter @anclora/web test -- settings/page.test.tsx
+  Test Files 26 passed / Tests 68 passed
+
+  pnpm --filter @anclora/core typecheck
+  pnpm --filter @anclora/db typecheck
+  pnpm --filter @anclora/api typecheck
+  pnpm --filter @anclora/web typecheck
+  todos sin errores
+
+  pnpm --filter @anclora/core lint
+  pnpm --filter @anclora/db lint
+  pnpm --filter @anclora/api lint
+  pnpm --filter @anclora/web lint
+  todos sin errores
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 2 — Clasificación de ventas
+  Shopify y decisiones fiscales.

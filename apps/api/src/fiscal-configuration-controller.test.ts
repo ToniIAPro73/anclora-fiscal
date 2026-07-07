@@ -34,4 +34,87 @@ describe('fiscal configuration API', () => {
     expect(response.statusCode).toBe(200);
     expect(saveMinimum).toHaveBeenCalledWith(expect.objectContaining({ tenantId: '01977d43-75de-7000-8000-000000000010', actorId: '01977d43-75de-7000-8000-000000000020' }));
   });
+
+  it('valida NIF/NIE, cifra el identificador y persiste el contrato español del emisor', async () => {
+    const saveIssuerConfiguration = vi.fn().mockResolvedValue({ legalEntity: { taxIdentityEncrypted: 'ciphertext' }, readiness: { ready: true, missing: [] } });
+    const { app, cookie } = await authenticatedApp({ get: vi.fn(), saveMinimum: vi.fn(), saveIssuerConfiguration });
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/fiscal-configuration',
+      headers: { cookie },
+      payload: {
+        datosEmisor: {
+          tipoEmisor: 'PERSONA_FISICA',
+          nombreLegal: 'Antonio Ballesteros Alonso',
+          nombreComercial: 'Anclora Fiscal',
+          nifNie: '12345678Z',
+          direccionFiscal: 'Calle Fiscal 1',
+          emailContacto: 'antonio@example.test',
+          pais: 'ES',
+          moneda: 'EUR',
+          epigrafeIAE: '861.1',
+          regimenIVA: 'REGIMEN_REDUCIDO_LIBROS_ES',
+        },
+        oss: { activo: true, vigenteDesde: '2026-01-01' },
+        perfilProducto: {
+          selector: 'ebook-*',
+          naturalezaProducto: 'LIBRO_ELECTRONICO',
+          descripcionFactura: 'Libro electrónico',
+          codigoIVA: 'ES_IVA_4',
+          tipoIVA: '0.04',
+          elegibleOSS: true,
+          requiereEnvio: false,
+          vigenteDesde: '2026-01-01',
+        },
+        ejercicio: 2026,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).not.toContain('12345678Z');
+    expect(saveIssuerConfiguration).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '01977d43-75de-7000-8000-000000000010',
+      actorId: '01977d43-75de-7000-8000-000000000020',
+      datosEmisor: expect.objectContaining({
+        nifCifrado: expect.stringMatching(/^v1:/),
+        regimenIVA: 'REGIMEN_REDUCIDO_LIBROS_ES',
+      }),
+    }));
+  });
+
+  it('rechaza NIF/NIE inválido en el contrato español', async () => {
+    const saveIssuerConfiguration = vi.fn();
+    const { app, cookie } = await authenticatedApp({ get: vi.fn(), saveMinimum: vi.fn(), saveIssuerConfiguration });
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/fiscal-configuration',
+      headers: { cookie },
+      payload: {
+        datosEmisor: {
+          tipoEmisor: 'PERSONA_FISICA',
+          nombreLegal: 'Antonio Ballesteros Alonso',
+          nifNie: '12345678A',
+          direccionFiscal: 'Calle Fiscal 1',
+          pais: 'ES',
+          moneda: 'EUR',
+          epigrafeIAE: '861.1',
+          regimenIVA: 'REGIMEN_REDUCIDO_LIBROS_ES',
+        },
+        oss: { activo: false },
+        perfilProducto: {
+          selector: 'ebook-*',
+          naturalezaProducto: 'LIBRO_ELECTRONICO',
+          descripcionFactura: 'Libro electrónico',
+          codigoIVA: 'ES_IVA_4',
+          tipoIVA: '0.04',
+          elegibleOSS: true,
+          requiereEnvio: false,
+          vigenteDesde: '2026-01-01',
+        },
+        ejercicio: 2026,
+      },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().issues).toContainEqual(expect.objectContaining({ path: 'datosEmisor.nifNie' }));
+    expect(saveIssuerConfiguration).not.toHaveBeenCalled();
+  });
 });
