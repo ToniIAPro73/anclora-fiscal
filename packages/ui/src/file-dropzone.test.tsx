@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { FileDropzone } from './file-dropzone';
 
@@ -12,6 +12,20 @@ describe('FileDropzone', () => {
   it('shows a hint when provided', () => {
     render(<FileDropzone label="Archivos" onFiles={vi.fn()} hint="CSV o XLSX hasta 10MB" />);
     expect(screen.getByText('CSV o XLSX hasta 10MB')).toBeInTheDocument();
+  });
+
+  it('shows the selected file name and size after choosing a file', () => {
+    render(<FileDropzone label="Archivos" onFiles={vi.fn()} />);
+    const input = screen.getByLabelText('Archivos', { selector: 'input' });
+
+    fireEvent.change(input, {
+      target: {
+        files: [new File(['contenido'], 'pedidos-shopify.csv', { type: 'text/csv' })],
+      },
+    });
+
+    expect(screen.getByText('Archivo seleccionado')).toBeInTheDocument();
+    expect(screen.getByText('pedidos-shopify.csv')).toBeInTheDocument();
   });
 
   it('is focusable and activates the file picker on Enter', () => {

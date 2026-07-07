@@ -189,6 +189,16 @@ export function ImportCard({
     }
   }
 
+  function handleSubmitStart() {
+    setPhase("analyzing");
+    setError("");
+    setPreview(undefined);
+    setConfirmResult(undefined);
+    setRejectResult(undefined);
+    setAcknowledged(new Set());
+    setIsPreviewOpen(false);
+  }
+
   function toggleAcknowledge(issue: ImportIssue) {
     setAcknowledged((current) => {
       const next = new Set(current);
@@ -349,7 +359,12 @@ export function ImportCard({
 
       {!disabled &&
       (phase === "idle" || phase === "analyzing" || phase === "error") ? (
-        <form action={submit} className="drop-panel">
+        <form
+          action={submit}
+          onSubmit={handleSubmitStart}
+          className={`drop-panel${phase === "analyzing" ? " drop-panel-busy" : ""}`}
+          aria-busy={phase === "analyzing"}
+        >
           <FileDropzone
             label={fileFieldLabel}
             name={fileFieldId}

@@ -825,6 +825,11 @@ h2 {
   opacity: 0.55;
   cursor: wait;
 }
+.drop-panel-busy,
+.drop-panel-busy *,
+.drop-panel-busy button:disabled {
+  cursor: progress;
+}
 .dossier-actions {
   display: flex;
   gap: 16px;
@@ -1311,6 +1316,11 @@ body {
   cursor: not-allowed;
   transform: none;
 }
+.drop-panel-busy,
+.drop-panel-busy *,
+.drop-panel-busy button:disabled {
+  cursor: progress;
+}
 
 .metrics {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1588,6 +1598,7 @@ body {
   min-height: 180px;
   display: grid;
   place-content: center;
+  gap: 16px;
   padding: 30px;
   border-radius: 18px;
   text-align: center;
@@ -1598,6 +1609,51 @@ body {
 .file-dropzone-active {
   background: var(--fiscal-gold-soft);
   box-shadow: inset 0 0 0 2px var(--fiscal-gold);
+}
+.file-dropzone-selection {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 520px);
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid rgb(245 239 227 / 12%);
+  border-radius: 12px;
+  color: var(--fiscal-ivory);
+  text-align: left;
+  background: rgb(245 239 227 / 6%);
+}
+.file-dropzone-selection strong {
+  color: var(--fiscal-gold);
+  font:
+    700 0.72rem var(--font-ui),
+    sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.file-dropzone-selection ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.file-dropzone-selection li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.file-dropzone-selection span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fiscal-ivory);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-dropzone-selection small {
+  flex: 0 0 auto;
+  color: var(--fiscal-muted);
 }
 .file-dropzone-input,
 .field .file-dropzone-input,

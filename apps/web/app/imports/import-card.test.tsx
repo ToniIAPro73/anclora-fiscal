@@ -226,6 +226,34 @@ describe("ImportCard preview dialog", () => {
     );
   });
 
+  it("marca el formulario como ocupado mientras genera la vista previa", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => undefined)));
+
+    renderImportCard();
+    selectFile();
+
+    const submitButton = screen.getByRole("button", {
+      name: "Generar vista previa",
+    });
+    const form = submitButton.closest("form");
+
+    if (!form) {
+      throw new Error("No se encontró el formulario de importación.");
+    }
+
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(form).toHaveAttribute("aria-busy", "true");
+    });
+
+    expect(
+      screen.getByRole("button", {
+        name: "Analizando…",
+      }),
+    ).toBeDisabled();
+  });
+
   it("permite cerrar el modal y reabrir una vista previa pendiente sin volver a subir el archivo", async () => {
     const fetchMock = mockFetchSequence([
       {
