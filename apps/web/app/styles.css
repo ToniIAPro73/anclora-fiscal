@@ -751,3 +751,340 @@ body {
     display: none;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Import preview dialog
+   Keeps previews out of the import-workbench grid and places them
+   in the browser top layer through the native <dialog> element.
+   ───────────────────────────────────────────────────────────── */
+
+.preview-dialog {
+  width: min(1180px, calc(100vw - 48px));
+  max-width: none;
+  height: min(820px, calc(100dvh - 48px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 24px;
+  color: var(--fiscal-ivory, #f5efe3);
+  background:
+    radial-gradient(
+      70% 42% at 88% -10%,
+      rgb(215 169 87 / 12%),
+      transparent 66%
+    ),
+    linear-gradient(
+      145deg,
+      rgb(21 36 55 / 99%),
+      rgb(8 14 23 / 99%)
+    );
+  box-shadow:
+    inset 0 0 0 1px rgb(245 239 227 / 8%),
+    inset 0 1px rgb(255 255 255 / 6%),
+    0 42px 130px rgb(0 0 0 / 82%);
+}
+
+.preview-dialog::backdrop {
+  background: rgb(2 6 11 / 78%);
+  backdrop-filter: blur(10px);
+}
+
+.preview-dialog-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.preview-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px 32px 22px;
+  border-bottom: 1px solid rgb(245 239 227 / 9%);
+  background: rgb(7 12 19 / 24%);
+}
+
+.preview-dialog-header > div {
+  min-width: 0;
+}
+
+.preview-dialog-header .eyebrow {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.preview-dialog-header h2 {
+  margin: 0;
+  color: var(--fiscal-ivory, #f5efe3);
+  font-size: clamp(1.65rem, 2.5vw, 2.35rem);
+  letter-spacing: -0.03em;
+}
+
+.preview-dialog-header p {
+  max-width: 68ch;
+  margin: 10px 0 0;
+  color: var(--fiscal-muted, rgb(245 239 227 / 62%));
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.preview-dialog-header .btn,
+.preview-dialog-header button {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
+.preview-dialog-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 28px 32px;
+  overscroll-behavior: contain;
+  scrollbar-color: rgb(215 169 87 / 45%) transparent;
+}
+
+.preview-dialog-body::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.preview-dialog-body::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgb(215 169 87 / 42%);
+  background-clip: padding-box;
+}
+
+.preview-dialog-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.preview-dialog .preview-panel {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.preview-dialog .preview-heading {
+  margin-top: 0;
+}
+
+.preview-dialog .preview-heading > strong {
+  color: var(--fiscal-gold, #d7a957);
+}
+
+.preview-table-scroll {
+  width: 100%;
+  margin-top: 24px;
+  overflow-x: auto;
+  border-radius: 16px;
+  background: rgb(7 12 19 / 28%);
+  box-shadow: inset 0 0 0 1px rgb(245 239 227 / 7%);
+  scrollbar-color: rgb(215 169 87 / 45%) transparent;
+}
+
+.preview-table-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+
+.preview-table-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgb(215 169 87 / 42%);
+  background-clip: padding-box;
+}
+
+.preview-dialog .preview-panel table {
+  min-width: 760px;
+  margin-top: 0;
+}
+
+.preview-dialog .preview-panel th,
+.preview-dialog .preview-panel td {
+  white-space: nowrap;
+}
+
+.preview-dialog .preview-panel td {
+  white-space: normal;
+}
+
+.preview-dialog .issue-acknowledgements {
+  display: grid;
+  gap: 12px;
+  margin: 26px 0 0;
+  padding: 20px;
+  border: 0;
+  border-radius: 18px;
+  background: rgb(215 169 87 / 7%);
+  box-shadow: inset 0 0 0 1px rgb(215 169 87 / 18%);
+}
+
+.preview-dialog .issue-acknowledgements legend {
+  padding: 0 8px;
+  color: var(--fiscal-gold, #d7a957);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.preview-dialog .issue-ack-row {
+  display: grid;
+  grid-template-columns: auto minmax(150px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 10px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgb(245 239 227 / 8%);
+}
+
+.preview-dialog .issue-ack-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.preview-dialog .issue-ack-row input {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  accent-color: var(--fiscal-gold, #d7a957);
+}
+
+.preview-dialog .issue-ack-row label {
+  color: var(--fiscal-ivory, #f5efe3);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.preview-dialog .issue-ack-row p {
+  margin: 0;
+  color: var(--fiscal-muted, rgb(245 239 227 / 62%));
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.preview-dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 20px 32px;
+  border-top: 1px solid rgb(245 239 227 / 9%);
+  background: rgb(7 12 19 / 42%);
+}
+
+.preview-dialog-footer .btn,
+.preview-dialog-footer button {
+  min-height: 44px;
+}
+
+.preview-pending-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 24px;
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      145deg,
+      rgb(215 169 87 / 10%),
+      rgb(21 36 55 / 38%)
+    );
+  box-shadow:
+    inset 0 0 0 1px rgb(215 169 87 / 22%),
+    inset 0 1px rgb(255 255 255 / 5%);
+}
+
+.preview-pending-panel > div:not(.import-actions) {
+  display: grid;
+  gap: 7px;
+}
+
+.preview-pending-panel strong {
+  color: var(--fiscal-ivory, #f5efe3);
+  font: 600 1.15rem var(--font-display), serif;
+}
+
+.preview-pending-panel p {
+  margin: 0;
+  color: var(--fiscal-muted, rgb(245 239 227 / 62%));
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.preview-pending-panel .import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 780px) {
+  .preview-dialog {
+    width: calc(100vw - 24px);
+    height: calc(100dvh - 24px);
+    max-height: calc(100dvh - 24px);
+    border-radius: 20px;
+  }
+
+  .preview-dialog-header {
+    gap: 16px;
+    padding: 22px 20px 18px;
+  }
+
+  .preview-dialog-header h2 {
+    font-size: 1.45rem;
+  }
+
+  .preview-dialog-header p {
+    display: none;
+  }
+
+  .preview-dialog-header .btn,
+  .preview-dialog-header button {
+    min-height: 36px;
+    padding-inline: 12px;
+  }
+
+  .preview-dialog-body {
+    padding: 20px;
+  }
+
+  .preview-dialog-footer {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 16px 20px;
+  }
+
+  .preview-dialog-footer .btn,
+  .preview-dialog-footer button {
+    width: 100%;
+  }
+
+  .preview-dialog .issue-ack-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .preview-dialog .issue-ack-row p {
+    grid-column: 2;
+  }
+
+  .preview-pending-panel {
+    padding: 20px;
+  }
+
+  .preview-pending-panel .import-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .preview-pending-panel .import-actions .btn,
+  .preview-pending-panel .import-actions button {
+    width: 100%;
+  }
+}
