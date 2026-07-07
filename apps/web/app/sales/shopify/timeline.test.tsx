@@ -76,7 +76,9 @@ describe("OperationsTimeline SHOPIFY-06", () => {
     render(<OperationsTimeline />);
     await screen.findByText("AI-1002");
     expect(screen.getAllByText("Descuento aplicado · PRUEBA100").length).toBeGreaterThan(0);
-    expect(screen.getByText("Falta importar Shopify Payments")).toBeInTheDocument();
+    expect(screen.getByText("No requiere Shopify Payments")).toBeInTheDocument();
+    expect(screen.getByText("Pedido con importe cero · sin cobro requerido")).toBeInTheDocument();
+    expect(screen.queryByText("Falta importar Shopify Payments")).not.toBeInTheDocument();
     expect(screen.queryByText("Faltan movimientos")).not.toBeInTheDocument();
     expect(screen.getByText("Estado fiscal")).toBeInTheDocument();
   });

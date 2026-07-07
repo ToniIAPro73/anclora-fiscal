@@ -1,9 +1,21 @@
 "use client";
 
 import { DataTable } from "@anclora/ui";
-import { ledgerEntryLabel } from "../lib/display-labels";
+import { issueLabel, ledgerEntryLabel } from "../lib/display-labels";
 import { ImportCard } from "./import-card";
 import type { ImportIssue, PreviewResponse } from "./types";
+
+type LedgerPreviewRow = NonNullable<
+  PreviewResponse["shopifyPaymentsLedger"]
+>["entries"][number] & { position: number };
+
+function orderName(entry: LedgerPreviewRow) {
+  return entry.orderName ?? entry.shopifyOrderName ?? "Sin pedido";
+}
+
+function buyerLabel(entry: LedgerPreviewRow) {
+  return entry.customerName || entry.customerEmail || "Comprador no informado";
+}
 
 function LedgerPreviewTable({
   preview,
@@ -19,12 +31,22 @@ function LedgerPreviewTable({
       caption="Vista previa de movimientos Shopify Payments"
       rows={rows.map((entry, index) => ({ ...entry, position: index + 2 }))}
       rowKey={(entry) =>
-        `${entry.orderName}-${entry.entryType}-${entry.position}`
+        `${orderName(entry)}-${entry.entryType}-${entry.position}`
       }
-      minWidth={900}
+      minWidth={1080}
       emptyMessage="No se han detectado movimientos."
       columns={[
-        { key: "order", header: "Pedido", render: (entry) => entry.orderName },
+        { key: "order", header: "Pedido", render: orderName },
+        {
+          key: "buyer",
+          header: "Comprador",
+          render: (entry) => (
+            <div className="cell-stack">
+              <strong>{buyerLabel(entry)}</strong>
+              <span>{entry.customerEmail ?? entry.customerCountry ?? "Sin email ni país"}</span>
+            </div>
+          ),
+        },
         {
           key: "movement",
           header: "Movimiento",
@@ -58,11 +80,18 @@ function LedgerPreviewTable({
           header: "Incidencias",
           render: (entry) => {
             const rowIssues = issuesByPosition.get(entry.position) ?? [];
-            return rowIssues.length > 0
-              ? rowIssues
-                  .map((issue) => `${issue.code}: ${issue.message}`)
-                  .join("; ")
-              : "-";
+            return rowIssues.length > 0 ? (
+              <div className="cell-stack">
+                {rowIssues.map((issue) => (
+                  <span key={`${entry.position}-${issue.code}`}>
+                    {issueLabel(issue.code)}
+                    {issue.message ? ` · ${issue.message}` : ""}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              "Sin incidencias"
+            );
           },
         },
       ]}

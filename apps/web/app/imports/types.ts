@@ -47,6 +47,14 @@ export function issueKey(issue: ImportIssue): string {
   return issue.id ?? `${issue.position}-${issue.code}`;
 }
 
+export interface BuyerPreview {
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerCountry?: string | null;
+  customerAddress?: string | null;
+  customerType?: string | null;
+}
+
 export interface RoyaltyLine {
   isbnOrAsin: string;
   title?: string;
@@ -88,8 +96,8 @@ export interface PreviewResponse {
   royalty?: { statement: { periods: string[] }; lines: RoyaltyLine[] };
   commercialOrders?: CommercialOrderPreview[];
   shopifyOrders?: { orders: Array<CommercialOrderPreview & { orderName: string; financialStatus?: string; fulfillmentStatus?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
-  shopifyOrderTransactions?: { events: Array<{ orderId: string; orderName: string; kind: string; status: string; amount: string; currency: string; occurredAt: string; gateway?: string; paymentMethod?: string }> };
-  shopifyPaymentsLedger?: { entries: Array<{ orderName: string; entryType: string; amount: string; feeAmount: string; netAmount: string; currency: string; payoutStatus: string; payoutDate?: string | null; externalPayoutId?: string | null }> };
+  shopifyOrderTransactions?: { events: Array<BuyerPreview & { orderId?: string; orderName?: string; shopifyOrderId?: string; shopifyOrderName?: string; kind: string; status: string; amount: string; currency: string; occurredAt: string; gateway?: string; paymentMethod?: string }> };
+  shopifyPaymentsLedger?: { entries: Array<BuyerPreview & { orderName?: string; shopifyOrderName?: string; entryType: string; amount: string; feeAmount: string; netAmount: string; currency: string; payoutStatus: string; payoutDate?: string | null; externalPayoutId?: string | null }> };
 }
 
 export interface ConfirmResponse {

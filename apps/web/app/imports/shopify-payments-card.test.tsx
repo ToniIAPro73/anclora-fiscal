@@ -98,7 +98,9 @@ describe('ShopifyPaymentsCard', () => {
           shopifyPaymentsLedger: {
             entries: [
               {
-                orderName: 'PO-1',
+                shopifyOrderName: 'PO-1',
+                customerName: 'Ana García',
+                customerEmail: 'ana@example.test',
                 entryType: 'charge',
                 amount: '150.00',
                 feeAmount: '4.50',
@@ -155,6 +157,9 @@ describe('ShopifyPaymentsCard', () => {
     expect(
       within(dialog).getByText('PO-1'),
     ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Ana García'),
+    ).toBeInTheDocument();
 
     expect(
       within(dialog).getByText('Liquidación pendiente'),
@@ -169,5 +174,73 @@ describe('ShopifyPaymentsCard', () => {
     await waitFor(() => {
       expect(screen.getByText('Importado')).toBeInTheDocument();
     });
+  });
+
+  it('traduce incidencias técnicas a mensajes comprensibles', async () => {
+    mockFetchSequence([
+      {
+        ok: true,
+        body: {
+          jobId: 'job-pay-issues',
+          connector: 'shopify-payments-csv',
+          status: 'ANALYZED',
+          summary: {
+            records: 1,
+            issues: 1,
+            orderIds: ['PO-1'],
+          },
+          issues: [
+            {
+              position: 2,
+              code: 'PLATFORM_VAT_ZERO_UNVALIDATED',
+              message: 'VAT del canal a cero; no equivale a IVA fiscal validado',
+              suggestedAction: 'Revisar',
+              blocking: false,
+            },
+          ],
+          shopifyPaymentsLedger: {
+            entries: [
+              {
+                shopifyOrderName: 'PO-1',
+                entryType: 'charge',
+                amount: '150.00',
+                feeAmount: '4.50',
+                netAmount: '145.50',
+                currency: 'EUR',
+                payoutStatus: 'pending',
+                payoutDate: null,
+                externalPayoutId: null,
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    render(<ShopifyPaymentsCard />);
+
+    const input = screen.getByLabelText(
+      /Archivo de movimientos Shopify Payments/,
+    ) as HTMLInputElement;
+
+    fireEvent.change(input, {
+      target: {
+        files: [new File(['x'], 'payouts.csv', { type: 'text/csv' })],
+      },
+    });
+
+    fireEvent.submit(
+      screen
+        .getByRole('button', {
+          name: 'Generar vista previa',
+        })
+        .closest('form')!,
+    );
+
+    const dialog = await getOpenPreviewDialog();
+
+    expect(
+      within(dialog).getByText(/IVA de plataforma no validado fiscalmente/),
+    ).toBeInTheDocument();
   });
 });

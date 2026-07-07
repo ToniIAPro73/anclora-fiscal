@@ -14,6 +14,7 @@ const STATUS_LABELS: Record<string, string> = {
   IMPORTED_WITH_ISSUES: "Importado con incidencias",
   ISSUED: "Emitida",
   LEDGER_MISSING: "Faltan movimientos",
+  LEDGER_NOT_REQUIRED: "No requiere movimiento",
   ORDER_TO_LEDGER: "Pedido → movimiento",
   ORDER_TO_TRANSACTION: "Pedido → transacción",
   MATCHED: "Conciliada",
@@ -43,6 +44,21 @@ const STATUS_LABELS: Record<string, string> = {
   partially_refunded: "Reembolsado parcialmente",
   success: "Correcta",
   voided: "Anulado",
+};
+
+const ISSUE_LABELS: Record<string, string> = {
+  GROSS_FEE_NET_MISMATCH: "Bruto, comisión y neto no cuadran",
+  KDP_COST_DOUBLE_COUNT_RISK: "Riesgo de duplicar costes KDP",
+  MAPPING_VERSION_UNSUPPORTED: "Versión de mapeo no soportada",
+  ORDER_EVIDENCE_MISSING: "Pedido no encontrado en la importación de pedidos",
+  ORDER_TOTAL_MISMATCH: "El total del pedido no coincide",
+  ORDER_TRANSACTION_STATUS_UNSUPPORTED: "Estado de transacción no soportado",
+  PAYOUT_EVIDENCE_MISSING: "Falta evidencia de liquidación",
+  PLATFORM_TAX_DIFFERS_FROM_FISCAL_DECISION: "El impuesto de plataforma difiere de la decisión fiscal",
+  PLATFORM_VAT_ZERO_UNVALIDATED: "IVA de plataforma no validado fiscalmente",
+  REFUND_EXCEEDS_ORIGINAL: "El reembolso supera la venta original",
+  VAT_NUMBER_MISSING_FOR_B2B_SIGNAL: "Falta NIF-IVA para señal B2B",
+  CROSS_BORDER_B2C_REVIEW: "Revisión B2C transfronteriza",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -116,4 +132,9 @@ export function transactionTypeLabel(type: string | null | undefined): string {
 export function ledgerEntryLabel(type: string | null | undefined): string {
   if (!type) return "Sin movimiento";
   return LEDGER_ENTRY_LABELS[type] ?? statusLabel(type);
+}
+
+export function issueLabel(code: string | null | undefined): string {
+  if (!code) return "Incidencia";
+  return ISSUE_LABELS[code] ?? humanizeTechnicalValue(code);
 }

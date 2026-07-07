@@ -183,6 +183,29 @@ export class DrizzleCommercialOrdersRepository<TQueryResult extends PgQueryResul
     return new Set(rows.map((row) => row.externalOrderId));
   }
 
+  async findPreviewByExternalOrderIds(
+    tenantId: string,
+    sourceChannel: string,
+    externalOrderIds: string[],
+  ): Promise<Array<Pick<CommercialOrder, 'externalOrderId' | 'customerName' | 'customerEmail' | 'customerAddress' | 'customerCountry' | 'customerType'>>> {
+    if (externalOrderIds.length === 0) return [];
+    return this.db
+      .select({
+        externalOrderId: commercialOrders.externalOrderId,
+        customerName: commercialOrders.customerName,
+        customerEmail: commercialOrders.customerEmail,
+        customerAddress: commercialOrders.customerAddress,
+        customerCountry: commercialOrders.customerCountry,
+        customerType: commercialOrders.customerType,
+      })
+      .from(commercialOrders)
+      .where(and(
+        eq(commercialOrders.tenantId, tenantId),
+        eq(commercialOrders.sourceChannel, sourceChannel),
+        inArray(commercialOrders.externalOrderId, externalOrderIds),
+      ));
+  }
+
   async listByTenant(input: ListCommercialOrdersInput): Promise<PaginatedCommercialOrders> {
     const conditions = eq(commercialOrders.tenantId, input.tenantId);
 

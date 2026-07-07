@@ -25,6 +25,17 @@ export interface ImportGroupingSummary {
   duplicatesSkipped: number;
 }
 
+export interface BuyerPreview {
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerAddress?: string | null;
+  customerCountry?: string | null;
+  customerType?: string | null;
+}
+
+export type PreviewOrderTransaction = NewShopifyOrderPaymentEventWithoutTenant & BuyerPreview;
+export type PreviewPaymentsLedgerEntry = NewShopifyPaymentsLedgerEntryWithoutTenant & BuyerPreview;
+
 export interface ImportPreviewResponse {
   jobId: string;
   status: 'PREVIEW_READY';
@@ -43,8 +54,8 @@ export interface ImportPreviewResponse {
   paymentsLedger?: NewShopifyPaymentsLedgerEntryWithoutTenant[];
   /** SHOPIFY-04: safe, source-specific preview contract exposed to clients. */
   shopifyOrders?: { orders: Array<{ orderName: string; commercialDate?: string; totalAmount?: string; taxAmount?: string; financialStatus?: string; fulfillmentStatus?: string; productNature?: string; customerName?: string; customerEmail?: string; customerAddress?: string; customerCountry?: string; customerType?: string; discountCode?: string; discountAmount?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
-  shopifyOrderTransactions?: { events: NewShopifyOrderPaymentEventWithoutTenant[] };
-  shopifyPaymentsLedger?: { entries: NewShopifyPaymentsLedgerEntryWithoutTenant[] };
+  shopifyOrderTransactions?: { events: PreviewOrderTransaction[] };
+  shopifyPaymentsLedger?: { entries: PreviewPaymentsLedgerEntry[] };
 }
 
 export function toSafeImportPreview(preview: ImportPreviewResponse, status: string, issueIds: string[] = []) {
@@ -78,6 +89,7 @@ const XLSX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.spreadshee
  */
 export interface CommercialOrdersDedupPort {
   findExistingExternalOrderIds(tenantId: string, sourceChannel: string, externalOrderIds: string[]): Promise<Set<string>>;
+  findPreviewByExternalOrderIds?(tenantId: string, sourceChannel: string, externalOrderIds: string[]): Promise<Array<{ externalOrderId: string } & BuyerPreview>>;
 }
 export interface FinancialEventsDedupPort {
   findExistingExternalEventIds(tenantId: string, sourceChannel: string, externalEventIds: string[]): Promise<Set<string>>;
@@ -90,6 +102,27 @@ export interface ImportPreviewDedupDependencies {
   commercialOrdersRepository?: CommercialOrdersDedupPort | undefined;
   financialEventsRepository?: FinancialEventsDedupPort | undefined;
   royaltyRepository?: RoyaltyDedupPort | undefined;
+}
+
+async function findBuyerPreviews(
+  tenantId: string,
+  orderIds: string[],
+  repository?: CommercialOrdersDedupPort,
+): Promise<Map<string, BuyerPreview>> {
+  if (!repository?.findPreviewByExternalOrderIds || orderIds.length === 0) return new Map();
+  const uniqueOrderIds = [...new Set(orderIds.filter(Boolean))];
+  const rows = await repository.findPreviewByExternalOrderIds(tenantId, 'SHOPIFY', uniqueOrderIds);
+  return new Map(rows.map((row) => [row.externalOrderId, {
+    customerName: row.customerName ?? null,
+    customerEmail: row.customerEmail ?? null,
+    customerAddress: row.customerAddress ?? null,
+    customerCountry: row.customerCountry ?? null,
+    customerType: row.customerType ?? null,
+  }]));
+}
+
+function withBuyerPreview<T extends { shopifyOrderName: string }>(row: T, buyers: Map<string, BuyerPreview>): T & BuyerPreview {
+  return { ...row, ...(buyers.get(row.shopifyOrderName) ?? {}) };
 }
 
 export async function previewImport(
@@ -181,6 +214,11 @@ export async function previewImport(
       const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });
       const parsed = parseShopifyOrderTransactionsCsv(input.bytes);
       const orderTransactions = normalizeShopifyOrderTransactions(parsed);
+      const buyers = await findBuyerPreviews(
+        input.tenantId,
+        orderTransactions.map((row) => row.shopifyOrderName),
+        dependencies?.commercialOrdersRepository,
+      );
       return {
         jobId,
         status: 'PREVIEW_READY',
@@ -189,7 +227,7 @@ export async function previewImport(
         summary: { records: parsed.rows.length, issues: parsed.issues.length, orderIds: [...new Set(parsed.rows.map((row) => row.name))] },
         issues: parsed.issues,
         orderTransactions,
-        shopifyOrderTransactions: { events: orderTransactions },
+        shopifyOrderTransactions: { events: orderTransactions.map((row) => withBuyerPreview(row, buyers)) },
       };
     }
     if (isShopifyPaymentsLedgerCsvFile(input.bytes)) {
@@ -199,6 +237,11 @@ export async function previewImport(
       // same rows as allFinancialEvents (distinct persistence target --
       // shopify_payments_ledger_entries, not financial_events).
       const allPaymentsLedger = normalizeShopifyPaymentsLedger(preview);
+      const buyers = await findBuyerPreviews(
+        input.tenantId,
+        allPaymentsLedger.map((row) => row.shopifyOrderName),
+        dependencies?.commercialOrdersRepository,
+      );
 
       return {
         jobId,
@@ -208,7 +251,7 @@ export async function previewImport(
         summary: { records: preview.rows.length, issues: preview.issues.length, orderIds: [...new Set(preview.rows.map((row) => row.Order))] },
         issues: preview.issues,
         paymentsLedger: allPaymentsLedger,
-        shopifyPaymentsLedger: { entries: allPaymentsLedger },
+        shopifyPaymentsLedger: { entries: allPaymentsLedger.map((row) => withBuyerPreview(row, buyers)) },
       };
     }
   }

@@ -55,10 +55,27 @@ function discountLabel(sale: Sale) {
     : `Descuento aplicado · ${formatEuros(sale.discountAmount)}`;
 }
 
+function isZeroAmount(sale: Sale) {
+  return Number(sale.totalAmount ?? 0) === 0;
+}
+
 function settlementLabel(sale: Sale) {
+  if (isZeroAmount(sale) || sale.payoutStatus === "LEDGER_NOT_REQUIRED") {
+    return "No requiere Shopify Payments";
+  }
   if (sale.payoutStatus === "SETTLED") return "Liquidación identificada";
   if (sale.payoutStatus === "LEDGER_MISSING") return "Falta importar Shopify Payments";
   return "Liquidación pendiente";
+}
+
+function evidenceLabel(sale: Sale) {
+  if (isZeroAmount(sale) && sale.transactionCount === 0 && sale.ledgerCount === 0) {
+    return "Pedido con importe cero · sin cobro requerido";
+  }
+  if (sale.transactionCount || sale.ledgerCount) {
+    return `${sale.transactionCount} transacción · ${sale.ledgerCount} movimiento`;
+  }
+  return <StatusBadge tone="warning">Faltan transacciones</StatusBadge>;
 }
 
 export function OperationsTimeline() {
@@ -215,19 +232,14 @@ export function OperationsTimeline() {
           {
             key: "evidence",
             header: "Evidencia",
-            render: (sale) =>
-              sale.transactionCount ? (
-                `${sale.transactionCount} transacción · ${sale.ledgerCount} movimiento`
-              ) : (
-                <StatusBadge tone="warning">Faltan transacciones</StatusBadge>
-              ),
+            render: evidenceLabel,
           },
           {
             key: "settlement",
             header: "Liquidación",
             render: (sale) => (
               <StatusBadge
-                tone={sale.payoutStatus === "SETTLED" ? "info" : "warning"}
+                tone={sale.payoutStatus === "SETTLED" || isZeroAmount(sale) ? "info" : "warning"}
               >
                 {settlementLabel(sale)}
               </StatusBadge>

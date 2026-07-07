@@ -1,9 +1,25 @@
 "use client";
 
 import { DataTable } from "@anclora/ui";
-import { statusLabel, transactionTypeLabel } from "../lib/display-labels";
+import { issueLabel, statusLabel, transactionTypeLabel } from "../lib/display-labels";
 import { ImportCard } from "./import-card";
 import type { ImportIssue, PreviewResponse } from "./types";
+
+type TransactionPreviewRow = NonNullable<
+  PreviewResponse["shopifyOrderTransactions"]
+>["events"][number] & { position: number };
+
+function orderName(event: TransactionPreviewRow) {
+  return event.orderName ?? event.shopifyOrderName ?? "Sin pedido";
+}
+
+function internalOrderId(event: TransactionPreviewRow) {
+  return event.orderId ?? event.shopifyOrderId ?? "Sin ID interno";
+}
+
+function buyerLabel(event: TransactionPreviewRow) {
+  return event.customerName || event.customerEmail || "Comprador no informado";
+}
 
 function TransactionsPreviewTable({
   preview,
@@ -18,15 +34,27 @@ function TransactionsPreviewTable({
     <DataTable
       caption="Vista previa de transacciones de pedido Shopify"
       rows={events.map((event, index) => ({ ...event, position: index + 2 }))}
-      rowKey={(event) => `${event.orderId}-${event.kind}-${event.occurredAt}`}
-      minWidth={860}
+      rowKey={(event) =>
+        `${internalOrderId(event)}-${event.kind}-${event.occurredAt}-${event.position}`
+      }
+      minWidth={1080}
       emptyMessage="No se han detectado transacciones de pedido."
       columns={[
-        { key: "order", header: "Pedido", render: (event) => event.orderName },
+        { key: "order", header: "Pedido", render: orderName },
         {
           key: "internalId",
           header: "ID interno",
-          render: (event) => event.orderId,
+          render: internalOrderId,
+        },
+        {
+          key: "buyer",
+          header: "Comprador",
+          render: (event) => (
+            <div className="cell-stack">
+              <strong>{buyerLabel(event)}</strong>
+              <span>{event.customerEmail ?? event.customerCountry ?? "Sin email ni país"}</span>
+            </div>
+          ),
         },
         {
           key: "kind",
@@ -54,9 +82,18 @@ function TransactionsPreviewTable({
           header: "Incidencias",
           render: (event) => {
             const issues = issuesByPosition.get(event.position) ?? [];
-            return issues.length
-              ? issues.map((issue) => issue.code).join(", ")
-              : "-";
+            return issues.length ? (
+              <div className="cell-stack">
+                {issues.map((issue) => (
+                  <span key={`${event.position}-${issue.code}`}>
+                    {issueLabel(issue.code)}
+                    {issue.message ? ` · ${issue.message}` : ""}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              "Sin incidencias"
+            );
           },
         },
       ]}

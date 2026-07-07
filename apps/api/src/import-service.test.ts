@@ -1,6 +1,6 @@
 import { readFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { FilesystemStorage } from '@anclora/core/server';
 import { previewImport } from './import-service';
 
@@ -124,6 +124,38 @@ describe('previewImport', () => {
     expect(result.financialEvents).toBeUndefined();
   });
 
+  it('enriquece el preview de transacciones de pedido con comprador existente', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-order-transactions.csv'));
+    const findPreviewByExternalOrderIds = vi.fn().mockResolvedValue([
+      {
+        externalOrderId: 'AI-1001',
+        customerName: 'Ana García',
+        customerEmail: 'ana@example.test',
+        customerAddress: null,
+        customerCountry: 'ES',
+        customerType: 'B2C',
+      },
+    ]);
+    const result = await previewImport(
+      { tenantId: 'test', filename: 'order-transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) },
+      {
+        commercialOrdersRepository: {
+          findExistingExternalOrderIds: async () => new Set(),
+          findPreviewByExternalOrderIds,
+        },
+      },
+    );
+
+    expect(findPreviewByExternalOrderIds).toHaveBeenCalledWith('test', 'SHOPIFY', ['AI-1001']);
+    expect(result.orderTransactions?.[0]).not.toHaveProperty('customerEmail');
+    expect(result.shopifyOrderTransactions?.events[0]).toMatchObject({
+      shopifyOrderName: 'AI-1001',
+      customerName: 'Ana García',
+      customerEmail: 'ana@example.test',
+      customerCountry: 'ES',
+    });
+  });
+
   it('normaliza Shopify Payments Ledger sin duplicarlo en financialEvents legacy', async () => {
     const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
     const result = await previewImport({ tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) });
@@ -132,6 +164,35 @@ describe('previewImport', () => {
     expect(result.paymentsLedger?.every((row) => row.shopifyOrderName === 'AI-1001')).toBe(true);
     expect(result.shopifyPaymentsLedger?.entries).toEqual(result.paymentsLedger);
     expect(result.financialEvents).toBeUndefined();
+  });
+
+  it('enriquece el preview de Shopify Payments con comprador existente', async () => {
+    const bytes = await readFile(resolve(import.meta.dirname, '../../../packages/connectors/test/fixtures/shopify-ledger-charge-refund.csv'));
+    const result = await previewImport(
+      { tenantId: 'test', filename: 'transactions.csv', mimeType: 'text/csv', bytes, storage: new FilesystemStorage(root) },
+      {
+        commercialOrdersRepository: {
+          findExistingExternalOrderIds: async () => new Set(),
+          findPreviewByExternalOrderIds: async () => [
+            {
+              externalOrderId: 'AI-1001',
+              customerName: 'Ana García',
+              customerEmail: 'ana@example.test',
+              customerAddress: null,
+              customerCountry: 'ES',
+              customerType: 'B2C',
+            },
+          ],
+        },
+      },
+    );
+
+    expect(result.paymentsLedger?.[0]).not.toHaveProperty('customerEmail');
+    expect(result.shopifyPaymentsLedger?.entries[0]).toMatchObject({
+      shopifyOrderName: 'AI-1001',
+      customerName: 'Ana García',
+      customerEmail: 'ana@example.test',
+    });
   });
 
   it('no custodia contenido que falle la validación estructural', async () => {
