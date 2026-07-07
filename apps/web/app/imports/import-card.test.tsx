@@ -318,7 +318,7 @@ describe("ImportCard preview dialog", () => {
           jobId: "job-1",
           status: "IMPORTED",
           createdRecordIds: {
-            orders: ["order-1"],
+            commercialOrders: ["order-1"],
           },
         },
       },
@@ -340,7 +340,21 @@ describe("ImportCard preview dialog", () => {
       expect(screen.getByText("Importado")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("orders: 1 registro(s)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Pedidos comerciales: 1 registro(s)"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Nueva importación",
+      }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: "Generar vista previa",
+      }),
+    ).toBeInTheDocument();
 
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/v1/imports/job-1/confirm",

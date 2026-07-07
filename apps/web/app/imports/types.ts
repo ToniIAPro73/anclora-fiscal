@@ -6,18 +6,7 @@ export type ConnectorId = 'shopify-orders' | 'shopify-order-transactions' | 'sho
  * that renders it. The backend contract (FASE 03 Batch 1 design) can add or
  * rename statuses; unknown values fall back to the raw string.
  */
-export const STATUS_LABELS: Record<string, string> = {
-  ANALYZED: 'Vista previa lista',
-  PENDING_CONFIRMATION: 'Pendiente de confirmación',
-  IMPORTED: 'Importado',
-  IMPORTED_WITH_ISSUES: 'Importado con incidencias',
-  REJECTED: 'Importación rechazada',
-  FAILED: 'Error de análisis',
-};
-
-export function statusLabel(status: string): string {
-  return STATUS_LABELS[status] ?? status;
-}
+export { statusLabel } from "../lib/display-labels";
 
 /**
  * The 8 issue codes from the FASE 03 contract. `blocking` mirrors the

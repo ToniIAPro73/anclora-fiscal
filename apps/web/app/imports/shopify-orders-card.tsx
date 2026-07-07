@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DataTable, DateRangeField, SelectField } from "@anclora/ui";
+import { statusLabel } from "../lib/display-labels";
 import { ImportCard } from "./import-card";
 import type {
   CommercialOrderPreview,
@@ -105,7 +106,9 @@ function OrdersPreviewTable({
             key: "status",
             header: "Estado",
             render: (order) =>
-              order.financialStatus ?? order.customerName ?? "-",
+              order.financialStatus
+                ? statusLabel(order.financialStatus)
+                : order.customerName ?? "-",
           },
           {
             key: "lines",
@@ -156,7 +159,7 @@ export function ShopifyOrdersCard() {
           issuesByPosition={issuesByPosition}
         />
       )}
-      nextStepsNote="Próximos pasos: la facturación automática de estos pedidos llega en una fase posterior y todavía no está disponible."
+      nextStepsNote="Próximos pasos: puedes cargar otro archivo de pedidos o revisar las operaciones pendientes en Facturación."
     />
   );
 }

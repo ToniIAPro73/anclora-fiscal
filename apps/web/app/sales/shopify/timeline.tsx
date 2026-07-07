@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, DataTable, SelectField, StatusBadge } from "@anclora/ui";
+import { statusLabel } from "../../lib/display-labels";
 
 interface Sale {
   id: string;
@@ -113,7 +114,7 @@ export function OperationsTimeline() {
           placeholder="Todas"
           options={[
             { value: "PENDING", label: "Pendiente" },
-            { value: "SETTLED", label: "Con payout" },
+            { value: "SETTLED", label: "Liquidada" },
           ]}
           value={filters.settlementStatus}
           onChange={(e) =>
@@ -171,7 +172,7 @@ export function OperationsTimeline() {
             header: "Evidencia",
             render: (sale) =>
               sale.transactionCount ? (
-                `${sale.transactionCount} transacción · ${sale.ledgerCount} ledger`
+                `${sale.transactionCount} transacción · ${sale.ledgerCount} movimiento`
               ) : (
                 <StatusBadge tone="warning">Faltan transacciones</StatusBadge>
               ),
@@ -184,17 +185,17 @@ export function OperationsTimeline() {
                 tone={sale.payoutStatus === "SETTLED" ? "info" : "warning"}
               >
                 {sale.payoutStatus === "SETTLED"
-                  ? "Payout identificado"
+                  ? "Liquidación identificada"
                   : sale.payoutStatus === "LEDGER_MISSING"
-                    ? "Falta ledger"
-                    : "Payout pendiente"}
+                    ? "Faltan movimientos"
+                    : "Liquidación pendiente"}
               </StatusBadge>
             ),
           },
           {
             key: "fiscal",
             header: "Fiscal",
-            render: (sale) => sale.fiscalStatus,
+            render: (sale) => statusLabel(sale.fiscalStatus),
           },
         ]}
       />

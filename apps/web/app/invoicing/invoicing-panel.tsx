@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { StatusBadge } from '@anclora/ui';
 import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../components/operation-filters';
+import { channelLabel, statusLabel } from '../lib/display-labels';
 
 interface Operation {
   id: string;
@@ -37,8 +38,20 @@ interface FiscalDocument {
 
 type IssueOutcome =
   | { kind: 'success'; document: FiscalDocument; alreadyIssued: boolean }
-  | { kind: 'tax_decision_missing' }
   | { kind: 'error'; message: string };
+
+function invoiceErrorMessage(body: { code?: string; message?: string }): string {
+  if (body.code === 'TAX_DECISION_MISSING') {
+    return 'Esta operación necesita una decisión fiscal antes de poder facturarse.';
+  }
+  if (body.code === 'FISCAL_CONFIGURATION_INCOMPLETE') {
+    return 'Completa la configuración fiscal: emisor, serie de facturación y perfil de producto.';
+  }
+  if (body.code === 'OPERATION_NOT_FOUND') {
+    return 'La operación no existe o ya no está disponible para facturación.';
+  }
+  return body.message ?? 'No se pudo emitir la factura.';
+}
 
 export function InvoicingPanel() {
   const [operations, setOperations] = useState<Operation[]>();
@@ -74,15 +87,9 @@ export function InvoicingPanel() {
         method: 'POST',
         credentials: 'include',
       });
-      if (response.status === 422) {
-        const body = await response.json() as { code?: string };
-        if (body.code === 'TAX_DECISION_MISSING') {
-          setOutcomes((current) => ({ ...current, [operationId]: { kind: 'tax_decision_missing' } }));
-          return;
-        }
-      }
       if (!response.ok) {
-        setOutcomes((current) => ({ ...current, [operationId]: { kind: 'error', message: 'No se pudo emitir la factura' } }));
+        const body = await response.json().catch(() => ({})) as { code?: string; message?: string };
+        setOutcomes((current) => ({ ...current, [operationId]: { kind: 'error', message: invoiceErrorMessage(body) } }));
         return;
       }
       const document = await response.json() as FiscalDocument & { alreadyIssued?: boolean };
@@ -108,16 +115,16 @@ export function InvoicingPanel() {
       return <article key={operation.id} className="invoice-card">
         <StatusBadge tone="info">{operation.sourceOrderId ?? operation.id}</StatusBadge>
         {needsReview ? <StatusBadge tone="warning">Revisión recomendada: posible rectificación por reembolso</StatusBadge> : null}
-        <h2>{operation.sourceChannel}</h2>
+        <h2>{channelLabel(operation.sourceChannel)}</h2>
         <dl>
           <div><dt>Bruto</dt><dd>{gross} {currency}</dd></div>
-          <div><dt>Estado de revisión</dt><dd>{operation.reviewStatus}</dd></div>
-          <div><dt>Conciliación</dt><dd>{operation.reconciliationStatus}</dd></div>
+          <div><dt>Estado de revisión</dt><dd>{statusLabel(operation.reviewStatus)}</dd></div>
+          <div><dt>Estado operativo</dt><dd>{statusLabel(operation.operationStatus)}</dd></div>
+          <div><dt>Conciliación</dt><dd>{statusLabel(operation.reconciliationStatus)}</dd></div>
         </dl>
         <button type="button" disabled={Boolean(issuing[operation.id])} onClick={() => void issueInvoiceFor(operation.id)}>
           {issuing[operation.id] ? 'Emitiendo…' : 'Emitir factura'}
         </button>
-        {outcome?.kind === 'tax_decision_missing' ? <p className="import-error" role="status">Esta operación necesita una decisión fiscal antes de poder facturarse.</p> : null}
         {outcome?.kind === 'error' ? <p className="import-error" role="status">{outcome.message}</p> : null}
         {outcome?.kind === 'success' ? <dl>
           <div><dt>Factura</dt><dd>{outcome.document.number}{outcome.alreadyIssued ? ' (ya emitida)' : ''}</dd></div>

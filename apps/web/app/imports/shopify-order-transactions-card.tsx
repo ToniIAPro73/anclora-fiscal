@@ -1,6 +1,7 @@
 "use client";
 
 import { DataTable } from "@anclora/ui";
+import { statusLabel, transactionTypeLabel } from "../lib/display-labels";
 import { ImportCard } from "./import-card";
 import type { ImportIssue, PreviewResponse } from "./types";
 
@@ -27,8 +28,16 @@ function TransactionsPreviewTable({
           header: "ID interno",
           render: (event) => event.orderId,
         },
-        { key: "kind", header: "Tipo", render: (event) => event.kind },
-        { key: "status", header: "Estado", render: (event) => event.status },
+        {
+          key: "kind",
+          header: "Tipo",
+          render: (event) => transactionTypeLabel(event.kind),
+        },
+        {
+          key: "status",
+          header: "Estado",
+          render: (event) => statusLabel(event.status),
+        },
         {
           key: "amount",
           header: "Importe",

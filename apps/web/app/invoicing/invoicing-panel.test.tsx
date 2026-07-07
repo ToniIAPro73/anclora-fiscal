@@ -67,6 +67,20 @@ describe('InvoicingPanel', () => {
     await waitFor(() => expect(screen.getByText('Esta operación necesita una decisión fiscal antes de poder facturarse.')).toBeInTheDocument());
   });
 
+  it('muestra estados traducidos y el bloqueo de configuración fiscal incompleta', async () => {
+    mockFetchSequence([
+      { ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } },
+      { ok: false, status: 422, body: { code: 'FISCAL_CONFIGURATION_INCOMPLETE', message: 'Complete emisor, serie y perfil fiscal antes de emitir' } },
+    ]);
+    render(<InvoicingPanel />);
+    await waitFor(() => expect(screen.getByText('Shopify')).toBeInTheDocument());
+    expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument();
+    expect(screen.getByText('Lista para facturar')).toBeInTheDocument();
+    expect(screen.getByText('Conciliada')).toBeInTheDocument();
+    screen.getByRole('button', { name: 'Emitir factura' }).click();
+    await waitFor(() => expect(screen.getByText('Completa la configuración fiscal: emisor, serie de facturación y perfil de producto.')).toBeInTheDocument());
+  });
+
   it('muestra el número de factura cuando la emisión tiene éxito', async () => {
     mockFetchSequence([
       { ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } },

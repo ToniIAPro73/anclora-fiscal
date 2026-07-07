@@ -43,17 +43,18 @@ describe("OperationsTimeline SHOPIFY-06", () => {
       "No hay pedidos Shopify para los filtros seleccionados.",
     );
   });
-  it("muestra métricas, evidencias y payout pendiente", async () => {
+  it("muestra métricas, evidencias y liquidación pendiente", async () => {
     mock({ items: [sale], metrics });
     render(<OperationsTimeline />);
     await screen.findByText("AI-1001");
-    expect(screen.getByText("Payout pendiente")).toBeInTheDocument();
+    expect(screen.getAllByText("Liquidación pendiente")).toHaveLength(2);
+    expect(screen.getAllByText("Pendiente").length).toBeGreaterThan(0);
     expect(screen.getAllByText("6.99 €")).toHaveLength(2);
   });
-  it("no afirma banco al identificar payout", async () => {
+  it("no afirma banco al identificar la liquidación", async () => {
     mock({ items: [{ ...sale, payoutStatus: "SETTLED" }], metrics });
     render(<OperationsTimeline />);
-    await screen.findByText("Payout identificado");
+    await screen.findByText("Liquidación identificada");
     expect(screen.queryByText(/banco verificado/i)).not.toBeInTheDocument();
   });
   it("muestra error de API", async () => {

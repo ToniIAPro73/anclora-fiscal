@@ -7,7 +7,7 @@ export default function ReconciliationPage() {
     <PageHeader
       eyebrow="03 / CONCILIACIÓN"
       title="Cobros y liquidación Shopify"
-      description="Revisa los enlaces entre pedidos, transacciones y ledger. Un payout identificado no acredita por sí solo el cobro bancario."
+      description="Revisa los enlaces entre pedidos, transacciones y movimientos. Una liquidación identificada no acredita por sí sola el cobro bancario."
       backHref="/"
     />
     <ReconciliationWorkbench />

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Button, FileDropzone, StatusBadge } from "@anclora/ui";
+import { recordGroupLabel } from "../lib/display-labels";
 import {
   isBlockingIssue,
   issueKey,
@@ -420,7 +421,7 @@ export function ImportCard({
             {Object.entries(confirmResult.createdRecordIds).map(
               ([kind, ids]) => (
                 <li key={kind}>
-                  {kind}: {ids.length} registro(s)
+                  {recordGroupLabel(kind)}: {ids.length} registro(s)
                 </li>
               ),
             )}
@@ -429,6 +430,12 @@ export function ImportCard({
           {nextStepsNote ? (
             <p className="next-steps-note">{nextStepsNote}</p>
           ) : null}
+
+          <div className="import-actions">
+            <Button type="button" variant="primary" onClick={resetImportFlow}>
+              Nueva importación
+            </Button>
+          </div>
         </section>
       ) : null}
 

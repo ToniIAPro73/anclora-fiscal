@@ -16,8 +16,8 @@ describe('ShopifyOrderTransactionsCard', () => {
     fireEvent.change(input, { target: { files: [new File(['x'], 'transactions.csv', { type: 'text/csv' })] } });
     fireEvent.submit(screen.getByRole('button', { name: 'Generar vista previa' }).closest('form')!);
     await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
-    expect(screen.getByText('refund')).toBeInTheDocument();
-    expect(screen.getByText('success')).toBeInTheDocument();
+    expect(screen.getByText('Reembolso')).toBeInTheDocument();
+    expect(screen.getByText('Correcta')).toBeInTheDocument();
     expect(screen.getByText('-6.99 EUR')).toBeInTheDocument();
   });
 });

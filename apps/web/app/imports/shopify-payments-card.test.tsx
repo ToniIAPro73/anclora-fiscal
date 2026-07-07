@@ -38,13 +38,13 @@ async function getOpenPreviewDialog() {
   await waitFor(() => {
     expect(
       screen.getByRole('dialog', {
-        name: /Vista previa · Shopify Payments — Ledger y liquidación/i,
+        name: /Vista previa · Shopify Payments — Movimientos y liquidación/i,
       }),
     ).toHaveAttribute('open');
   });
 
   return screen.getByRole('dialog', {
-    name: /Vista previa · Shopify Payments — Ledger y liquidación/i,
+    name: /Vista previa · Shopify Payments — Movimientos y liquidación/i,
   });
 }
 
@@ -54,13 +54,13 @@ describe('ShopifyPaymentsCard', () => {
 
     expect(
       screen.getByLabelText(
-        /Archivo de ledger Shopify Payments/,
+        /Archivo de movimientos Shopify Payments/,
       ),
     ).toBeInTheDocument();
 
     expect(
       screen.queryByText(
-        'El mapeo de payouts Shopify está en construcción',
+        'El mapeo de liquidaciones Shopify está en construcción',
       ),
     ).not.toBeInTheDocument();
   });
@@ -70,18 +70,18 @@ describe('ShopifyPaymentsCard', () => {
 
     expect(
       screen.queryByLabelText(
-        /Archivo de ledger Shopify Payments/,
+        /Archivo de movimientos Shopify Payments/,
       ),
     ).not.toBeInTheDocument();
 
     expect(
       screen.getByText(
-        /El mapeo de payouts Shopify está en construcción/,
+        /El mapeo de liquidaciones Shopify está en construcción/,
       ),
     ).toBeInTheDocument();
   });
 
-  it('preview distingue settlement pendiente de payout real', async () => {
+  it('preview distingue liquidación pendiente de liquidación real', async () => {
     mockFetchSequence([
       {
         ok: true,
@@ -127,7 +127,7 @@ describe('ShopifyPaymentsCard', () => {
     render(<ShopifyPaymentsCard />);
 
     const input = screen.getByLabelText(
-      /Archivo de ledger Shopify Payments/,
+      /Archivo de movimientos Shopify Payments/,
     ) as HTMLInputElement;
 
     fireEvent.change(input, {

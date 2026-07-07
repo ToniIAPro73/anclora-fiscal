@@ -1,6 +1,7 @@
 "use client";
 
 import { DataTable } from "@anclora/ui";
+import { ledgerEntryLabel } from "../lib/display-labels";
 import { ImportCard } from "./import-card";
 import type { ImportIssue, PreviewResponse } from "./types";
 
@@ -15,19 +16,19 @@ function LedgerPreviewTable({
 
   return (
     <DataTable
-      caption="Vista previa de ledger Shopify Payments"
+      caption="Vista previa de movimientos Shopify Payments"
       rows={rows.map((entry, index) => ({ ...entry, position: index + 2 }))}
       rowKey={(entry) =>
         `${entry.orderName}-${entry.entryType}-${entry.position}`
       }
       minWidth={900}
-      emptyMessage="No se han detectado movimientos de ledger."
+      emptyMessage="No se han detectado movimientos."
       columns={[
         { key: "order", header: "Pedido", render: (entry) => entry.orderName },
         {
           key: "movement",
           header: "Movimiento",
-          render: (entry) => entry.entryType,
+          render: (entry) => ledgerEntryLabel(entry.entryType),
         },
         {
           key: "gross",
@@ -36,7 +37,7 @@ function LedgerPreviewTable({
         },
         {
           key: "fee",
-          header: "Fee",
+          header: "Comisión",
           render: (entry) => `${entry.feeAmount} ${entry.currency}`,
         },
         {
@@ -49,7 +50,7 @@ function LedgerPreviewTable({
           header: "Liquidación",
           render: (entry) =>
             entry.externalPayoutId
-              ? `Payout ${entry.externalPayoutId}`
+              ? `Liquidación ${entry.externalPayoutId}`
               : "Liquidación pendiente",
         },
         {
@@ -85,14 +86,14 @@ export function ShopifyPaymentsCard({
   return (
     <ImportCard
       connectorId="shopify-payments"
-      title="Shopify Payments — Ledger y liquidación"
-      description="Movimientos, fees y netos de Shopify Payments. Sin Payout ID se muestra como liquidación pendiente."
+      title="Shopify Payments — Movimientos y liquidación"
+      description="Movimientos, comisiones y netos de Shopify Payments. Sin ID de liquidación se muestra como liquidación pendiente."
       accept=".csv,text/csv"
       fileFieldId="shopify-payments-file"
-      fileFieldLabel="Archivo de ledger Shopify Payments"
+      fileFieldLabel="Archivo de movimientos Shopify Payments"
       hint="CSV View payouts → View transactions → Export · máximo 15 MB"
       disabled={!enabled}
-      disabledReason="El mapeo de payouts Shopify está en construcción — próximamente disponible."
+      disabledReason="El mapeo de liquidaciones Shopify está en construcción — próximamente disponible."
       renderPreviewTable={(preview, issuesByPosition) => (
         <LedgerPreviewTable
           preview={preview}

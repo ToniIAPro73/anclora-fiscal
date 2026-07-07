@@ -131,7 +131,7 @@ describe("ShopifyOrdersCard", () => {
       expect(screen.getByText("Importado")).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/orders: 1 registro/)).toBeInTheDocument();
+    expect(screen.getByText(/Pedidos: 1 registro/)).toBeInTheDocument();
 
     expect(screen.getByText(/Próximos pasos/)).toBeInTheDocument();
   });
