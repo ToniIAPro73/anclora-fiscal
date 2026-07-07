@@ -158,7 +158,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   La migración se verificó desde base limpia y en segunda ejecución idempotente. La validación
   autenticada de `/settings` confirmó 18 controles etiquetados, estado de readiness honesto y
   ausencia de overflow horizontal (`scrollWidth === clientWidth`, 1265 px).
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `fa325db`.
 - **Rama remota:** `origin/feat/anclora-fiscal-product-redefinition`.
 - **Limitaciones abiertas:**
   - `order_lines`, `tax_periods`, `payouts`, asignaciones y contrapartes quedan estructuralmente
@@ -244,7 +244,7 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   build — 7/7 tareas correctas
   Playwright — 33/33 pruebas correctas
   ```
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `bc4aa2a`.
 - **Rama remota:** `origin/main`.
 - **Limitaciones abiertas:**
   - Los enlaces explícitos entre las tres evidencias y la conciliación segura pertenecen a
@@ -624,6 +624,57 @@ Cada entrada de fase debe incluir, como mínimo, los siguientes campos:
   Test Files 26 passed / Tests 190 passed
   ```
 
-- **SHA corto:** pendiente de commit.
+- **SHA corto:** `9039c69`.
 - **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 5 — Read models y
   experiencia operativa.
+
+## REFACTOR FISCAL SHOPIFY — FASE 5 — Read models y experiencia operativa
+
+- **Rama:** `feature/fiscal-refactor-shopify`.
+- **Objetivo:** exponer de forma coherente el estado fiscal Shopify, el tipo de
+  documento emitido y la independencia entre payout, banco y documento fiscal en
+  Ventas Shopify, Conciliación y Facturación.
+- **Read models:** `operations-repository` expone el tipo de documento emitido
+  más reciente compatible con facturas españolas; los enlaces de evidencia
+  Shopify incorporan el estado fiscal del pedido para que conciliación no mezcle
+  pago, payout y revisión fiscal.
+- **UI:** Ventas Shopify y detalle de venta muestran el payout como evidencia de
+  liquidación, no como banco conciliado; los pedidos de importe cero se presentan
+  como revisión fiscal por descuento total y no como falta de pago Shopify; la
+  facturación muestra país del comprador y tipo/número de documento sin exponer
+  email o dirección en tarjetas de factura simplificada.
+- **Etiquetas:** se centralizan etiquetas españolas para estados de emisión,
+  tipos documentales, revisión fiscal y payout/banco, evitando valores internos
+  ingleses en las pantallas modificadas.
+- **Pruebas ejecutadas y resultado real:**
+
+  ```text
+  pnpm --filter @anclora/web test -- sales/shopify reconciliation invoicing
+  Test Files 26 passed (26)
+  Tests 68 passed (68)
+
+  pnpm --filter @anclora/web typecheck
+  sin errores
+
+  pnpm --filter @anclora/db test -- operations-repository shopify-evidence-links-repository
+  Test Files 19 passed (19)
+  Tests 102 passed (102)
+
+  pnpm --filter @anclora/db typecheck
+  sin errores
+
+  pnpm --filter @anclora/web lint
+  sin errores
+
+  pnpm --filter @anclora/db lint
+  sin errores
+
+  pnpm --filter @anclora/api typecheck
+  sin errores
+  ```
+
+  Los avisos React sobre `priority` proceden del mock de `next/image` en pruebas
+  web y no bloquean la suite.
+- **SHA corto:** pendiente de commit.
+- **Siguiente fase:** REFACTOR FISCAL SHOPIFY — FASE 6 — Validación integral,
+  documentación y cierre.

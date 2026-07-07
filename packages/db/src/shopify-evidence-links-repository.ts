@@ -27,7 +27,7 @@ export class DrizzleShopifyEvidenceLinksRepository<TQueryResult extends PgQueryR
   constructor(private readonly db: PgDatabase<TQueryResult, typeof schema>) {}
 
   async linkTenantEvidence(tenantId: string, input: { windowDays: number }): Promise<void> {
-    const orders = await this.db.select({ id: commercialOrders.id, externalOrderId: commercialOrders.externalOrderId, totalAmount: commercialOrders.totalAmount })
+    const orders = await this.db.select({ id: commercialOrders.id, externalOrderId: commercialOrders.externalOrderId, totalAmount: commercialOrders.totalAmount, fiscalStatus: commercialOrders.fiscalStatus })
       .from(commercialOrders).where(and(eq(commercialOrders.tenantId, tenantId), eq(commercialOrders.sourceChannel, 'SHOPIFY')));
     const ordersByName = new Map(orders.map((order) => [order.externalOrderId, order]));
     const unresolvedTransactions = await this.db.select().from(shopifyOrderPaymentEvents)
@@ -61,7 +61,7 @@ export class DrizzleShopifyEvidenceLinksRepository<TQueryResult extends PgQueryR
         linkType: 'ORDER_TO_TRANSACTION',
         confidence: '1.0000',
         state: 'AUTO_LINKED',
-        explanationJson: { signals: ['same_tenant', 'exact_shopify_order_name'], shopifyOrderName: transaction.shopifyOrderName },
+        explanationJson: { signals: ['same_tenant', 'exact_shopify_order_name'], shopifyOrderName: transaction.shopifyOrderName, fiscalStatus: ordersByName.get(transaction.shopifyOrderName)?.fiscalStatus },
       }] : []),
       ...ledgerEntries.flatMap((entry) => entry.commercialOrderId ? [{
         tenantId,
@@ -72,7 +72,7 @@ export class DrizzleShopifyEvidenceLinksRepository<TQueryResult extends PgQueryR
         linkType: 'ORDER_TO_LEDGER',
         confidence: '1.0000',
         state: 'AUTO_LINKED',
-        explanationJson: { signals: ['same_tenant', 'exact_shopify_order_name'], shopifyOrderName: entry.shopifyOrderName, bankVerified: false },
+        explanationJson: { signals: ['same_tenant', 'exact_shopify_order_name'], shopifyOrderName: entry.shopifyOrderName, fiscalStatus: ordersByName.get(entry.shopifyOrderName)?.fiscalStatus, bankVerified: false },
       }] : []),
     ];
     if (exactLinks.length > 0) {
@@ -115,6 +115,7 @@ export class DrizzleShopifyEvidenceLinksRepository<TQueryResult extends PgQueryR
           signals: ['same_tenant', 'same_order', 'compatible_type', 'same_currency', 'compatible_amount', 'within_time_window'],
           collisionCount,
           shopifyOrderName: transaction.shopifyOrderName,
+          fiscalStatus: ordersByName.get(transaction.shopifyOrderName)?.fiscalStatus,
           kind: transaction.kind,
           commercialSaleAmount,
           commercialNetAfterTransaction: transaction.kind === 'refund'

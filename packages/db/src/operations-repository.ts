@@ -28,6 +28,7 @@ export type OperationListItem = Operation & {
   discountAmount: string | null;
   issuedInvoiceId: string | null;
   issuedInvoiceNumber: string | null;
+  issuedInvoiceDocumentType: string | null;
   issuedInvoiceTotalAmount: string | null;
   issuedInvoiceCurrency: string | null;
 };
@@ -146,6 +147,15 @@ export class DrizzleOperationsRepository<TQueryResult extends PgQueryResultHKT> 
           )`,
           issuedInvoiceNumber: sql<string | null>`(
             select fd.number
+            from ${fiscalDocuments} fd
+            where fd.tenant_id = ${canonicalOperations.tenantId}
+              and fd.canonical_operation_id = ${canonicalOperations.id}
+              and fd.document_type in ('SIMPLIFICADA', 'COMPLETA', 'FULL_INVOICE')
+            order by fd.issued_at desc
+            limit 1
+          )`,
+          issuedInvoiceDocumentType: sql<string | null>`(
+            select fd.document_type
             from ${fiscalDocuments} fd
             where fd.tenant_id = ${canonicalOperations.tenantId}
               and fd.canonical_operation_id = ${canonicalOperations.id}

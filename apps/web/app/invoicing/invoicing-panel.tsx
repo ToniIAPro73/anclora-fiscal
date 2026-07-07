@@ -25,6 +25,7 @@ interface Operation {
   customerType?: string | null;
   issuedInvoiceId?: string | null;
   issuedInvoiceNumber?: string | null;
+  issuedInvoiceDocumentType?: string | null;
   issuedInvoiceTotalAmount?: string | null;
   issuedInvoiceCurrency?: string | null;
   createdAt: string;
@@ -38,6 +39,7 @@ interface OperationsPage { items: Operation[]; page: number; pageSize: number; t
 interface FiscalDocument {
   id: string;
   number: string;
+  documentType?: string | null;
   status: string;
   taxBase: string;
   taxAmount: string;
@@ -132,6 +134,7 @@ export function InvoicingPanel() {
       const issuedDocument = outcome?.kind === 'success' ? outcome.document : operation.issuedInvoiceId ? {
         id: operation.issuedInvoiceId,
         number: operation.issuedInvoiceNumber ?? 'Factura emitida',
+        documentType: operation.issuedInvoiceDocumentType ?? null,
         status: 'ISSUED',
         taxBase: '0',
         taxAmount: '0',
@@ -145,8 +148,7 @@ export function InvoicingPanel() {
         <dl>
           <div><dt>Bruto</dt><dd>{gross} {currency}</dd></div>
           <div><dt>Comprador</dt><dd>{buyerLabel(operation)}</dd></div>
-          <div><dt>Email</dt><dd>{operation.customerEmail ?? 'No informado'}</dd></div>
-          <div><dt>Dirección</dt><dd>{operation.customerAddress ?? operation.customerCountry ?? 'No informada'}</dd></div>
+          <div><dt>País comprador</dt><dd>{operation.customerCountry ?? 'No informado'}</dd></div>
           <div><dt>Estado de revisión</dt><dd>{statusLabel(operation.reviewStatus)}</dd></div>
           <div><dt>Estado operativo</dt><dd>{statusLabel(operation.operationStatus)}</dd></div>
           <div><dt>Conciliación</dt><dd>{statusLabel(operation.reconciliationStatus)}</dd></div>
@@ -156,7 +158,8 @@ export function InvoicingPanel() {
           </button>}
         {outcome?.kind === 'error' ? <p className="import-error" role="status">{outcome.message}</p> : null}
         {issuedDocument ? <dl>
-          <div><dt>Factura</dt><dd>{issuedDocument.number}{outcome?.kind === 'success' && outcome.alreadyIssued ? ' (ya emitida)' : ''}</dd></div>
+          <div><dt>Tipo</dt><dd>{statusLabel(issuedDocument.documentType ?? 'COMPLETA')}</dd></div>
+          <div><dt>Número</dt><dd>{issuedDocument.number}{outcome?.kind === 'success' && outcome.alreadyIssued ? ' (ya emitida)' : ''}</dd></div>
           <div><dt>Total</dt><dd>{Number(issuedDocument.totalAmount).toFixed(2)} {issuedDocument.currency}</dd></div>
         </dl> : null}
       </article>;

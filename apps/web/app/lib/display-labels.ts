@@ -46,6 +46,17 @@ const STATUS_LABELS: Record<string, string> = {
   VENTA_NACIONAL_B2C_IVA_REDUCIDO: "Venta nacional B2C con IVA reducido",
   VENTA_SHOPIFY: "Venta Shopify",
   ZERO_VALUE_REVIEW: "Revisión por importe cero",
+  REVISION_IMPORTE_CERO: "Revisión por importe cero",
+  SIMPLIFICADA: "Factura simplificada",
+  COMPLETA: "Factura completa",
+  RECTIFICATIVA: "Factura rectificativa",
+  FACTURA_SIMPLIFICADA_EMITIDA: "Factura simplificada emitida",
+  FACTURA_COMPLETA_EMITIDA: "Factura completa emitida",
+  RECTIFICADA: "Rectificada",
+  PENDIENTE_CONFIGURACION_FISCAL: "Pendiente de configuración fiscal",
+  PENDIENTE_REVISION_OSS: "Pendiente de revisión OSS",
+  PENDIENTE_VALIDACION_B2B: "Pendiente de validación B2B",
+  REVISION_REEMBOLSO_REQUERIDA: "Revisión de reembolso requerida",
   ebook: "eBook",
   general: "Tapa blanda / general",
   paid: "Pagado",
@@ -148,4 +159,12 @@ export function ledgerEntryLabel(type: string | null | undefined): string {
 export function issueLabel(code: string | null | undefined): string {
   if (!code) return "Incidencia";
   return ISSUE_LABELS[code] ?? humanizeTechnicalValue(code);
+}
+
+export function settlementLabel(status: string | null | undefined, zeroAmount = false): string {
+  if (zeroAmount || status === "LEDGER_NOT_REQUIRED") return "No requiere pago Shopify";
+  if (status === "SETTLED") return "Payout Shopify identificado · banco sin conciliar";
+  if (status === "PAYOUT_PENDING" || status === "PENDING") return "Payout Shopify pendiente";
+  if (status === "LEDGER_MISSING") return "Sin evidencia de payout";
+  return statusLabel(status);
 }

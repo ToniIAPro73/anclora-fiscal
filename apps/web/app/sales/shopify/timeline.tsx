@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button, DataTable, SelectField, StatusBadge } from "@anclora/ui";
-import { statusLabel } from "../../lib/display-labels";
+import { settlementLabel as settlementStatusLabel, statusLabel } from "../../lib/display-labels";
 
 interface Sale {
   id: string;
@@ -57,15 +57,6 @@ function discountLabel(sale: Sale) {
 
 function isZeroAmount(sale: Sale) {
   return Number(sale.totalAmount ?? 0) === 0;
-}
-
-function settlementLabel(sale: Sale) {
-  if (isZeroAmount(sale) || sale.payoutStatus === "LEDGER_NOT_REQUIRED") {
-    return "No requiere Shopify Payments";
-  }
-  if (sale.payoutStatus === "SETTLED") return "Liquidación identificada";
-  if (sale.payoutStatus === "LEDGER_MISSING") return "Falta importar Shopify Payments";
-  return "Liquidación pendiente";
 }
 
 function evidenceLabel(sale: Sale) {
@@ -241,7 +232,7 @@ export function OperationsTimeline() {
               <StatusBadge
                 tone={sale.payoutStatus === "SETTLED" || isZeroAmount(sale) ? "info" : "warning"}
               >
-                {settlementLabel(sale)}
+                {settlementStatusLabel(sale.payoutStatus, isZeroAmount(sale))}
               </StatusBadge>
             ),
           },
