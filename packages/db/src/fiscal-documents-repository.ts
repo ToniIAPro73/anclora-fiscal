@@ -74,6 +74,11 @@ const RECTIFYING_DOCUMENT_TYPE = 'RECTIFICATIVA';
 const LEGACY_FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
 const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
 
+type InvoiceNumberAllocator<TQueryResult extends PgQueryResultHKT> = Pick<
+  PgDatabase<TQueryResult, typeof schema>,
+  'update'
+>;
+
 function documentTypeSeriesCandidates(documentType: string): string[] {
   if (documentType === SIMPLIFIED_DOCUMENT_TYPE) return [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE'];
   if (documentType === RECTIFYING_DOCUMENT_TYPE) return [RECTIFYING_DOCUMENT_TYPE, LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE];
@@ -92,8 +97,8 @@ function isUniqueViolation(error: unknown): boolean {
     || String(error).includes('duplicate key');
 }
 
-async function allocateInvoiceNumber(
-  transaction: any,
+async function allocateInvoiceNumber<TQueryResult extends PgQueryResultHKT>(
+  transaction: InvoiceNumberAllocator<TQueryResult>,
   seriesId: string,
 ): Promise<{ code: string; allocatedNumber: number }> {
   const [updatedSeries] = await transaction
