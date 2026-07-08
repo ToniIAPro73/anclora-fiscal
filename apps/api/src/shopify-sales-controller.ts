@@ -241,36 +241,19 @@ export function createShopifySaleInvoiceHandler(dependencies: {
       estadoFiscal,
 
       // El pedido existe porque getById lo ha localizado.
-      existePedidoComercial:
-        eligibility.existePedidoComercial
-        ?? eligibility.hasOrderEvidence
-        ?? true,
+      existePedidoComercial: eligibility.existePedidoComercial ?? true,
 
       // Debe proceder de sale/capture con estado success/succeeded.
       existeTransaccionShopifyConfirmada:
-        eligibility.existeTransaccionShopifyConfirmada
-        ?? eligibility.hasTransactionsEvidence
-        ?? false,
+        eligibility.existeTransaccionShopifyConfirmada ?? false,
 
-      configuracionFiscalLista:
-        eligibility.configuracionFiscalLista
-        ?? eligibility.hasFiscalConfiguration
-        ?? false,
+      configuracionFiscalLista: eligibility.configuracionFiscalLista ?? false,
 
-      perfilFiscalVigente:
-        eligibility.perfilFiscalVigente
-        ?? eligibility.hasFiscalProfile
-        ?? false,
+      perfilFiscalVigente: eligibility.perfilFiscalVigente ?? false,
 
-      // Compatibilidad temporal con mocks o consumidores aún no actualizados.
-      // En producción, el repositorio debe proporcionar los valores reales.
-      estadoDecisionFiscal:
-        eligibility.estadoDecisionFiscal
-        ?? (eligibility.hasTaxDecision ? 'DETERMINADA' : null),
+      estadoDecisionFiscal: eligibility.estadoDecisionFiscal ?? null,
 
-      tipoDocumentoFiscal:
-        eligibility.tipoDocumentoFiscal
-        ?? (eligibility.hasTaxDecision ? 'SIMPLIFICADA' : null),
+      tipoDocumentoFiscal: eligibility.tipoDocumentoFiscal ?? null,
     });
 
     if (!puerta.permitida) {

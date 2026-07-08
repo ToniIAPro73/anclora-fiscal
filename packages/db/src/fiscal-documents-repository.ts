@@ -66,13 +66,18 @@ export interface RectifyInvoiceInput {
 
 export type RectifyInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyRectified: boolean }
-  | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' };
+  | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA' };
 
 const SIMPLIFIED_DOCUMENT_TYPE = 'SIMPLIFICADA';
 const FULL_DOCUMENT_TYPE = 'COMPLETA';
 const RECTIFYING_DOCUMENT_TYPE = 'RECTIFICATIVA';
 const LEGACY_FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
 const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
+
+type InvoiceNumberAllocator<TQueryResult extends PgQueryResultHKT> = Pick<
+  PgDatabase<TQueryResult, typeof schema>,
+  'update'
+>;
 
 function documentTypeSeriesCandidates(documentType: string): string[] {
   if (documentType === SIMPLIFIED_DOCUMENT_TYPE) return [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE'];
@@ -82,6 +87,46 @@ function documentTypeSeriesCandidates(documentType: string): string[] {
 
 function originalDocumentCanBeRectified(documentType: string) {
   return [SIMPLIFIED_DOCUMENT_TYPE, FULL_DOCUMENT_TYPE, LEGACY_FULL_INVOICE_DOCUMENT_TYPE].includes(documentType);
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  const candidate = error as { code?: string; message?: string };
+
+  return candidate.code === '23505'
+    || String(candidate.message ?? '').includes('duplicate key')
+    || String(error).includes('duplicate key');
+}
+
+async function allocateInvoiceNumber<TQueryResult extends PgQueryResultHKT>(
+  transaction: InvoiceNumberAllocator<TQueryResult>,
+  seriesId: string,
+): Promise<{ code: string; allocatedNumber: number }> {
+  const [updatedSeries] = await transaction
+    .update(invoiceSeries)
+    .set({
+      nextNumber: sql`${invoiceSeries.nextNumber} + 1`,
+    })
+    .where(eq(invoiceSeries.id, seriesId))
+    .returning({
+      code: invoiceSeries.code,
+      nextNumber: invoiceSeries.nextNumber,
+    });
+
+  if (!updatedSeries) {
+    throw new Error('No se pudo reservar número fiscal');
+  }
+
+  const nextNumberAfterReservation = Number(updatedSeries.nextNumber);
+  const allocatedNumber = nextNumberAfterReservation - 1;
+
+  if (!Number.isInteger(allocatedNumber) || allocatedNumber < 1) {
+    throw new Error('Número fiscal reservado inválido');
+  }
+
+  return {
+    code: updatedSeries.code,
+    allocatedNumber,
+  };
 }
 
 export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResultHKT> {
@@ -109,7 +154,8 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
    * auditEvents insert all happen inside a single transaction.
    */
   async issue(input: IssueInvoiceInput): Promise<IssueInvoiceResult> {
-    return this.db.transaction(async (transaction) => {
+    try {
+      return await this.db.transaction(async (transaction) => {
       const [operation] = await transaction
         .select()
         .from(canonicalOperations)
@@ -274,10 +320,8 @@ try {
       if (!seriesRow) return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
 
       const issuedAt = new Date();
-      const sequence = new InvoiceSequence(
-         seriesRow.code,
-         Number(seriesRow.nextNumber),
-      );
+      const reserved = await allocateInvoiceNumber(transaction, seriesRow.id);
+      const sequence = new InvoiceSequence(reserved.code, reserved.allocatedNumber);
 
       const invoice = await issueInvoice(sequence, {
         operationId: operation.id,
@@ -292,11 +336,6 @@ try {
         currency: 'EUR',
         issuedAt: issuedAt.toISOString(),
       }, documentType);
-
-      await transaction
-        .update(invoiceSeries)
-        .set({ nextNumber: String(Number(seriesRow.nextNumber) + 1) })
-        .where(eq(invoiceSeries.id, seriesRow.id));
 
       const stored = await input.storage.put({ tenantId: input.tenantId, bytes: invoice.pdfBytes, mimeType: 'application/pdf' });
 
@@ -359,7 +398,26 @@ try {
       });
 
       return { ok: true, document, alreadyIssued: false };
-    });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const [existing] = await this.db
+          .select()
+          .from(fiscalDocuments)
+          .where(and(
+            eq(fiscalDocuments.tenantId, input.tenantId),
+            eq(fiscalDocuments.canonicalOperationId, input.canonicalOperationId),
+            inArray(fiscalDocuments.documentType, documentTypeSeriesCandidates(SIMPLIFIED_DOCUMENT_TYPE)),
+          ))
+          .limit(1);
+
+        if (existing) {
+          return { ok: true, document: existing, alreadyIssued: true };
+        }
+      }
+
+      throw error;
+    }
   }
 
   /**
@@ -375,7 +433,8 @@ try {
    * auditEvents insert all happen inside a single transaction.
    */
   async rectify(input: RectifyInvoiceInput): Promise<RectifyInvoiceResult> {
-    return this.db.transaction(async (transaction) => {
+    try {
+      return await this.db.transaction(async (transaction) => {
       const [original] = await transaction
         .select()
         .from(fiscalDocuments)
@@ -413,8 +472,23 @@ try {
       const [issuer] = await transaction
         .select()
         .from(legalEntities)
-        .where(and(eq(legalEntities.tenantId, input.tenantId), eq(legalEntities.id, operation.legalEntityId)))
+        .where(and(
+          eq(legalEntities.tenantId, input.tenantId),
+          eq(legalEntities.id, operation.legalEntityId),
+          eq(legalEntities.configurationStatus, 'READY'),
+        ))
         .limit(1);
+
+      if (!issuer || !issuer.address || !issuer.taxIdentityEncrypted) {
+        return { ok: false, reason: 'CONFIGURACION_FISCAL_INCOMPLETA' };
+      }
+
+      let issuerTaxIdentity: string;
+      try {
+        issuerTaxIdentity = decryptTaxIdentity(issuer.taxIdentityEncrypted);
+      } catch {
+        return { ok: false, reason: 'CONFIGURACION_FISCAL_INCOMPLETA' };
+      }
 
       const [existingSeries] = await transaction
         .select()
@@ -439,7 +513,8 @@ try {
       if (!seriesRow) throw new Error('No se pudo inicializar la serie de facturación rectificativa');
 
       const issuedAt = new Date();
-      const sequence = new InvoiceSequence(seriesRow.code, Number(seriesRow.nextNumber));
+      const reserved = await allocateInvoiceNumber(transaction, seriesRow.id);
+      const sequence = new InvoiceSequence(reserved.code, reserved.allocatedNumber);
       const rectification = await rectifyInvoice(
         sequence,
         {
@@ -447,31 +522,24 @@ try {
           number: original.number,
           type: original.documentType as 'SIMPLIFICADA' | 'COMPLETA' | 'FULL_INVOICE',
           input: {
-  operationId: operation.id,
-  issuerName: issuer?.legalName ?? 'Emisor fiscal',
-  issuerTaxIdentity: issuer?.taxIdentityEncrypted
-    ? decryptTaxIdentity(issuer.taxIdentityEncrypted)
-    : 'NIF/NIE no disponible',
-  issuerAddress: issuer?.address ?? 'Domicilio fiscal no disponible',
-  description: `Operación ${operation.operationType}`,
-  taxBase: Number(original.taxBase),
-  taxRate: Number(decision?.taxRate ?? 0),
-  taxAmount: Number(original.taxAmount),
-  totalAmount: Number(original.totalAmount),
-  currency: 'EUR',
-  issuedAt: original.issuedAt.toISOString(),
-},
+            operationId: operation.id,
+            issuerName: issuer.legalName,
+            issuerTaxIdentity,
+            issuerAddress: issuer.address,
+            description: `Operación ${operation.operationType}`,
+            taxBase: Number(original.taxBase),
+            taxRate: Number(decision?.taxRate ?? 0),
+            taxAmount: Number(original.taxAmount),
+            totalAmount: Number(original.totalAmount),
+            currency: 'EUR',
+            issuedAt: original.issuedAt.toISOString(),
+          },
           pdfBytes: new Uint8Array(0),
           sha256: original.renderSha256,
           status: 'ISSUED',
         },
         issuedAt.toISOString(),
       );
-
-      await transaction
-        .update(invoiceSeries)
-        .set({ nextNumber: String(Number(seriesRow.nextNumber) + 1) })
-        .where(eq(invoiceSeries.id, seriesRow.id));
 
       const stored = await input.storage.put({ tenantId: input.tenantId, bytes: rectification.pdfBytes, mimeType: 'application/pdf' });
 
@@ -535,6 +603,25 @@ try {
       });
 
       return { ok: true, document, alreadyRectified: false };
-    });
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const [existing] = await this.db
+          .select()
+          .from(fiscalDocuments)
+          .where(and(
+            eq(fiscalDocuments.tenantId, input.tenantId),
+            eq(fiscalDocuments.originalDocumentId, input.fiscalDocumentId),
+            inArray(fiscalDocuments.documentType, documentTypeSeriesCandidates(RECTIFYING_DOCUMENT_TYPE)),
+          ))
+          .limit(1);
+
+        if (existing) {
+          return { ok: true, document: existing, alreadyRectified: true };
+        }
+      }
+
+      throw error;
+    }
   }
 }

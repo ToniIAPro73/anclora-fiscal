@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las dieciocho migraciones en orden y puede repetirse', async () => {
+  it('aplica las diecinueve migraciones en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -40,6 +40,7 @@ describe('migrateOfflineDatabase', () => {
       '0015_shopify_evidence_links.sql',
       '0016_fiscal_issuer_refactor.sql',
       '0017_tax_decision_document_type.sql',
+      '0018_fiscal_document_idempotency.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(

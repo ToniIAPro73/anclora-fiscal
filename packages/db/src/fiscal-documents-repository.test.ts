@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import {
   encryptTaxIdentity,
   verifyIntegrityChain,
@@ -13,6 +13,7 @@ import { DrizzleFiscalDocumentsRepository } from './fiscal-documents-repository'
 import {
   auditEvents,
   canonicalOperations,
+  fiscalDocuments,
   importFiles,
   importJobs,
   integrityChainRecords,
@@ -171,7 +172,132 @@ await db.insert(shopifyOrderPaymentEvents).values({
     explanation: {},
   });
 
-  return { tenantId: tenant.id, actorId: actor.id, operationId: operation.id };
+  return { tenantId: tenant.id, actorId: actor.id, operationId: operation.id, legalEntityId: legalEntity.id };
+}
+
+async function getSeriesNextNumber(
+  db: ReturnType<typeof createOfflineDatabase>['db'],
+  tenantId: string,
+  documentType: string,
+): Promise<number> {
+  const [series] = await db
+    .select({ nextNumber: invoiceSeries.nextNumber })
+    .from(invoiceSeries)
+    .where(and(
+      eq(invoiceSeries.tenantId, tenantId),
+      eq(invoiceSeries.documentType, documentType),
+    ))
+    .limit(1);
+
+  if (!series) {
+    throw new Error(`No existe serie ${documentType} para el tenant ${tenantId}`);
+  }
+
+  return Number(series.nextNumber);
+}
+
+async function getTenantFiscalDocuments(
+  db: ReturnType<typeof createOfflineDatabase>['db'],
+  tenantId: string,
+) {
+  return db
+    .select()
+    .from(fiscalDocuments)
+    .where(eq(fiscalDocuments.tenantId, tenantId));
+}
+
+async function getTenantIntegrityRecords(
+  db: ReturnType<typeof createOfflineDatabase>['db'],
+  tenantId: string,
+) {
+  return db
+    .select()
+    .from(integrityChainRecords)
+    .where(eq(integrityChainRecords.tenantId, tenantId));
+}
+
+async function seedAdditionalOperationWithDecision(
+  db: ReturnType<typeof createOfflineDatabase>['db'],
+  input: {
+    tenantId: string;
+    legalEntityId: string;
+    sourceOrderId: string;
+    suffix: string;
+  },
+) {
+  const [operation] = await db.insert(canonicalOperations).values({
+    tenantId: input.tenantId,
+    legalEntityId: input.legalEntityId,
+    sourceChannel: 'shopify',
+    sourceOrderId: input.sourceOrderId,
+    operationType: 'SALE',
+    operationStatus: 'READY_FOR_INVOICING',
+    reviewStatus: 'REVIEWED',
+    reconciliationStatus: 'MATCHED',
+    verifactuStatus: 'PENDING',
+  }).returning({ id: canonicalOperations.id });
+
+  if (!operation) {
+    throw new Error('No se pudo crear la operación adicional de prueba');
+  }
+
+  const [importJob] = await db
+    .insert(importJobs)
+    .values({
+      tenantId: input.tenantId,
+      connectorId: `shopify-order-transactions-${input.suffix}`,
+    })
+    .returning({ id: importJobs.id });
+
+  if (!importJob) {
+    throw new Error('No se pudo crear el trabajo de importación adicional');
+  }
+
+  const [importFile] = await db
+    .insert(importFiles)
+    .values({
+      tenantId: input.tenantId,
+      importJobId: importJob.id,
+      storageKey: `tests/${input.suffix}/shopify-order-transactions.csv`,
+      originalNameEncrypted: `shopify-order-transactions-${input.suffix}.csv`,
+      mimeType: 'text/csv',
+      byteSize: '1',
+      sha256: `test-sha256-${input.suffix}-shopify-transactions`,
+      importerVersion: 'test',
+    })
+    .returning({ id: importFiles.id });
+
+  if (!importFile) {
+    throw new Error('No se pudo crear el archivo de importación adicional');
+  }
+
+  await db.insert(shopifyOrderPaymentEvents).values({
+    tenantId: input.tenantId,
+    importFileId: importFile.id,
+    externalEventKey: `${input.suffix}:${input.sourceOrderId}:sale:1`,
+    shopifyOrderId: input.sourceOrderId.replace(/[^0-9]/g, '') || input.suffix,
+    shopifyOrderName: input.sourceOrderId,
+    kind: 'sale',
+    gateway: 'shopify_payments',
+    status: 'success',
+    amount: '6.99',
+    currency: 'EUR',
+    occurredAt: new Date(),
+  });
+
+  await db.insert(taxDecisions).values({
+    tenantId: input.tenantId,
+    canonicalOperationId: operation.id,
+    status: 'DETERMINADA',
+    documentType: 'SIMPLIFICADA',
+    taxBase: '6.72',
+    taxRate: '0.04',
+    taxAmount: '0.27',
+    totalAmount: '6.99',
+    explanation: {},
+  });
+
+  return operation.id;
 }
 
 describe('DrizzleFiscalDocumentsRepository', () => {
@@ -268,6 +394,40 @@ describe('DrizzleFiscalDocumentsRepository', () => {
   expect(storage.puts).toHaveLength(0);
 });
 
+
+    it('no consume serie cuando la emisión queda bloqueada antes de emitir', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-bloqueo-no-consume-serie');
+
+      await db
+        .delete(shopifyOrderPaymentEvents)
+        .where(eq(shopifyOrderPaymentEvents.tenantId, tenantId));
+
+      const beforeNextNumber = await getSeriesNextNumber(db, tenantId, 'SIMPLIFICADA');
+      const storage = new InMemoryStorage();
+
+      const result = await new DrizzleFiscalDocumentsRepository(db).issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        reason: 'COBRO_SHOPIFY_NO_CONFIRMADO',
+      });
+
+      expect(await getSeriesNextNumber(db, tenantId, 'SIMPLIFICADA')).toBe(beforeNextNumber);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(0);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(0);
+      expect(storage.puts).toHaveLength(0);
+    });
+
     it('es idempotente: emitir la misma operación dos veces devuelve el mismo documento y no duplica el registro de integridad', async () => {
       const { client, db } = createOfflineDatabase();
       clients.push(client);
@@ -288,6 +448,112 @@ describe('DrizzleFiscalDocumentsRepository', () => {
 
       const chainRecords = await db.select().from(integrityChainRecords).where(eq(integrityChainRecords.tenantId, tenantId));
       expect(chainRecords).toHaveLength(1);
+    });
+
+
+    it('no consume un segundo número al emitir dos veces la misma operación', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-idempotencia-serie');
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const first = await repository.issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      const second = await repository.issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected ok results');
+
+      expect(first.document.number).toBe('FS-00001');
+      expect(second.document.id).toBe(first.document.id);
+      expect(second.alreadyIssued).toBe(true);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(1);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(1);
+      expect(await getSeriesNextNumber(db, tenantId, 'SIMPLIFICADA')).toBe(2);
+    });
+
+    it('mantiene idempotencia básica cuando dos emisiones de la misma operación se solicitan en paralelo', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-concurrencia-misma-operacion');
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const [first, second] = await Promise.all([
+        repository.issue({ tenantId, actorId, canonicalOperationId: operationId, storage }),
+        repository.issue({ tenantId, actorId, canonicalOperationId: operationId, storage }),
+      ]);
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected ok results');
+
+      expect(second.document.id).toBe(first.document.id);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(1);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(1);
+      expect(await getSeriesNextNumber(db, tenantId, 'SIMPLIFICADA')).toBe(2);
+    });
+
+    it('asigna números únicos y secuenciales a operaciones distintas', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const seeded = await seedOperationWithDecision(db, 'tenant-operaciones-distintas');
+      const secondOperationId = await seedAdditionalOperationWithDecision(db, {
+        tenantId: seeded.tenantId,
+        legalEntityId: seeded.legalEntityId,
+        sourceOrderId: 'ORDER-2',
+        suffix: 'tenant-operaciones-distintas-2',
+      });
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const [first, second] = await Promise.all([
+        repository.issue({
+          tenantId: seeded.tenantId,
+          actorId: seeded.actorId,
+          canonicalOperationId: seeded.operationId,
+          storage,
+        }),
+        repository.issue({
+          tenantId: seeded.tenantId,
+          actorId: seeded.actorId,
+          canonicalOperationId: secondOperationId,
+          storage,
+        }),
+      ]);
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected ok results');
+
+      const numbers = [first.document.number, second.document.number].sort();
+      expect(numbers).toEqual(['FS-00001', 'FS-00002']);
+      expect(await getTenantFiscalDocuments(db, seeded.tenantId)).toHaveLength(2);
+      expect(await getTenantIntegrityRecords(db, seeded.tenantId)).toHaveLength(2);
+      expect(await getSeriesNextNumber(db, seeded.tenantId, 'SIMPLIFICADA')).toBe(3);
     });
 
     it('acepta actorId null (emisión automática) y lo persiste correctamente en audit_events', async () => {
@@ -414,6 +680,52 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(verifyIntegrityChain(integrityRecords)).toBe(true);
     });
 
+    it('bloquea la rectificación si falta configuración fiscal real del emisor', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-rectificacion-config-incompleta');
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const issued = await repository.issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      expect(issued.ok).toBe(true);
+      if (!issued.ok) throw new Error('expected ok result');
+
+      await db
+        .update(legalEntities)
+        .set({ address: null })
+        .where(eq(legalEntities.tenantId, tenantId));
+
+      const beforeNextNumber = await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA');
+
+      const result = await repository.rectify({
+        tenantId,
+        actorId,
+        fiscalDocumentId: issued.document.id,
+        storage,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        reason: 'CONFIGURACION_FISCAL_INCOMPLETA',
+      });
+
+      expect(await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA')).toBe(beforeNextNumber);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(1);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(1);
+      expect(storage.puts).toHaveLength(1);
+    });
+
     it('devuelve DOCUMENT_NOT_FOUND para un documento de otro tenant', async () => {
       const { client, db } = createOfflineDatabase();
       clients.push(client);
@@ -475,5 +787,99 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       const chainRecords = await db.select().from(integrityChainRecords).where(eq(integrityChainRecords.tenantId, tenantId));
       expect(chainRecords).toHaveLength(2);
     });
+
+    it('no consume un segundo número rectificativo al rectificar dos veces el mismo documento', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-rectificativa-idempotente-serie');
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const issued = await repository.issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      expect(issued.ok).toBe(true);
+      if (!issued.ok) throw new Error('expected ok result');
+
+      const first = await repository.rectify({
+        tenantId,
+        actorId,
+        fiscalDocumentId: issued.document.id,
+        storage,
+      });
+
+      const second = await repository.rectify({
+        tenantId,
+        actorId,
+        fiscalDocumentId: issued.document.id,
+        storage,
+      });
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected ok results');
+
+      expect(first.document.number).toBe('FR-00001');
+      expect(second.document.id).toBe(first.document.id);
+      expect(second.alreadyRectified).toBe(true);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(2);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(2);
+      expect(await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA')).toBe(2);
+    });
+
+    it('mantiene idempotencia básica cuando dos rectificaciones del mismo documento se solicitan en paralelo', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-rectificativa-concurrente');
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const issued = await repository.issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      expect(issued.ok).toBe(true);
+      if (!issued.ok) throw new Error('expected ok result');
+
+      const [first, second] = await Promise.all([
+        repository.rectify({
+          tenantId,
+          actorId,
+          fiscalDocumentId: issued.document.id,
+          storage,
+        }),
+        repository.rectify({
+          tenantId,
+          actorId,
+          fiscalDocumentId: issued.document.id,
+          storage,
+        }),
+      ]);
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected ok results');
+
+      expect(second.document.id).toBe(first.document.id);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(2);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(2);
+      expect(await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA')).toBe(2);
+    });
+
   });
 });
