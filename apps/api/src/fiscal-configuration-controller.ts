@@ -1,6 +1,9 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { isValidSpanishNifNie, normalizeSpanishTaxId } from '@anclora/core';
+import {
+  isValidSpanishNifNie,
+  normalizeSpanishTaxId,
+} from '@anclora/core';
+import { encryptTaxIdentity } from '@anclora/core/server';
 import { z } from 'zod';
 
 const payloadSchema = z.object({
@@ -65,16 +68,6 @@ export interface FiscalConfigurationRepositoryPort {
     actorId: string | null;
     datosEmisor: Omit<FiscalIssuerConfigurationPayload['datosEmisor'], 'nifNie'> & { nifCifrado?: string | null };
   }): Promise<unknown>;
-}
-
-function encryptTaxIdentity(value: string): string {
-  const secret = process.env.IMPORT_METADATA_SECRET ?? 'development-only-import-metadata-secret';
-  if (secret.length < 32) throw new Error('IMPORT_METADATA_SECRET debe contener al menos 32 caracteres');
-  const key = createHash('sha256').update(`fiscal-tax-identity:${secret}`).digest();
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', key, iv);
-  const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
-  return ['v1', iv.toString('base64url'), cipher.getAuthTag().toString('base64url'), encrypted.toString('base64url')].join(':');
 }
 
 function redactEncryptedFields(value: unknown): unknown {

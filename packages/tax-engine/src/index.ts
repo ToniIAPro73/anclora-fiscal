@@ -12,7 +12,7 @@ export interface TaxContext {
 }
 
 export interface TaxDecision {
-  status: 'DETERMINADA' | 'PENDIENTE_REVISION_FISCAL' | 'BLOQUEADA' | 'DETERMINED' | 'PENDING_TAX_REVIEW' | 'BLOCKED';
+  status: 'DETERMINADA' | 'PENDIENTE_REVISION_FISCAL' | 'BLOQUEADA' | 'DETERMINED' | 'PENDING_TAX_REVIEW' | 'BLOCKED' | 'REVISION_IMPORTE_CERO' | 'REVISION_REEMBOLSO_REQUERIDA' | 'PENDIENTE_VALIDACION_B2B' | 'PENDIENTE_REVISION_OSS';
   classification?: string;
   rate?: string;
   taxBase?: number;

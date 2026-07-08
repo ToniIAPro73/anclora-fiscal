@@ -81,6 +81,72 @@ export type TaxDecisionResult =
 export class TaxDecisionService {
   constructor(private readonly dependencies: TaxDecisionServiceDependencies) {}
 
+  private evaluateMvpFiscalDecision(
+    canonicalOperation: TaxDecisionCanonicalOperation,
+  ): TaxDecision | null {
+    const grossAmount = canonicalOperation.grossAmount != null
+      ? Number(canonicalOperation.grossAmount)
+      : null;
+
+    // 1. Zero amount
+    if (grossAmount === 0) {
+      return {
+        status: 'REVISION_IMPORTE_CERO',
+        explanation: ['Importe total cero: requiere revisión manual'],
+      };
+    }
+
+    // 2. Negative amount or refund
+    if (grossAmount !== null && grossAmount < 0) {
+      return {
+        status: 'REVISION_REEMBOLSO_REQUERIDA',
+        explanation: ['Importe negativo o operación de reembolso: requiere revisión'],
+      };
+    }
+
+    // 3. B2B validation
+    if (canonicalOperation.customerType === 'B2B') {
+      return {
+        status: 'PENDIENTE_VALIDACION_B2B',
+        explanation: ['Cliente B2B: requiere validación adicional'],
+      };
+    }
+
+    // 4. Channel must be Shopify (MVP only)
+    if (canonicalOperation.sourceChannel !== 'SHOPIFY') {
+      return {
+        status: 'PENDIENTE_REVISION_FISCAL',
+        explanation: [`Canal ${canonicalOperation.sourceChannel} no soportado en el MVP fiscal (solo Shopify)`],
+      };
+    }
+
+    // 5. Non-Spain customer country (OSS review) – block before engine.
+    if (canonicalOperation.customerCountry && canonicalOperation.customerCountry !== 'ES') {
+      return {
+        status: 'PENDIENTE_REVISION_OSS',
+        explanation: [`Cliente fuera de España (${canonicalOperation.customerCountry}): requiere revisión OSS`],
+      };
+    }
+
+    // 6. For Spain customers, product must be ebook (MVP only)
+    if (
+      canonicalOperation.customerCountry === 'ES' &&
+      canonicalOperation.productNature
+    ) {
+      const normalized = canonicalOperation.productNature.trim().toLowerCase().replaceAll('-', '_');
+      const isEbook = ['ebook', 'e_book', 'libro_electronico', 'libro electrónico'].includes(normalized);
+      if (!isEbook) {
+        return {
+          status: 'PENDIENTE_REVISION_FISCAL',
+          explanation: ['Producto no soportado en el MVP fiscal (solo ebook/libro digital)'],
+        };
+      }
+    }
+
+    // All MVP checks passed; let the engine decide.
+    return null;
+  }
+
   async runTaxDecisionForOperation(
     tenantId: string,
     canonicalOperationId: string,
@@ -92,6 +158,23 @@ export class TaxDecisionService {
         `[tax-decision-service] No hay entidad legal configurada para el tenant ${tenantId}; se omite la decisión fiscal de la operación ${canonicalOperationId}`,
       );
       return { status: 'EMISOR_NO_CONFIGURADO' };
+    }
+
+    const mvpDecision = this.evaluateMvpFiscalDecision(canonicalOperation);
+    if (mvpDecision) {
+      await this.dependencies.taxDecisionsRepository.create(tenantId, {
+        canonicalOperationId,
+        status: mvpDecision.status,
+        ruleId: mvpDecision.ruleId,
+        ruleVersion: mvpDecision.ruleVersion,
+        taxBase: mvpDecision.taxBase !== undefined ? String(mvpDecision.taxBase) : undefined,
+        taxRate: mvpDecision.rate,
+        taxAmount: mvpDecision.taxAmount !== undefined ? String(mvpDecision.taxAmount) : undefined,
+        totalAmount: mvpDecision.totalAmount !== undefined ? String(mvpDecision.totalAmount) : undefined,
+        documentType: mvpDecision.documentType,
+        explanation: mvpDecision.explanation,
+      });
+      return { status: 'DECISION_REGISTRADA', taxDecisionStatus: mvpDecision.status };
     }
 
     const context: TaxContext = {

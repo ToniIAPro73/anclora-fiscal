@@ -44,7 +44,8 @@ la marque como banco verificado sin un extracto bancario independiente.
 1. Abra **Ventas Shopify** y compruebe pedidos, métricas y estados de evidencia.
 2. Abra el expediente de un pedido para revisar líneas, transacciones y ledger.
 3. Abra **Cobros y liquidación Shopify** y decida enlaces propuestos.
-4. Emita sólo desde el expediente, con configuración y decisión fiscal completas.
+4. Emita desde el expediente, con configuración, transacción confirmada y
+   decisión fiscal completas. Ledger y payout no son requisito fiscal.
 5. Ante refund con factura, genere una rectificativa; sin factura, revise el caso.
 
 ## Privacidad

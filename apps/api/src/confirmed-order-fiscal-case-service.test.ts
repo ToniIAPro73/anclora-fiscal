@@ -17,72 +17,414 @@ const paidOrder = {
 };
 
 describe('ConfirmedOrderFiscalCaseService', () => {
-  it('crea operación fiscal Shopify con valores canónicos españoles y dispara decisión fiscal', async () => {
+  it('crea operación fiscal Shopify con valores canónicos españoles y emite sólo con elegibilidad real', async () => {
     const findById = vi.fn().mockResolvedValue(paidOrder);
-    const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1' });
-    const create = vi.fn().mockResolvedValue({ id: 'canonical-op-1' });
-    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'DETERMINADA' });
-    const issueAutomatically = vi.fn().mockResolvedValue({ status: 'ISSUED', documentId: 'doc-1' });
+    const findFirstByTenant = vi
+      .fn()
+      .mockResolvedValue({ id: 'legal-entity-1' });
+
+    const create = vi
+      .fn()
+      .mockResolvedValue({ id: 'canonical-op-1' });
+
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({
+      status: 'DECISION_REGISTRADA',
+      taxDecisionStatus: 'DETERMINADA',
+    });
+
+    const issueAutomatically = vi.fn().mockResolvedValue({
+      status: 'ISSUED',
+      documentId: 'doc-1',
+    });
+
+    const getById = vi.fn().mockResolvedValue({
+      eligibility: {
+        hasFiscalConfiguration: true,
+        hasFiscalProfile: true,
+        hasOrderEvidence: true,
+        hasTransactionsEvidence: true,
+        hasLedgerEvidence: true,
+        hasTaxDecision: true,
+
+        configuracionFiscalLista: true,
+        perfilFiscalVigente: true,
+        existePedidoComercial: true,
+        existeTransaccionShopifyConfirmada: true,
+        estadoDecisionFiscal: 'DETERMINADA',
+        tipoDocumentoFiscal: 'SIMPLIFICADA',
+      },
+    });
+
     const service = new ConfirmedOrderFiscalCaseService({
       commercialOrdersRepository: { findById },
       legalEntitiesRepository: { findFirstByTenant },
       operationsRepository: { create },
+      shopifySalesRepository: { getById },
       taxDecisionService: { runTaxDecisionForOperation },
       invoiceIssuanceService: { issueAutomatically },
     });
 
-    const result = await service.createForConfirmedOrder(tenantId, 'order-1');
+    const result = await service.createForConfirmedOrder(
+      tenantId,
+      'order-1',
+    );
 
-    expect(result).toEqual({ status: 'CREADA', canonicalOperationId: 'canonical-op-1', issuance: { status: 'ISSUED', documentId: 'doc-1' } });
-    expect(create).toHaveBeenCalledWith(tenantId, 'legal-entity-1', expect.objectContaining({
-      sourceChannel: 'SHOPIFY',
-      sourceOrderId: 'AI-1001',
-      operationType: 'VENTA_SHOPIFY',
-      operationStatus: 'PENDIENTE_DECISION_FISCAL',
-      reconciliationStatus: 'EVIDENCIA_INTERNA_PENDIENTE',
-      grossAmount: 6.99,
-      customerEmail: 'buyer@example.test',
-      customerAddress: 'Calle Comprador 1',
-    }));
-    expect(runTaxDecisionForOperation).toHaveBeenCalledWith(tenantId, 'canonical-op-1', expect.objectContaining({
-      operationType: 'VENTA_SHOPIFY',
-      customerCountry: 'ES',
-      customerType: 'B2C',
-      productNature: 'ebook',
-    }));
+    expect(result).toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+      issuance: {
+        status: 'ISSUED',
+        documentId: 'doc-1',
+      },
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      tenantId,
+      'legal-entity-1',
+      expect.objectContaining({
+        sourceChannel: 'SHOPIFY',
+        sourceOrderId: 'AI-1001',
+        operationType: 'VENTA_SHOPIFY',
+        operationStatus: 'PENDIENTE_DECISION_FISCAL',
+        reconciliationStatus: 'EVIDENCIA_INTERNA_PENDIENTE',
+        grossAmount: 6.99,
+        customerEmail: 'buyer@example.test',
+        customerAddress: 'Calle Comprador 1',
+      }),
+    );
+
+    expect(runTaxDecisionForOperation).toHaveBeenCalledWith(
+      tenantId,
+      'canonical-op-1',
+      expect.objectContaining({
+        operationType: 'VENTA_SHOPIFY',
+        customerCountry: 'ES',
+        customerType: 'B2C',
+        productNature: 'ebook',
+      }),
+    );
+
+    expect(getById).toHaveBeenCalledWith(tenantId, 'order-1');
+
     expect(issueAutomatically).toHaveBeenCalledWith({
       tenantId,
       operation: expect.objectContaining({
         id: 'canonical-op-1',
+        fiscalStatus: 'PENDING',
+
+        hasFiscalConfiguration: true,
+        hasFiscalProfile: true,
+        hasOrderEvidence: true,
         hasTransactionsEvidence: true,
+        hasLedgerEvidence: true,
         hasTaxDecision: true,
+
+        configuracionFiscalLista: true,
+        perfilFiscalVigente: true,
+        existePedidoComercial: true,
+        existeTransaccionShopifyConfirmada: true,
+        estadoDecisionFiscal: 'DETERMINADA',
+        tipoDocumentoFiscal: 'SIMPLIFICADA',
       }),
     });
   });
 
   it('no emite automáticamente si la decisión fiscal no está determinada', async () => {
     const issueAutomatically = vi.fn();
+
     const service = new ConfirmedOrderFiscalCaseService({
-      commercialOrdersRepository: { findById: vi.fn().mockResolvedValue(paidOrder) },
-      legalEntitiesRepository: { findFirstByTenant: vi.fn().mockResolvedValue({ id: 'legal-entity-1' }) },
-      operationsRepository: { create: vi.fn().mockResolvedValue({ id: 'canonical-op-1' }) },
-      taxDecisionService: { runTaxDecisionForOperation: vi.fn().mockResolvedValue({ status: 'DECISION_REGISTRADA', taxDecisionStatus: 'PENDIENTE_REVISION_OSS' }) },
+      commercialOrdersRepository: {
+        findById: vi.fn().mockResolvedValue(paidOrder),
+      },
+      legalEntitiesRepository: {
+        findFirstByTenant: vi
+          .fn()
+          .mockResolvedValue({ id: 'legal-entity-1' }),
+      },
+      operationsRepository: {
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: 'canonical-op-1' }),
+      },
+      taxDecisionService: {
+        runTaxDecisionForOperation: vi.fn().mockResolvedValue({
+          status: 'DECISION_REGISTRADA',
+          taxDecisionStatus: 'PENDIENTE_REVISION_OSS',
+        }),
+      },
       invoiceIssuanceService: { issueAutomatically },
     });
 
-    await expect(service.createForConfirmedOrder(tenantId, 'order-1')).resolves.toEqual({ status: 'CREADA', canonicalOperationId: 'canonical-op-1' });
+    await expect(
+      service.createForConfirmedOrder(tenantId, 'order-1'),
+    ).resolves.toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+    });
+
+    expect(issueAutomatically).not.toHaveBeenCalled();
+  });
+
+  it('no emite automáticamente si no hay detalle Shopify con elegibilidad real', async () => {
+    const issueAutomatically = vi.fn();
+    const getById = vi.fn().mockResolvedValue(null);
+
+    const service = new ConfirmedOrderFiscalCaseService({
+      commercialOrdersRepository: {
+        findById: vi.fn().mockResolvedValue(paidOrder),
+      },
+      legalEntitiesRepository: {
+        findFirstByTenant: vi
+          .fn()
+          .mockResolvedValue({ id: 'legal-entity-1' }),
+      },
+      operationsRepository: {
+        create: vi
+          .fn()
+          .mockResolvedValue({ id: 'canonical-op-1' }),
+      },
+      shopifySalesRepository: { getById },
+      taxDecisionService: {
+        runTaxDecisionForOperation: vi.fn().mockResolvedValue({
+          status: 'DECISION_REGISTRADA',
+          taxDecisionStatus: 'DETERMINADA',
+        }),
+      },
+      invoiceIssuanceService: { issueAutomatically },
+    });
+
+    await expect(
+      service.createForConfirmedOrder(tenantId, 'order-1'),
+    ).resolves.toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+    });
+
+    expect(getById).toHaveBeenCalledWith(tenantId, 'order-1');
     expect(issueAutomatically).not.toHaveBeenCalled();
   });
 
   it('deriva pedidos de importe cero a revisión sin crear operación', async () => {
     const create = vi.fn();
+
     const service = new ConfirmedOrderFiscalCaseService({
-      commercialOrdersRepository: { findById: vi.fn().mockResolvedValue({ ...paidOrder, totalAmount: '0.00', fiscalStatus: 'ZERO_VALUE_REVIEW' }) },
+      commercialOrdersRepository: {
+        findById: vi.fn().mockResolvedValue({
+          ...paidOrder,
+          totalAmount: '0.00',
+          fiscalStatus: 'ZERO_VALUE_REVIEW',
+        }),
+      },
       legalEntitiesRepository: { findFirstByTenant: vi.fn() },
       operationsRepository: { create },
     });
 
-    await expect(service.createForConfirmedOrder(tenantId, 'order-1')).resolves.toEqual({ status: 'REVISION_IMPORTE_CERO' });
+    await expect(
+      service.createForConfirmedOrder(tenantId, 'order-1'),
+    ).resolves.toEqual({
+      status: 'REVISION_IMPORTE_CERO',
+    });
+
     expect(create).not.toHaveBeenCalled();
   });
-});
+
+  it('no llama a issueAutomatically cuando la decisión fiscal es PENDIENTE_VALIDACION_B2B', async () => {
+    const findById = vi.fn().mockResolvedValue({
+      ...paidOrder,
+      fiscalStatus: 'PENDING',
+    });
+    const findFirstByTenant = vi.fn().mockResolvedValue({
+      id: 'legal-entity-1',
+    });
+    const create = vi.fn().mockResolvedValue({
+      id: 'canonical-op-1',
+    });
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({
+      status: 'DECISION_REGISTRADA',
+      taxDecisionStatus: 'PENDIENTE_VALIDACION_B2B',
+    });
+    const issueAutomatically = vi.fn();
+    const getById = vi.fn().mockResolvedValue({
+      eligibility: {
+        hasFiscalConfiguration: true,
+        hasFiscalProfile: true,
+        hasOrderEvidence: true,
+        hasTransactionsEvidence: true,
+        hasLedgerEvidence: true,
+        hasTaxDecision: true,
+        configuracionFiscalLista: true,
+        perfilFiscalVigente: true,
+        existePedidoComercial: true,
+        existeTransaccionShopifyConfirmada: true,
+        estadoDecisionFiscal: 'PENDIENTE_VALIDACION_B2B',
+        tipoDocumentoFiscal: undefined,
+      },
+    });
+
+    const service = new ConfirmedOrderFiscalCaseService({
+      commercialOrdersRepository: { findById },
+      legalEntitiesRepository: { findFirstByTenant },
+      operationsRepository: { create },
+      shopifySalesRepository: { getById },
+      taxDecisionService: { runTaxDecisionForOperation },
+      invoiceIssuanceService: { issueAutomatically },
+    });
+
+    const result = await service.createForConfirmedOrder(tenantId, 'order-1');
+
+    expect(result).toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+    });
+    expect(issueAutomatically).not.toHaveBeenCalled();
+  });
+  it('no llama a issueAutomatically cuando la decisión fiscal es PENDIENTE_REVISION_OSS', async () => {
+    const findById = vi.fn().mockResolvedValue({
+      ...paidOrder,
+      fiscalStatus: 'PENDING',
+    });
+    const findFirstByTenant = vi.fn().mockResolvedValue({
+      id: 'legal-entity-1',
+    });
+    const create = vi.fn().mockResolvedValue({
+      id: 'canonical-op-1',
+    });
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({
+      status: 'DECISION_REGISTRADA',
+      taxDecisionStatus: 'PENDIENTE_REVISION_OSS',
+    });
+    const issueAutomatically = vi.fn();
+    const getById = vi.fn().mockResolvedValue({
+      eligibility: {
+        hasFiscalConfiguration: true,
+        hasFiscalProfile: true,
+        hasOrderEvidence: true,
+        hasTransactionsEvidence: true,
+        hasLedgerEvidence: true,
+        hasTaxDecision: true,
+        configuracionFiscalLista: true,
+        perfilFiscalVigente: true,
+        existePedidoComercial: true,
+        existeTransaccionShopifyConfirmada: true,
+        estadoDecisionFiscal: 'PENDIENTE_REVISION_OSS',
+        tipoDocumentoFiscal: undefined,
+      },
+    });
+
+    const service = new ConfirmedOrderFiscalCaseService({
+      commercialOrdersRepository: { findById },
+      legalEntitiesRepository: { findFirstByTenant },
+      operationsRepository: { create },
+      shopifySalesRepository: { getById },
+      taxDecisionService: { runTaxDecisionForOperation },
+      invoiceIssuanceService: { issueAutomatically },
+    });
+
+    const result = await service.createForConfirmedOrder(tenantId, 'order-1');
+
+    expect(result).toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+    });
+    expect(issueAutomatically).not.toHaveBeenCalled();
+  });
+  it('no llama a issueAutomatically cuando la decisión fiscal es REVISION_REEMBOLSO_REQUERIDA', async () => {
+    const findById = vi.fn().mockResolvedValue({
+      ...paidOrder,
+      fiscalStatus: 'PENDING',
+    });
+    const findFirstByTenant = vi.fn().mockResolvedValue({
+      id: 'legal-entity-1',
+    });
+    const create = vi.fn().mockResolvedValue({
+      id: 'canonical-op-1',
+    });
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({
+      status: 'DECISION_REGISTRADA',
+      taxDecisionStatus: 'REVISION_REEMBOLSO_REQUERIDA',
+    });
+    const issueAutomatically = vi.fn();
+    const getById = vi.fn().mockResolvedValue({
+      eligibility: {
+        hasFiscalConfiguration: true,
+        hasFiscalProfile: true,
+        hasOrderEvidence: true,
+        hasTransactionsEvidence: true,
+        hasLedgerEvidence: true,
+        hasTaxDecision: true,
+        configuracionFiscalLista: true,
+        perfilFiscalVigente: true,
+        existePedidoComercial: true,
+        existeTransaccionShopifyConfirmada: true,
+        estadoDecisionFiscal: 'REVISION_REEMBOLSO_REQUERIDA',
+        tipoDocumentoFiscal: undefined,
+      },
+    });
+
+    const service = new ConfirmedOrderFiscalCaseService({
+      commercialOrdersRepository: { findById },
+      legalEntitiesRepository: { findFirstByTenant },
+      operationsRepository: { create },
+      shopifySalesRepository: { getById },
+      taxDecisionService: { runTaxDecisionForOperation },
+      invoiceIssuanceService: { issueAutomatically },
+    });
+
+    const result = await service.createForConfirmedOrder(tenantId, 'order-1');
+
+    expect(result).toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+    });
+    expect(issueAutomatically).not.toHaveBeenCalled();
+  });
+  it('no llama a issueAutomatically cuando la decisión fiscal es REVISION_IMPORTE_CERO', async () => {
+    const findById = vi.fn().mockResolvedValue({
+      ...paidOrder,
+      fiscalStatus: 'PENDING',
+    });
+    const findFirstByTenant = vi.fn().mockResolvedValue({
+      id: 'legal-entity-1',
+    });
+    const create = vi.fn().mockResolvedValue({
+      id: 'canonical-op-1',
+    });
+    const runTaxDecisionForOperation = vi.fn().mockResolvedValue({
+      status: 'DECISION_REGISTRADA',
+      taxDecisionStatus: 'REVISION_IMPORTE_CERO',
+    });
+    const issueAutomatically = vi.fn();
+    const getById = vi.fn().mockResolvedValue({
+      eligibility: {
+        hasFiscalConfiguration: true,
+        hasFiscalProfile: true,
+        hasOrderEvidence: true,
+        hasTransactionsEvidence: true,
+        hasLedgerEvidence: true,
+        hasTaxDecision: true,
+        configuracionFiscalLista: true,
+        perfilFiscalVigente: true,
+        existePedidoComercial: true,
+        existeTransaccionShopifyConfirmada: true,
+        estadoDecisionFiscal: 'REVISION_IMPORTE_CERO',
+        tipoDocumentoFiscal: undefined,
+      },
+    });
+
+    const service = new ConfirmedOrderFiscalCaseService({
+      commercialOrdersRepository: { findById },
+      legalEntitiesRepository: { findFirstByTenant },
+      operationsRepository: { create },
+      shopifySalesRepository: { getById },
+      taxDecisionService: { runTaxDecisionForOperation },
+      invoiceIssuanceService: { issueAutomatically },
+    });
+
+    const result = await service.createForConfirmedOrder(tenantId, 'order-1');
+
+    expect(result).toEqual({
+      status: 'CREADA',
+      canonicalOperationId: 'canonical-op-1',
+    });
+    expect(issueAutomatically).not.toHaveBeenCalled();
+  });});

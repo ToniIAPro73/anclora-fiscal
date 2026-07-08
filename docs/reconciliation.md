@@ -19,10 +19,15 @@ como `PROPOSED` y un operador con permiso puede marcarlos `CONFIRMED` o
 
 ## Estados honestos
 
-- `LEDGER_MISSING`: falta importar la evidencia de liquidación.
+- `LEDGER_MISSING`: falta evidencia de ledger para una venta con importe.
+- `LEDGER_NOT_REQUIRED`: importe cero; no requiere pago Shopify.
 - `PAYOUT_PENDING`: existe ledger, pero no `Payout ID`.
 - `SETTLED`: existe referencia de payout; no implica banco verificado.
 - `PROPOSED`: enlace pendiente de revisión humana.
+
+En UI se muestran como “Sin evidencia de payout”, “No requiere pago Shopify”,
+“Payout Shopify pendiente” y “Payout Shopify identificado · banco sin
+conciliar”. Ninguno de esos textos significa extracto bancario conciliado.
 
 El modelo legacy `matching_candidates` permanece sólo por compatibilidad y no
 crea enlaces Shopify ni documentos fiscales.
