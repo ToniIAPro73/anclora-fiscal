@@ -66,7 +66,7 @@ export interface RectifyInvoiceInput {
 
 export type RectifyInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyRectified: boolean }
-  | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' };
+  | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA' };
 
 const SIMPLIFIED_DOCUMENT_TYPE = 'SIMPLIFICADA';
 const FULL_DOCUMENT_TYPE = 'COMPLETA';
@@ -467,8 +467,23 @@ try {
       const [issuer] = await transaction
         .select()
         .from(legalEntities)
-        .where(and(eq(legalEntities.tenantId, input.tenantId), eq(legalEntities.id, operation.legalEntityId)))
+        .where(and(
+          eq(legalEntities.tenantId, input.tenantId),
+          eq(legalEntities.id, operation.legalEntityId),
+          eq(legalEntities.configurationStatus, 'READY'),
+        ))
         .limit(1);
+
+      if (!issuer || !issuer.address || !issuer.taxIdentityEncrypted) {
+        return { ok: false, reason: 'CONFIGURACION_FISCAL_INCOMPLETA' };
+      }
+
+      let issuerTaxIdentity: string;
+      try {
+        issuerTaxIdentity = decryptTaxIdentity(issuer.taxIdentityEncrypted);
+      } catch {
+        return { ok: false, reason: 'CONFIGURACION_FISCAL_INCOMPLETA' };
+      }
 
       const [existingSeries] = await transaction
         .select()
@@ -502,20 +517,18 @@ try {
           number: original.number,
           type: original.documentType as 'SIMPLIFICADA' | 'COMPLETA' | 'FULL_INVOICE',
           input: {
-  operationId: operation.id,
-  issuerName: issuer?.legalName ?? 'Emisor fiscal',
-  issuerTaxIdentity: issuer?.taxIdentityEncrypted
-    ? decryptTaxIdentity(issuer.taxIdentityEncrypted)
-    : 'NIF/NIE no disponible',
-  issuerAddress: issuer?.address ?? 'Domicilio fiscal no disponible',
-  description: `Operación ${operation.operationType}`,
-  taxBase: Number(original.taxBase),
-  taxRate: Number(decision?.taxRate ?? 0),
-  taxAmount: Number(original.taxAmount),
-  totalAmount: Number(original.totalAmount),
-  currency: 'EUR',
-  issuedAt: original.issuedAt.toISOString(),
-},
+            operationId: operation.id,
+            issuerName: issuer.legalName,
+            issuerTaxIdentity,
+            issuerAddress: issuer.address,
+            description: `Operación ${operation.operationType}`,
+            taxBase: Number(original.taxBase),
+            taxRate: Number(decision?.taxRate ?? 0),
+            taxAmount: Number(original.taxAmount),
+            totalAmount: Number(original.totalAmount),
+            currency: 'EUR',
+            issuedAt: original.issuedAt.toISOString(),
+          },
           pdfBytes: new Uint8Array(0),
           sha256: original.renderSha256,
           status: 'ISSUED',

@@ -31,7 +31,7 @@ export interface InvoiceIssuanceIssueResult {
 export interface InvoiceIssuanceRectifyResult {
   ok: boolean;
   document?: { id: string };
-  reason?: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE';
+  reason?: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA';
   alreadyRectified?: boolean;
 }
 
@@ -342,7 +342,7 @@ export interface RefundOperation {
 
 export type RefundBranchResult =
   | { status: 'ROUTED_TO_REVIEW'; operationId: string }
-  | { status: 'RECTIFICATION_FAILED'; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' }
+  | { status: 'RECTIFICATION_FAILED'; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA' }
   | { status: 'RECTIFIED' | 'ALREADY_RECTIFIED'; documentId: string };
 
 /**

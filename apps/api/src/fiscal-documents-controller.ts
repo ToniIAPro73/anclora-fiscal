@@ -47,7 +47,7 @@ export type RectifyInvoiceResult =
     }
   | {
       ok: false;
-      reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE';
+      reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA';
     };
 
 export interface FiscalDocumentsRepositoryPort {
@@ -191,7 +191,7 @@ function isRectifyInvoiceError(
   result: RectifyInvoiceResult,
 ): result is {
   ok: false;
-  reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE';
+  reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA';
 } {
   return !result.ok;
 }

@@ -680,6 +680,52 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(verifyIntegrityChain(integrityRecords)).toBe(true);
     });
 
+    it('bloquea la rectificación si falta configuración fiscal real del emisor', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId, operationId } =
+        await seedOperationWithDecision(db, 'tenant-rectificacion-config-incompleta');
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const issued = await repository.issue({
+        tenantId,
+        actorId,
+        canonicalOperationId: operationId,
+        storage,
+      });
+
+      expect(issued.ok).toBe(true);
+      if (!issued.ok) throw new Error('expected ok result');
+
+      await db
+        .update(legalEntities)
+        .set({ address: null })
+        .where(eq(legalEntities.tenantId, tenantId));
+
+      const beforeNextNumber = await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA');
+
+      const result = await repository.rectify({
+        tenantId,
+        actorId,
+        fiscalDocumentId: issued.document.id,
+        storage,
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        reason: 'CONFIGURACION_FISCAL_INCOMPLETA',
+      });
+
+      expect(await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA')).toBe(beforeNextNumber);
+      expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(1);
+      expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(1);
+      expect(storage.puts).toHaveLength(1);
+    });
+
     it('devuelve DOCUMENT_NOT_FOUND para un documento de otro tenant', async () => {
       const { client, db } = createOfflineDatabase();
       clients.push(client);
