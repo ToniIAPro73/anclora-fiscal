@@ -120,7 +120,15 @@ export class TaxDecisionService {
       };
     }
 
-    // 5. For Spain customers, product must be ebook (MVP only)
+    // 5. Non-Spain customer country (OSS review) – block before engine.
+    if (canonicalOperation.customerCountry && canonicalOperation.customerCountry !== 'ES') {
+      return {
+        status: 'PENDIENTE_REVISION_OSS',
+        explanation: [`Cliente fuera de España (${canonicalOperation.customerCountry}): requiere revisión OSS`],
+      };
+    }
+
+    // 6. For Spain customers, product must be ebook (MVP only)
     if (
       canonicalOperation.customerCountry === 'ES' &&
       canonicalOperation.productNature
@@ -134,9 +142,6 @@ export class TaxDecisionService {
         };
       }
     }
-
-    // 6. Non-Spain customer country (OSS review) – let engine handle.
-    // No early return; engine will produce appropriate status.
 
     // All MVP checks passed; let the engine decide.
     return null;
