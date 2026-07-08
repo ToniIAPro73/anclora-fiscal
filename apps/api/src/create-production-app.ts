@@ -97,6 +97,7 @@ export async function createProductionApp() {
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       operationsRepository: new DrizzleOperationsRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
+      shopifySalesRepository: new DrizzleShopifySalesRepository(database.db),
       taxDecisionService,
       invoiceIssuanceService,
     });
@@ -157,6 +158,7 @@ export async function createProductionApp() {
       commercialOrdersRepository: commercialOrdersRepositoryForMatching,
       operationsRepository: new DrizzleOperationsRepository(database.db),
       legalEntitiesRepository: legalEntitiesRepositoryForMatching,
+      shopifySalesRepository: new DrizzleShopifySalesRepository(database.db),
       taxDecisionService,
       invoiceIssuanceService,
     });
