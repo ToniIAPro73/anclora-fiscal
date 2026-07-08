@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TaxDecisionService } from './tax-decision-service';
 
 const tenantId = '01977d43-75de-7000-8000-000000000010';
-const persistedTaxConfig = { id: 'TENANT_CONFIG', version: '2026-01-01', effectiveFrom: '2026-01-01', issuerCountry: 'ES', rates: [{ id: 'ES_GENERAL_21', rate: 0.21, productNature: 'general', customerCountry: 'ES' }, { id: 'ES_EBOOK_4', rate: 0.04, productNature: 'ebook', customerCountry: 'ES' }], marketplaceRoyaltyExemptRate: 0, sources: [] };
+const persistedTaxConfig = { id: 'TENANT_CONFIG', version: '2026-01-01', effectiveFrom: '2026-01-01', issuerCountry: 'ES', rates: [{ id: 'ES_EBOOK_4', rate: 0.04, productNature: 'ebook', customerCountry: 'ES' }], marketplaceRoyaltyExemptRate: 0, sources: [] };
 const taxConfigurationRepository = { getTaxEngineConfig: vi.fn().mockResolvedValue(persistedTaxConfig) };
 
 function baseOperation(overrides: Partial<Parameters<TaxDecisionService['runTaxDecisionForOperation']>[2]> = {}) {
@@ -14,13 +14,13 @@ function baseOperation(overrides: Partial<Parameters<TaxDecisionService['runTaxD
     originalCurrency: 'EUR',
     customerCountry: 'ES',
     customerType: 'B2C',
-    productNature: 'general',
+    productNature: 'ebook',
     ...overrides,
   };
 }
 
 describe('TaxDecisionService', () => {
-  it('determina el tipo general del 21% para un pedido B2C español', async () => {
+  it('determina el tipo ebook del 4% para un pedido B2C español', async () => {
     const findFirstByTenant = vi.fn().mockResolvedValue({ id: 'legal-entity-1', countryCode: 'ES' });
     const create = vi.fn().mockResolvedValue({ id: 'tax-decision-1' });
     const service = new TaxDecisionService({
@@ -35,7 +35,7 @@ describe('TaxDecisionService', () => {
     expect(create).toHaveBeenCalledWith(tenantId, expect.objectContaining({
       canonicalOperationId: 'canonical-op-1',
       status: 'DETERMINADA',
-      taxRate: '0.21',
+      taxRate: '0.04',
     }));
   });
 
