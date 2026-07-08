@@ -6,6 +6,7 @@
 // entrypoint (`./index.ts`) instead.
 export * from './storage.js';
 export * from './invoicing.js';
+export * from './tax-identity.js';
 export * from './verifactu.js';
 export * from './dossier.js';
 

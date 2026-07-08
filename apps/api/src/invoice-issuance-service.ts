@@ -17,7 +17,14 @@ export const REVISION_IMPORTE_CERO_FISCAL_STATUS = 'REVISION_IMPORTE_CERO';
 export interface InvoiceIssuanceIssueResult {
   ok: boolean;
   document?: { id: string };
-  reason?: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE';
+  reason?:
+    | 'OPERATION_NOT_FOUND'
+    | 'TAX_DECISION_MISSING'
+    | 'FISCAL_CONFIGURATION_INCOMPLETE'
+    | 'DECISION_FISCAL_NO_EMITIBLE'
+    | 'COBRO_SHOPIFY_NO_CONFIRMADO'
+    | 'CONFIGURACION_FISCAL_INCOMPLETA'
+    | 'IMPORTE_CERO_EN_REVISION';
   alreadyIssued?: boolean;
 }
 
@@ -38,6 +45,122 @@ export interface InvoiceIssuanceServiceDependencies {
   storage: StoragePort;
 }
 
+export interface ContextoEmisionFiscal {
+  idOperacion: string;
+  estadoFiscal: string;
+  existePedidoComercial: boolean;
+  existeTransaccionShopifyConfirmada: boolean;
+  configuracionFiscalLista: boolean;
+  perfilFiscalVigente: boolean;
+  estadoDecisionFiscal: string | null;
+  tipoDocumentoFiscal: string | null;
+}
+
+export type MotivoBloqueoEmisionFiscal =
+  | 'ROL_SIN_PERMISO_DE_EMISION'
+  | 'REVISION_IMPORTE_CERO'
+  | 'CONFIGURACION_FISCAL_INCOMPLETA'
+  | 'PERFIL_FISCAL_NO_VIGENTE'
+  | 'PEDIDO_COMERCIAL_NO_DISPONIBLE'
+  | 'COBRO_SHOPIFY_NO_CONFIRMADO'
+  | 'DECISION_FISCAL_NO_DETERMINADA'
+  | 'TIPO_DOCUMENTO_NO_EMITIBLE'
+  | 'ESTADO_FISCAL_NO_EMITIBLE';
+
+export type ResultadoPuertaEmisionFiscal =
+  | { permitida: true }
+  | { permitida: false; motivo: MotivoBloqueoEmisionFiscal };
+
+const ESTADOS_FISCALES_NO_EMITIBLES = new Set([
+  'REVISION_IMPORTE_CERO',
+  'PENDIENTE_CONFIGURACION_FISCAL',
+  'PENDIENTE_REVISION_OSS',
+  'PENDIENTE_VALIDACION_B2B',
+  'PENDIENTE_REVISION_FISCAL',
+  'REVISION_REEMBOLSO_REQUERIDA',
+  'RECTIFICADA',
+]);
+
+const TIPOS_DOCUMENTO_EMITIBLES_MVP = new Set([
+  'SIMPLIFICADA',
+]);
+
+export function evaluarPoliticaEmisionFiscal(
+  contexto: ContextoEmisionFiscal,
+): ResultadoPuertaEmisionFiscal {
+  if (ESTADOS_FISCALES_NO_EMITIBLES.has(contexto.estadoFiscal)) {
+    return {
+      permitida: false,
+      motivo: contexto.estadoFiscal === 'REVISION_IMPORTE_CERO'
+        ? 'REVISION_IMPORTE_CERO'
+        : 'ESTADO_FISCAL_NO_EMITIBLE',
+    };
+  }
+
+  if (!contexto.existePedidoComercial) {
+    return {
+      permitida: false,
+      motivo: 'PEDIDO_COMERCIAL_NO_DISPONIBLE',
+    };
+  }
+
+  if (!contexto.existeTransaccionShopifyConfirmada) {
+    return {
+      permitida: false,
+      motivo: 'COBRO_SHOPIFY_NO_CONFIRMADO',
+    };
+  }
+
+  if (!contexto.configuracionFiscalLista) {
+    return {
+      permitida: false,
+      motivo: 'CONFIGURACION_FISCAL_INCOMPLETA',
+    };
+  }
+
+  if (!contexto.perfilFiscalVigente) {
+    return {
+      permitida: false,
+      motivo: 'PERFIL_FISCAL_NO_VIGENTE',
+    };
+  }
+
+  if (contexto.estadoDecisionFiscal !== 'DETERMINADA') {
+    return {
+      permitida: false,
+      motivo: 'DECISION_FISCAL_NO_DETERMINADA',
+    };
+  }
+
+  if (
+    !contexto.tipoDocumentoFiscal
+    || !TIPOS_DOCUMENTO_EMITIBLES_MVP.has(
+      contexto.tipoDocumentoFiscal,
+    )
+  ) {
+    return {
+      permitida: false,
+      motivo: 'TIPO_DOCUMENTO_NO_EMITIBLE',
+    };
+  }
+
+  return { permitida: true };
+}
+
+export function evaluarPuertaEmisionManual(
+  role: Role,
+  contexto: ContextoEmisionFiscal,
+): ResultadoPuertaEmisionFiscal {
+  if (!can(role, ISSUE_PERMISSION)) {
+    return {
+      permitida: false,
+      motivo: 'ROL_SIN_PERMISO_DE_EMISION',
+    };
+  }
+
+  return evaluarPoliticaEmisionFiscal(contexto);
+}
+
 /**
  * Snapshot of the checks the caller (the /sales/shopify/[orderId] detail
  * route must gather before requesting manual issuance: config, fiscal
@@ -48,12 +171,23 @@ export interface InvoiceIssuanceServiceDependencies {
 export interface ManualIssuanceOperation {
   id: string;
   fiscalStatus: string;
+
+  // Campos legacy: se conservan mientras haya consumidores anteriores.
   hasFiscalConfiguration: boolean;
   hasFiscalProfile: boolean;
   hasOrderEvidence: boolean;
   hasTransactionsEvidence: boolean;
   hasLedgerEvidence?: boolean;
   hasTaxDecision: boolean;
+
+  // Campos del contrato fiscal nuevo. Son opcionales temporalmente para no
+  // romper consumidores antiguos; los nuevos consumidores deben enviarlos.
+  configuracionFiscalLista?: boolean;
+  perfilFiscalVigente?: boolean;
+  existePedidoComercial?: boolean;
+  existeTransaccionShopifyConfirmada?: boolean;
+  estadoDecisionFiscal?: string | null;
+  tipoDocumentoFiscal?: string | null;
 }
 
 export type ManualIssuanceGateReason =
@@ -64,37 +198,141 @@ export type ManualIssuanceGateReason =
   | 'INSUFFICIENT_EVIDENCE'
   | 'TAX_DECISION_MISSING';
 
-export type ManualIssuanceGateResult = { allowed: true } | { allowed: false; reason: ManualIssuanceGateReason };
+export type ManualIssuanceGateResult =
+  | { allowed: true }
+  | { allowed: false; reason: ManualIssuanceGateReason };
 
-/**
- * Pure gate function (no I/O) so the /sales/shopify/[orderId] detail page
- * (Task 3) can reuse it to disable/hide the "issue" button with the same
- * reason the backend would enforce, without duplicating the rule set.
- * Order of checks is deliberate: role first (cheapest, no evidence needed),
- * then the hard exclusion, then progressively more specific missing-evidence
- * reasons.
- */
-export function evaluateManualIssuanceGate(role: Role, operation: ManualIssuanceOperation): ManualIssuanceGateResult {
-  if (!can(role, ISSUE_PERMISSION)) return { allowed: false, reason: 'ROLE_NOT_AUTHORIZED' };
-  return evaluateFiscalIssuancePolicy(operation);
+function adaptarOperacionLegacyAContextoFiscal(
+  operation: ManualIssuanceOperation,
+): ContextoEmisionFiscal {
+  const estadoFiscal =
+    operation.fiscalStatus === ZERO_VALUE_REVIEW_FISCAL_STATUS
+      ? REVISION_IMPORTE_CERO_FISCAL_STATUS
+      : operation.fiscalStatus;
+
+  return {
+    idOperacion: operation.id,
+    estadoFiscal,
+
+    configuracionFiscalLista:
+      operation.configuracionFiscalLista
+      ?? operation.hasFiscalConfiguration,
+
+    perfilFiscalVigente:
+      operation.perfilFiscalVigente
+      ?? operation.hasFiscalProfile,
+
+    existePedidoComercial:
+      operation.existePedidoComercial
+      ?? operation.hasOrderEvidence,
+
+    existeTransaccionShopifyConfirmada:
+      operation.existeTransaccionShopifyConfirmada
+      ?? operation.hasTransactionsEvidence,
+
+    // Compatibilidad temporal: el controlador Shopify se actualizará en el
+    // siguiente punto para aportar el estado real de la decisión y el tipo
+    // documental. No elimines este fallback todavía.
+    estadoDecisionFiscal:
+      operation.estadoDecisionFiscal
+      ?? (operation.hasTaxDecision ? 'DETERMINADA' : null),
+
+    tipoDocumentoFiscal:
+      operation.tipoDocumentoFiscal
+      ?? (operation.hasTaxDecision ? 'SIMPLIFICADA' : null),
+  };
 }
 
-export function evaluateFiscalIssuancePolicy(operation: ManualIssuanceOperation): ManualIssuanceGateResult {
-  if (operation.fiscalStatus === ZERO_VALUE_REVIEW_FISCAL_STATUS || operation.fiscalStatus === REVISION_IMPORTE_CERO_FISCAL_STATUS) {
-    return { allowed: false, reason: 'ZERO_VALUE_REVIEW_EXCLUDED' };
+function convertirMotivoBloqueoANombreLegacy(
+  motivo: MotivoBloqueoEmisionFiscal,
+): ManualIssuanceGateReason {
+  switch (motivo) {
+    case 'ROL_SIN_PERMISO_DE_EMISION':
+      return 'ROLE_NOT_AUTHORIZED';
+
+    case 'REVISION_IMPORTE_CERO':
+      return 'ZERO_VALUE_REVIEW_EXCLUDED';
+
+    case 'CONFIGURACION_FISCAL_INCOMPLETA':
+      return 'FISCAL_CONFIGURATION_INCOMPLETE';
+
+    case 'PERFIL_FISCAL_NO_VIGENTE':
+      return 'FISCAL_PROFILE_MISSING';
+
+    case 'PEDIDO_COMERCIAL_NO_DISPONIBLE':
+    case 'COBRO_SHOPIFY_NO_CONFIRMADO':
+      return 'INSUFFICIENT_EVIDENCE';
+
+    case 'DECISION_FISCAL_NO_DETERMINADA':
+    case 'TIPO_DOCUMENTO_NO_EMITIBLE':
+    case 'ESTADO_FISCAL_NO_EMITIBLE':
+      return 'TAX_DECISION_MISSING';
   }
-  if (!operation.hasFiscalConfiguration) return { allowed: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
-  if (!operation.hasFiscalProfile) return { allowed: false, reason: 'FISCAL_PROFILE_MISSING' };
-  if (!operation.hasOrderEvidence || !operation.hasTransactionsEvidence) {
-    return { allowed: false, reason: 'INSUFFICIENT_EVIDENCE' };
+}
+
+/**
+ * Adaptador temporal para consumidores anteriores.
+ *
+ * La política real está en evaluarPuertaEmisionManual(). Este adaptador
+ * conserva el contrato allowed/reason mientras se actualizan el controlador
+ * Shopify y las pruebas al nuevo vocabulario fiscal.
+ */
+export function evaluateManualIssuanceGate(
+  role: Role,
+  operation: ManualIssuanceOperation,
+): ManualIssuanceGateResult {
+  const resultado = evaluarPuertaEmisionManual(
+    role,
+    adaptarOperacionLegacyAContextoFiscal(operation),
+  );
+
+  if (resultado.permitida) {
+    return { allowed: true };
   }
-  if (!operation.hasTaxDecision) return { allowed: false, reason: 'TAX_DECISION_MISSING' };
-  return { allowed: true };
+
+  return {
+    allowed: false,
+    reason: convertirMotivoBloqueoANombreLegacy(resultado.motivo),
+  };
+}
+
+/**
+ * Adaptador temporal para la ruta automática.
+ *
+ * No comprueba roles, pero aplica la misma política fiscal que la ruta
+ * manual. En los siguientes puntos se aportarán datos reales de
+ * configuración, perfil, cobro y decisión fiscal.
+ */
+export function evaluateFiscalIssuancePolicy(
+  operation: ManualIssuanceOperation,
+): ManualIssuanceGateResult {
+  const resultado = evaluarPoliticaEmisionFiscal(
+    adaptarOperacionLegacyAContextoFiscal(operation),
+  );
+
+  if (resultado.permitida) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    reason: convertirMotivoBloqueoANombreLegacy(resultado.motivo),
+  };
 }
 
 export type ManualIssuanceResult =
   | { status: 'BLOCKED'; reason: ManualIssuanceGateReason }
-  | { status: 'ISSUE_FAILED'; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE' }
+  | {
+      status: 'ISSUE_FAILED';
+      reason:
+        | 'OPERATION_NOT_FOUND'
+        | 'TAX_DECISION_MISSING'
+        | 'FISCAL_CONFIGURATION_INCOMPLETE'
+        | 'DECISION_FISCAL_NO_EMITIBLE'
+        | 'COBRO_SHOPIFY_NO_CONFIRMADO'
+        | 'CONFIGURACION_FISCAL_INCOMPLETA'
+        | 'IMPORTE_CERO_EN_REVISION';
+    }
   | { status: 'ISSUED' | 'ALREADY_ISSUED'; documentId: string };
 
 export interface RefundOperation {

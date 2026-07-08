@@ -1,10 +1,29 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { verifyIntegrityChain, type IntegrityRecord, type StoragePort, type StoredObject } from '@anclora/core/server';
+import {
+  encryptTaxIdentity,
+  verifyIntegrityChain,
+  type IntegrityRecord,
+  type StoragePort,
+  type StoredObject,
+} from '@anclora/core/server';
 import { createOfflineDatabase } from './index';
 import { migrateOfflineDatabase } from './migrations';
 import { DrizzleFiscalDocumentsRepository } from './fiscal-documents-repository';
-import { auditEvents, canonicalOperations, integrityChainRecords, invoiceSeries, legalEntities, productTaxProfiles, taxDecisions, tenants, users } from './schema';
+import {
+  auditEvents,
+  canonicalOperations,
+  importFiles,
+  importJobs,
+  integrityChainRecords,
+  invoiceSeries,
+  legalEntities,
+  productTaxProfiles,
+  shopifyOrderPaymentEvents,
+  taxDecisions,
+  tenants,
+  users,
+} from './schema';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
 
@@ -46,13 +65,25 @@ async function seedOperationWithDecision(
   }).returning({ id: users.id });
   if (!actor) throw new Error('No se pudo crear el actor de prueba');
 
-  const [legalEntity] = await db.insert(legalEntities).values({
+  const [legalEntity] = await db
+  .insert(legalEntities)
+  .values({
     tenantId: tenant.id,
     legalName: `${slug} legal entity`,
     countryCode: 'ES',
-    address: buyerInfo?.skipFiscalConfiguration ? undefined : 'Calle Fiscal 1',
-    configurationStatus: buyerInfo?.skipFiscalConfiguration ? 'INCOMPLETE' : 'READY',
-  }).returning({ id: legalEntities.id });
+    address: buyerInfo?.skipFiscalConfiguration
+      ? undefined
+      : 'Calle Fiscal 1',
+    taxIdentityEncrypted: encryptTaxIdentity('12345678Z'),
+    taxIdentityConfigured: true,
+    fiscalConfigurationStatus: 'COMPLETA',
+    configurationStatus: buyerInfo?.skipFiscalConfiguration
+      ? 'INCOMPLETE'
+      : 'READY',
+  })
+  .returning({
+    id: legalEntities.id,
+  });
   if (!legalEntity) throw new Error('No se pudo crear la entidad legal de prueba');
   if (!buyerInfo?.skipFiscalConfiguration) {
     await db.insert(invoiceSeries).values([
@@ -76,7 +107,57 @@ async function seedOperationWithDecision(
     customerAddress: buyerInfo?.customerAddress,
     customerEmail: buyerInfo?.customerEmail,
   }).returning({ id: canonicalOperations.id });
-  if (!operation) throw new Error('No se pudo crear la operación de prueba');
+  if (!operation) {
+  throw new Error('No se pudo crear la operación de prueba');
+}
+
+const [importJob] = await db
+  .insert(importJobs)
+  .values({
+    tenantId: tenant.id,
+    connectorId: 'shopify-order-transactions-test',
+  })
+  .returning({
+    id: importJobs.id,
+  });
+
+if (!importJob) {
+  throw new Error('No se pudo crear el trabajo de importación de prueba');
+}
+
+const [importFile] = await db
+  .insert(importFiles)
+  .values({
+    tenantId: tenant.id,
+    importJobId: importJob.id,
+    storageKey: `tests/${slug}/shopify-order-transactions.csv`,
+    originalNameEncrypted: `shopify-order-transactions-${slug}.csv`,
+    mimeType: 'text/csv',
+    byteSize: '1',
+    sha256: `test-sha256-${slug}-shopify-transactions`,
+    importerVersion: 'test',
+  })
+  .returning({
+    id: importFiles.id,
+  });
+
+if (!importFile) {
+  throw new Error('No se pudo crear el archivo de importación de prueba');
+}
+
+await db.insert(shopifyOrderPaymentEvents).values({
+  tenantId: tenant.id,
+  importFileId: importFile.id,
+  externalEventKey: `${slug}:ORDER-1:sale:1`,
+  shopifyOrderId: '1',
+  shopifyOrderName: 'ORDER-1',
+  kind: 'sale',
+  gateway: 'shopify_payments',
+  status: 'success',
+  amount: '6.99',
+  currency: 'EUR',
+  occurredAt: new Date(),
+});
 
   await db.insert(taxDecisions).values({
     tenantId: tenant.id,
@@ -113,6 +194,8 @@ describe('DrizzleFiscalDocumentsRepository', () => {
 
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error('expected ok result');
+
+      expect(result.ok).toBe(true);
       expect(result.alreadyIssued).toBe(false);
       expect(result.document.documentType).toBe('SIMPLIFICADA');
       expect(result.document.number).toBe('FS-00001');
@@ -156,6 +239,35 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(storage.puts).toHaveLength(0);
     });
 
+    it('bloquea la emisión cuando no existe un cobro Shopify confirmado', async () => {
+  const { client, db } = createOfflineDatabase();
+  clients.push(client);
+  await migrateOfflineDatabase(client);
+
+  const { tenantId, actorId, operationId } =
+    await seedOperationWithDecision(db, 'tenant-sin-cobro-confirmado');
+
+  await db
+    .delete(shopifyOrderPaymentEvents)
+    .where(eq(shopifyOrderPaymentEvents.tenantId, tenantId));
+
+  const storage = new InMemoryStorage();
+
+  const result = await new DrizzleFiscalDocumentsRepository(db).issue({
+    tenantId,
+    actorId,
+    canonicalOperationId: operationId,
+    storage,
+  });
+
+  expect(result).toEqual({
+    ok: false,
+    reason: 'COBRO_SHOPIFY_NO_CONFIRMADO',
+  });
+
+  expect(storage.puts).toHaveLength(0);
+});
+
     it('es idempotente: emitir la misma operación dos veces devuelve el mismo documento y no duplica el registro de integridad', async () => {
       const { client, db } = createOfflineDatabase();
       clients.push(client);
@@ -196,41 +308,61 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(events[0]?.actorId).toBeNull();
     });
 
-    it('renderiza el PDF con customerAddress/customerEmail cuando la operación los tiene (comparado contra una sin datos de contacto)', async () => {
-      const { client, db } = createOfflineDatabase();
-      clients.push(client);
-      await migrateOfflineDatabase(client);
-      const withoutContact = await seedOperationWithDecision(db, 'tenant-sin-contacto');
-      const withContact = await seedOperationWithDecision(db, 'tenant-con-contacto', {
-        customerAddress: 'Calle Ejemplo 1, Palma',
-        customerEmail: 'cliente@ejemplo.com',
-      });
-      const repository = new DrizzleFiscalDocumentsRepository(db);
-      const storage = new InMemoryStorage();
+    it('emite una factura simplificada aunque la operación contenga datos del comprador', async () => {
+  const { client, db } = createOfflineDatabase();
+  clients.push(client);
+  await migrateOfflineDatabase(client);
 
-      const resultWithoutContact = await repository.issue({ tenantId: withoutContact.tenantId, actorId: withoutContact.actorId, canonicalOperationId: withoutContact.operationId, storage });
-      const resultWithContact = await repository.issue({ tenantId: withContact.tenantId, actorId: withContact.actorId, canonicalOperationId: withContact.operationId, storage });
-
-      expect(resultWithoutContact.ok).toBe(true);
-      expect(resultWithContact.ok).toBe(true);
-      if (!resultWithoutContact.ok || !resultWithContact.ok) throw new Error('expected ok results');
-      expect(resultWithContact.document.renderSha256).not.toBe(resultWithoutContact.document.renderSha256);
+  const { tenantId, actorId, operationId } =
+    await seedOperationWithDecision(db, 'tenant-con-contacto', {
+      customerAddress: 'Calle Ejemplo 1, Palma',
+      customerEmail: 'cliente@ejemplo.com',
     });
 
-    it('emite factura completa cuando la decisión fiscal lo exige', async () => {
-      const { client, db } = createOfflineDatabase();
-      clients.push(client);
-      await migrateOfflineDatabase(client);
-      const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-completa', { documentType: 'COMPLETA' });
-      const repository = new DrizzleFiscalDocumentsRepository(db);
+  const repository = new DrizzleFiscalDocumentsRepository(db);
+  const storage = new InMemoryStorage();
 
-      const result = await repository.issue({ tenantId, actorId, canonicalOperationId: operationId, storage: new InMemoryStorage() });
+  const result = await repository.issue({
+    tenantId,
+    actorId,
+    canonicalOperationId: operationId,
+    storage,
+  });
 
-      expect(result.ok).toBe(true);
-      if (!result.ok) throw new Error('expected ok result');
-      expect(result.document.documentType).toBe('COMPLETA');
-      expect(result.document.number).toBe('F-00001');
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw new Error('expected ok result');
+
+  expect(result.document.documentType).toBe('SIMPLIFICADA');
+  expect(result.document.renderSha256).toHaveLength(64);
+  expect(storage.puts).toHaveLength(1);
+});
+
+    it('rechaza factura completa mientras el MVP sólo permite simplificadas', async () => {
+  const { client, db } = createOfflineDatabase();
+  clients.push(client);
+  await migrateOfflineDatabase(client);
+
+  const { tenantId, actorId, operationId } =
+    await seedOperationWithDecision(db, 'tenant-completa', {
+      documentType: 'COMPLETA',
     });
+
+  const storage = new InMemoryStorage();
+  const result = await new DrizzleFiscalDocumentsRepository(db).issue({
+    tenantId,
+    actorId,
+    canonicalOperationId: operationId,
+    storage,
+  });
+
+  expect(result).toEqual({
+    ok: false,
+    reason: 'DECISION_FISCAL_NO_EMITIBLE',
+  });
+
+  expect(storage.puts).toHaveLength(0);
+    });
+
   });
 
   describe('rectify', () => {

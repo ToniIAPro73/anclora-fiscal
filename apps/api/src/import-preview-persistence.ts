@@ -1,8 +1,6 @@
-import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import type { ImportPreviewResponse } from './import-service.js';
-
-const CONFIRMED_PAYMENT_EVENT_KINDS = new Set(['sale', 'capture']);
-const CONFIRMED_PAYMENT_EVENT_STATUSES = new Set(['success', 'succeeded']);
+  import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+  import type { ImportPreviewResponse } from './import-service.js';
+import { esCobroShopifyConfirmado } from '@anclora/core';
 
 export interface ImportPreviewRepositoryPort {
   persist(input: {
@@ -275,7 +273,8 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
   }
 }
 
-function isConfirmedPaymentEvent(event: PersistedShopifyOrderPaymentEvent): boolean {
-  return CONFIRMED_PAYMENT_EVENT_KINDS.has((event.kind ?? '').toLowerCase())
-    && CONFIRMED_PAYMENT_EVENT_STATUSES.has((event.status ?? '').toLowerCase());
+function isConfirmedPaymentEvent(
+  event: PersistedShopifyOrderPaymentEvent,
+): boolean {
+  return esCobroShopifyConfirmado(event);
 }

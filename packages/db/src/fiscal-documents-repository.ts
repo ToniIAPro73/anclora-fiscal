@@ -1,8 +1,25 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { createIntegrityRecord, InvoiceSequence, issueInvoice, rectifyInvoice, type StoragePort } from '@anclora/core/server';
-import { auditEvents, canonicalOperations, fiscalDocuments, integrityChainRecords, invoiceSeries, legalEntities, productTaxProfiles, taxDecisions } from './schema.js';
+import {
+  createIntegrityRecord,
+  decryptTaxIdentity,
+  InvoiceSequence,
+  issueInvoice,
+  rectifyInvoice,
+  type StoragePort,
+} from '@anclora/core/server';
+import {
+  auditEvents,
+  canonicalOperations,
+  fiscalDocuments,
+  integrityChainRecords,
+  invoiceSeries,
+  legalEntities,
+  productTaxProfiles,
+  shopifyOrderPaymentEvents,
+  taxDecisions,
+} from './schema.js';
 import * as schema from './schema.js';
 
 export type FiscalDocument = typeof fiscalDocuments.$inferSelect;
@@ -22,8 +39,22 @@ export interface IssueInvoiceInput {
 }
 
 export type IssueInvoiceResult =
-  | { ok: true; document: FiscalDocument; alreadyIssued: boolean }
-  | { ok: false; reason: 'OPERATION_NOT_FOUND' | 'TAX_DECISION_MISSING' | 'FISCAL_CONFIGURATION_INCOMPLETE' };
+  | {
+      ok: true;
+      document: FiscalDocument;
+      alreadyIssued: boolean;
+    }
+  | {
+      ok: false;
+      reason:
+        | 'OPERATION_NOT_FOUND'
+        | 'TAX_DECISION_MISSING'
+        | 'FISCAL_CONFIGURATION_INCOMPLETE'
+        | 'DECISION_FISCAL_NO_EMITIBLE'
+        | 'COBRO_SHOPIFY_NO_CONFIRMADO'
+        | 'CONFIGURACION_FISCAL_INCOMPLETA'
+        | 'IMPORTE_CERO_EN_REVISION';
+    };
 
 export interface RectifyInvoiceInput {
   tenantId: string;
@@ -42,12 +73,6 @@ const FULL_DOCUMENT_TYPE = 'COMPLETA';
 const RECTIFYING_DOCUMENT_TYPE = 'RECTIFICATIVA';
 const LEGACY_FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
 const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
-
-function issuedDocumentType(decision: { documentType?: string | null }): typeof SIMPLIFIED_DOCUMENT_TYPE | typeof FULL_DOCUMENT_TYPE {
-  if (decision.documentType === SIMPLIFIED_DOCUMENT_TYPE || decision.documentType === FULL_DOCUMENT_TYPE) return decision.documentType;
-  if (decision.documentType === 'SIMPLIFIED_INVOICE') return SIMPLIFIED_DOCUMENT_TYPE;
-  return FULL_DOCUMENT_TYPE;
-}
 
 function documentTypeSeriesCandidates(documentType: string): string[] {
   if (documentType === SIMPLIFIED_DOCUMENT_TYPE) return [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE'];
@@ -93,13 +118,69 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
       if (!operation) return { ok: false, reason: 'OPERATION_NOT_FOUND' };
 
       const [decision] = await transaction
-        .select()
-        .from(taxDecisions)
-        .where(and(eq(taxDecisions.tenantId, input.tenantId), eq(taxDecisions.canonicalOperationId, input.canonicalOperationId)))
-        .orderBy(desc(taxDecisions.decidedAt))
-        .limit(1);
-      if (!decision) return { ok: false, reason: 'TAX_DECISION_MISSING' };
-      const documentType = issuedDocumentType(decision);
+  .select()
+  .from(taxDecisions)
+  .where(and(
+    eq(taxDecisions.tenantId, input.tenantId),
+    eq(
+      taxDecisions.canonicalOperationId,
+      input.canonicalOperationId,
+    ),
+  ))
+  .orderBy(desc(taxDecisions.decidedAt))
+  .limit(1);
+
+if (!decision) {
+  return { ok: false, reason: 'TAX_DECISION_MISSING' };
+}
+
+const importeTotalDecision = Number(
+  decision.totalAmount ?? operation.grossAmount ?? 0,
+);
+
+if (!Number.isFinite(importeTotalDecision)) {
+  return {
+    ok: false,
+    reason: 'DECISION_FISCAL_NO_EMITIBLE',
+  };
+}
+
+if (importeTotalDecision === 0) {
+  return {
+    ok: false,
+    reason: 'IMPORTE_CERO_EN_REVISION',
+  };
+}
+
+if (importeTotalDecision < 0) {
+  return {
+    ok: false,
+    reason: 'DECISION_FISCAL_NO_EMITIBLE',
+  };
+}
+
+if (decision.status !== 'DETERMINADA') {
+  return {
+    ok: false,
+    reason: 'DECISION_FISCAL_NO_EMITIBLE',
+  };
+}
+
+// Se admite el valor histórico únicamente para leer decisiones antiguas.
+// Los documentos nuevos se emiten siempre con el valor canónico español.
+      const tipoDocumentoDecision =
+        decision.documentType === 'SIMPLIFIED_INVOICE'
+          ? SIMPLIFIED_DOCUMENT_TYPE
+          : decision.documentType;
+
+      if (tipoDocumentoDecision !== SIMPLIFIED_DOCUMENT_TYPE) {
+        return {
+          ok: false,
+          reason: 'DECISION_FISCAL_NO_EMITIBLE',
+        };
+      }
+
+      const documentType = SIMPLIFIED_DOCUMENT_TYPE;
 
       const [existing] = await transaction
         .select()
@@ -112,6 +193,36 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         .limit(1);
       if (existing) return { ok: true, document: existing, alreadyIssued: true };
 
+      if (!operation.sourceOrderId) {
+        return {
+          ok: false,
+          reason: 'COBRO_SHOPIFY_NO_CONFIRMADO',
+        };
+      }
+
+      const [cobroShopifyConfirmado] = await transaction
+        .select({
+          id: shopifyOrderPaymentEvents.id,
+        })
+        .from(shopifyOrderPaymentEvents)
+        .where(and(
+          eq(shopifyOrderPaymentEvents.tenantId, input.tenantId),
+          eq(
+            shopifyOrderPaymentEvents.shopifyOrderName,
+            operation.sourceOrderId,
+          ),
+          sql`lower(${shopifyOrderPaymentEvents.kind}) in ('sale', 'capture')`,
+          sql`lower(${shopifyOrderPaymentEvents.status}) in ('success', 'succeeded')`,
+        ))
+        .limit(1);
+
+      if (!cobroShopifyConfirmado) {
+        return {
+          ok: false,
+          reason: 'COBRO_SHOPIFY_NO_CONFIRMADO',
+        };
+      }
+
       const [issuer] = await transaction.select().from(legalEntities).where(and(
         eq(legalEntities.tenantId, input.tenantId),
         eq(legalEntities.id, operation.legalEntityId),
@@ -122,7 +233,32 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
         eq(productTaxProfiles.legalEntityId, operation.legalEntityId),
         eq(productTaxProfiles.active, true),
       )).limit(1);
-      if (!issuer || !productProfile) return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
+      if (!issuer || !productProfile || !issuer.address) {
+  return {
+    ok: false,
+    reason: 'FISCAL_CONFIGURATION_INCOMPLETE',
+  };
+}
+
+if (!issuer.taxIdentityEncrypted) {
+  return {
+    ok: false,
+    reason: 'CONFIGURACION_FISCAL_INCOMPLETA',
+  };
+}
+
+let issuerTaxIdentity: string;
+
+try {
+  issuerTaxIdentity = decryptTaxIdentity(
+    issuer.taxIdentityEncrypted,
+  );
+} catch {
+  return {
+    ok: false,
+    reason: 'CONFIGURACION_FISCAL_INCOMPLETA',
+  };
+}
 
       const [existingSeries] = await transaction
         .select()
@@ -138,13 +274,15 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
       if (!seriesRow) return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
 
       const issuedAt = new Date();
-      const sequence = new InvoiceSequence(seriesRow.code, Number(seriesRow.nextNumber));
+      const sequence = new InvoiceSequence(
+         seriesRow.code,
+         Number(seriesRow.nextNumber),
+      );
+
       const invoice = await issueInvoice(sequence, {
         operationId: operation.id,
-        customerLabel: operation.sourceOrderId ? `Operación ${operation.sourceOrderId}` : `Operación ${operation.id}`,
-        ...(operation.customerAddress ? { customerAddress: operation.customerAddress } : {}),
-        ...(operation.customerEmail ? { customerEmail: operation.customerEmail } : {}),
         issuerName: issuer.legalName,
+        issuerTaxIdentity,
         issuerAddress: issuer.address,
         description: productProfile.invoiceDescription,
         taxBase: Number(decision.taxBase ?? 0),
@@ -309,20 +447,20 @@ export class DrizzleFiscalDocumentsRepository<TQueryResult extends PgQueryResult
           number: original.number,
           type: original.documentType as 'SIMPLIFICADA' | 'COMPLETA' | 'FULL_INVOICE',
           input: {
-            operationId: operation.id,
-            customerLabel: operation.sourceOrderId ? `Operación ${operation.sourceOrderId}` : `Operación ${operation.id}`,
-            ...(operation.customerAddress ? { customerAddress: operation.customerAddress } : {}),
-            ...(operation.customerEmail ? { customerEmail: operation.customerEmail } : {}),
-            issuerName: issuer?.legalName ?? 'Emisor fiscal',
-            ...(issuer?.address ? { issuerAddress: issuer.address } : {}),
-            description: `Operación ${operation.operationType}`,
-            taxBase: Number(original.taxBase),
-            taxRate: Number(decision?.taxRate ?? 0),
-            taxAmount: Number(original.taxAmount),
-            totalAmount: Number(original.totalAmount),
-            currency: 'EUR',
-            issuedAt: original.issuedAt.toISOString(),
-          },
+  operationId: operation.id,
+  issuerName: issuer?.legalName ?? 'Emisor fiscal',
+  issuerTaxIdentity: issuer?.taxIdentityEncrypted
+    ? decryptTaxIdentity(issuer.taxIdentityEncrypted)
+    : 'NIF/NIE no disponible',
+  issuerAddress: issuer?.address ?? 'Domicilio fiscal no disponible',
+  description: `Operación ${operation.operationType}`,
+  taxBase: Number(original.taxBase),
+  taxRate: Number(decision?.taxRate ?? 0),
+  taxAmount: Number(original.taxAmount),
+  totalAmount: Number(original.totalAmount),
+  currency: 'EUR',
+  issuedAt: original.issuedAt.toISOString(),
+},
           pdfBytes: new Uint8Array(0),
           sha256: original.renderSha256,
           status: 'ISSUED',
