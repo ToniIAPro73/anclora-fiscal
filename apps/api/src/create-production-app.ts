@@ -1,5 +1,5 @@
 import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleShopifySalesRepository, DrizzleTaxDecisionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleShopifySalesRepository, DrizzleTaxDecisionsRepository, DrizzleVatDossiersRepository, DrizzleVerifactuSubmissionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type FiscalPersistencePort, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
@@ -12,6 +12,8 @@ import type { ReconciliationRepositoryPort } from './reconciliation-controller.j
 import type { IssuesRepositoryPort } from './issues-controller.js';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
+import type { VatDossiersRepositoryPort } from './vat-dossier-controller.js';
+import type { VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
 import type { DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import type { ImportLifecycleRepositoryPort } from './import-lifecycle-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
@@ -61,6 +63,8 @@ export async function createProductionApp() {
   let issuesRepository: IssuesRepositoryPort;
   let fiscalDocumentsRepository: FiscalDocumentsRepositoryPort;
   let periodClosesRepository: PeriodClosesRepositoryPort;
+  let vatDossiersRepository: VatDossiersRepositoryPort;
+  let verifactuSubmissionsRepository: VerifactuSubmissionsRepositoryPort;
   let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
   let importLifecycleRepository: ImportLifecycleRepositoryPort;
   let authService: AuthService;
@@ -126,6 +130,8 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
+    vatDossiersRepository = new DrizzleVatDossiersRepository(database.db) as unknown as VatDossiersRepositoryPort;
+    verifactuSubmissionsRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
@@ -187,6 +193,8 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
+    vatDossiersRepository = new DrizzleVatDossiersRepository(database.db) as unknown as VatDossiersRepositoryPort;
+    verifactuSubmissionsRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
@@ -195,7 +203,27 @@ export async function createProductionApp() {
     closeDatabase = () => database.client.close();
   }
 
-  const app = await buildApp({ storage, importPreviewPersistence, fiscalPersistence: importPreviewPersistence, importDedup, importLifecycleRepository, operationsRepository, commercialOrdersRepository, financialEventsRepository, reconciliationRepository, issuesRepository, fiscalDocumentsRepository, periodClosesRepository, dashboardSummaryRepository, fiscalConfigurationRepository, shopifyEvidenceLinksRepository, shopifySalesRepository, authService });
+  const app = await buildApp({
+    storage,
+    importPreviewPersistence,
+    fiscalPersistence: importPreviewPersistence,
+    importDedup,
+    importLifecycleRepository,
+    operationsRepository,
+    commercialOrdersRepository,
+    financialEventsRepository,
+    reconciliationRepository,
+    issuesRepository,
+    fiscalDocumentsRepository,
+    periodClosesRepository,
+    vatDossiersRepository,
+    verifactuSubmissionsRepository,
+    dashboardSummaryRepository,
+    fiscalConfigurationRepository,
+    shopifyEvidenceLinksRepository,
+    shopifySalesRepository,
+    authService,
+  });
   app.addHook('onClose', closeDatabase);
   return app;
 }
