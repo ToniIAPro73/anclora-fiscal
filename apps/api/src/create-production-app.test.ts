@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   class GenericRepository {
-    constructor(..._args: unknown[]) {}
+    constructor() {}
   }
 
   class DrizzleVatDossiersRepository {

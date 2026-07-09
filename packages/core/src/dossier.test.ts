@@ -95,6 +95,7 @@ describe('createVatDossier', () => {
 
   it('mantiene compatibilidad cuando sólo hay contadores VERI*FACTU', async () => {
     const { verifactuRecords: _verifactuRecords, ...inputWithoutRecords } = baseInput;
+    void _verifactuRecords;
 
     const result = await createVatDossier({
       ...inputWithoutRecords,

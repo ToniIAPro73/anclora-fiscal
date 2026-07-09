@@ -1,18 +1,14 @@
-import type { ComponentPropsWithoutRef, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VerifactuPage from './page';
 
 vi.mock('next/image', () => ({
-  default: ({
-    src,
-    alt,
-    priority: _priority,
-    ...props
-  }: ComponentPropsWithoutRef<'img'> & { src: string | { src?: string }; priority?: boolean }) => {
-    const resolvedSrc = typeof src === 'string' ? src : src.src ?? '';
+  default: ({ priority, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean }) => {
+    void priority;
 
-    return <img src={resolvedSrc} alt={alt ?? ''} {...props} />;
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img {...props} />;
   },
 }));
 
