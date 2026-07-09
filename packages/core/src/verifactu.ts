@@ -51,6 +51,101 @@ export interface VerifactuPort {
   submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult>;
 }
 
+
+export type VerifactuSubmissionEnvironment = 'mock' | 'test' | 'production';
+
+export type VerifactuSubmissionStatus =
+  | 'PENDING'
+  | 'SENT'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'TECHNICAL_ERROR'
+  | 'BLOCKED';
+
+export interface VerifactuPayloadRedacted {
+  schemaVersion: 'anclora-verifactu-payload-redacted-v1';
+  environment: VerifactuSubmissionEnvironment;
+  recordType: IntegrityRecord['recordType'];
+  documentNumber: string;
+  documentHash: string;
+  chainHash: string;
+  previousHash: string | null;
+  issuedAt: string;
+  totalAmount: number;
+  taxAmount: number;
+  algorithm: IntegrityRecord['algorithm'];
+}
+
+export interface VerifactuSubmissionDraft {
+  environment: VerifactuSubmissionEnvironment;
+  status: VerifactuSubmissionStatus;
+  payloadRedacted: VerifactuPayloadRedacted;
+  responseRedacted: null;
+  attemptCount: 0;
+  canSubmit: boolean;
+  blockReason?: 'VERIFACTU_DISABLED' | 'VERIFACTU_PRODUCTION_ADAPTER_NOT_CONFIGURED';
+}
+
+function resolveSubmissionEnvironment(mode: VerifactuMode): VerifactuSubmissionEnvironment {
+  if (mode === 'production') return 'production';
+  if (mode === 'test') return 'test';
+  return 'mock';
+}
+
+export function createVerifactuSubmissionDraft(
+  record: IntegrityRecord,
+  config: VerifactuRuntimeConfig,
+): VerifactuSubmissionDraft {
+  const environment = resolveSubmissionEnvironment(config.mode);
+
+  const payloadRedacted: VerifactuPayloadRedacted = {
+    schemaVersion: 'anclora-verifactu-payload-redacted-v1',
+    environment,
+    recordType: record.recordType,
+    documentNumber: record.documentNumber,
+    documentHash: record.hash,
+    chainHash: record.hash,
+    previousHash: record.previousHash ?? null,
+    issuedAt: record.issuedAt,
+    totalAmount: record.totalAmount,
+    taxAmount: record.taxAmount,
+    algorithm: record.algorithm,
+  };
+
+  if (!config.enabled || config.mode === 'disabled') {
+    return {
+      environment,
+      status: 'BLOCKED',
+      payloadRedacted,
+      responseRedacted: null,
+      attemptCount: 0,
+      canSubmit: false,
+      blockReason: 'VERIFACTU_DISABLED',
+    };
+  }
+
+  if (config.mode === 'production' && !config.canSubmit) {
+    return {
+      environment,
+      status: 'BLOCKED',
+      payloadRedacted,
+      responseRedacted: null,
+      attemptCount: 0,
+      canSubmit: false,
+      blockReason: 'VERIFACTU_PRODUCTION_ADAPTER_NOT_CONFIGURED',
+    };
+  }
+
+  return {
+    environment,
+    status: 'PENDING',
+    payloadRedacted,
+    responseRedacted: null,
+    attemptCount: 0,
+    canSubmit: config.canSubmit,
+  };
+}
+
 function normalizeVerifactuMode(rawMode: string | undefined, legacyEnabled: boolean): VerifactuMode {
   const explicitMode = rawMode?.trim().toLowerCase();
 
