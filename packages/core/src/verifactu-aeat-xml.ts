@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { IntegrityRecord } from './verifactu.js';
+import { AEAT_VERIFACTU_NAMESPACES } from './verifactu-aeat-spec.js';
 
 export type AeatVerifactuXmlEnvironment = 'test' | 'production';
 
@@ -45,10 +46,11 @@ export function buildAeatVerifactuUnsignedXml(input: AeatVerifactuUnsignedXmlInp
   const issuer = normalizeParty(input.issuer, 'ISSUER');
   const producer = normalizeParty(input.software.producer, 'SOFTWARE_PRODUCER');
   const software = normalizeSoftware(input.software, producer);
+  const chainHash = normalizeHash(input.record.hash, 'CHAIN_HASH');
 
   const xml = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sum="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/SuministroLR.xsd" xmlns:sum1="https://www2.agenciatributaria.gob.es/static_files/common/internet/dep/aplicaciones/es/aeat/tikeV1.0/cont/ws/SuministroInformacion.xsd">',
+    `<soapenv:Envelope xmlns:soapenv="${AEAT_VERIFACTU_NAMESPACES.soapEnvelope}" xmlns:sum="${AEAT_VERIFACTU_NAMESPACES.suministroLR}" xmlns:sum1="${AEAT_VERIFACTU_NAMESPACES.suministroInformacion}" xmlns:xd="${AEAT_VERIFACTU_NAMESPACES.xmlDsig}">`,
     '<soapenv:Header/>',
     '<soapenv:Body>',
     '<sum:RegFactuSistemaFacturacion>',
@@ -68,7 +70,7 @@ export function buildAeatVerifactuUnsignedXml(input: AeatVerifactuUnsignedXmlInp
     environment: input.environment,
     recordType: input.record.recordType,
     documentNumber: input.record.documentNumber,
-    chainHash: input.record.hash,
+    chainHash,
     xml,
     xmlSha256: createHash('sha256').update(xml).digest('hex'),
   };
@@ -77,11 +79,10 @@ export function buildAeatVerifactuUnsignedXml(input: AeatVerifactuUnsignedXmlInp
 function buildCabecera(issuer: AeatVerifactuPartyIdentity): string {
   return [
     '<sum:Cabecera>',
-    element('sum:IDVersion', '1.0'),
-    '<sum:ObligadoEmision>',
-    element('sum:NombreRazon', issuer.name),
-    element('sum:NIF', issuer.taxId),
-    '</sum:ObligadoEmision>',
+    '<sum1:ObligadoEmision>',
+    element('sum1:NombreRazon', issuer.name),
+    element('sum1:NIF', issuer.taxId),
+    '</sum1:ObligadoEmision>',
     '</sum:Cabecera>',
   ].join('');
 }
@@ -94,18 +95,18 @@ function buildRegistroAlta(
   return [
     '<sum1:RegistroAlta>',
     element('sum1:IDVersion', '1.0'),
-    buildIdFactura(input.record, issuer),
+    buildIdFacturaAlta(input.record, issuer),
     element('sum1:RefExterna', input.externalReference ?? input.record.documentId),
     element('sum1:NombreRazonEmisor', issuer.name),
     element('sum1:TipoFactura', 'F1'),
     element('sum1:DescripcionOperacion', input.operationDescription ?? 'Operación registrada desde Anclora Fiscal'),
     element('sum1:CuotaTotal', formatAmount(input.record.taxAmount)),
     element('sum1:ImporteTotal', formatAmount(input.record.totalAmount)),
-    buildEncadenamiento(input.record),
+    buildEncadenamiento(input.record, issuer),
     buildSistemaInformatico(software),
     element('sum1:FechaHoraHusoGenRegistro', formatDateTime(input.generatedAt)),
     element('sum1:TipoHuella', '01'),
-    element('sum1:Huella', input.record.hash),
+    element('sum1:Huella', normalizeHash(input.record.hash, 'CHAIN_HASH')),
     '</sum1:RegistroAlta>',
   ].join('');
 }
@@ -118,18 +119,18 @@ function buildRegistroAnulacion(
   return [
     '<sum1:RegistroAnulacion>',
     element('sum1:IDVersion', '1.0'),
-    buildIdFactura(input.record, issuer),
+    buildIdFacturaAnulacion(input.record, issuer),
     element('sum1:RefExterna', input.externalReference ?? input.record.documentId),
-    buildEncadenamiento(input.record),
+    buildEncadenamiento(input.record, issuer),
     buildSistemaInformatico(software),
     element('sum1:FechaHoraHusoGenRegistro', formatDateTime(input.generatedAt)),
     element('sum1:TipoHuella', '01'),
-    element('sum1:Huella', input.record.hash),
+    element('sum1:Huella', normalizeHash(input.record.hash, 'CHAIN_HASH')),
     '</sum1:RegistroAnulacion>',
   ].join('');
 }
 
-function buildIdFactura(record: IntegrityRecord, issuer: AeatVerifactuPartyIdentity): string {
+function buildIdFacturaAlta(record: IntegrityRecord, issuer: AeatVerifactuPartyIdentity): string {
   return [
     '<sum1:IDFactura>',
     element('sum1:IDEmisorFactura', issuer.taxId),
@@ -139,7 +140,17 @@ function buildIdFactura(record: IntegrityRecord, issuer: AeatVerifactuPartyIdent
   ].join('');
 }
 
-function buildEncadenamiento(record: IntegrityRecord): string {
+function buildIdFacturaAnulacion(record: IntegrityRecord, issuer: AeatVerifactuPartyIdentity): string {
+  return [
+    '<sum1:IDFactura>',
+    element('sum1:IDEmisorFacturaAnulada', issuer.taxId),
+    element('sum1:NumSerieFacturaAnulada', record.documentNumber),
+    element('sum1:FechaExpedicionFacturaAnulada', formatDate(record.issuedAt)),
+    '</sum1:IDFactura>',
+  ].join('');
+}
+
+function buildEncadenamiento(record: IntegrityRecord, issuer: AeatVerifactuPartyIdentity): string {
   if (!record.previousHash) {
     return [
       '<sum1:Encadenamiento>',
@@ -151,10 +162,10 @@ function buildEncadenamiento(record: IntegrityRecord): string {
   return [
     '<sum1:Encadenamiento>',
     '<sum1:RegistroAnterior>',
-    element('sum1:IDEmisorFactura', 'ANCLORA-INTERNAL'),
+    element('sum1:IDEmisorFactura', issuer.taxId),
     element('sum1:NumSerieFactura', 'REGISTRO-ANTERIOR'),
     element('sum1:FechaExpedicionFactura', formatDate(record.issuedAt)),
-    element('sum1:Huella', record.previousHash),
+    element('sum1:Huella', normalizeHash(record.previousHash, 'PREVIOUS_HASH')),
     '</sum1:RegistroAnterior>',
     '</sum1:Encadenamiento>',
   ].join('');
@@ -207,13 +218,28 @@ function formatAmount(value: number): string {
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new Error('AEAT_VERIFACTU_INVALID_DATE');
-  return date.toISOString().slice(0, 10);
+
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = String(date.getUTCFullYear());
+
+  return `${day}-${month}-${year}`;
 }
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new Error('AEAT_VERIFACTU_INVALID_DATETIME');
   return date.toISOString();
+}
+
+function normalizeHash(value: string, code: string): string {
+  const normalized = value.trim().toUpperCase();
+
+  if (!/^[A-F0-9]{64}$/.test(normalized)) {
+    throw new Error(`AEAT_VERIFACTU_${code}_INVALID`);
+  }
+
+  return normalized;
 }
 
 function assertEnvironment(environment: AeatVerifactuXmlEnvironment): void {

@@ -124,9 +124,8 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
     throw new Error(`AEAT_VERIFACTU_HTTP_${response.statusCode}`);
   }
 
-  const estado = firstXmlText(response.body, 'EstadoRegistro')
-    ?? firstXmlText(response.body, 'EstadoEnvio')
-    ?? '';
+  const recordStatus = firstXmlText(response.body, 'EstadoRegistro') ?? '';
+  const globalStatus = firstXmlText(response.body, 'EstadoEnvio') ?? '';
 
   const reference = firstXmlText(response.body, 'CSV')
     ?? firstXmlText(response.body, 'CodigoRegistro')
@@ -136,17 +135,11 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
   const message = firstXmlText(response.body, 'DescripcionErrorRegistro')
     ?? firstXmlText(response.body, 'DescripcionError')
     ?? firstXmlText(response.body, 'Mensaje')
-    ?? estado
+    ?? recordStatus
+    ?? globalStatus
     ?? 'Respuesta AEAT procesada';
 
-  const normalizedEstado = normalizeStatusText(estado);
-
-  if (
-    normalizedEstado === 'incorrecto'
-    || normalizedEstado.includes('rechazado')
-    || normalizedEstado.includes('rechazada')
-    || normalizedEstado.includes('error')
-  ) {
+  if (isRejectedStatus(recordStatus) || (!recordStatus && isRejectedStatus(globalStatus))) {
     return {
       status: 'REJECTED',
       reference,
@@ -154,11 +147,7 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
     };
   }
 
-  if (
-    normalizedEstado === 'correcto'
-    || normalizedEstado.includes('aceptado')
-    || normalizedEstado.includes('aceptada')
-  ) {
+  if (isAcceptedStatus(recordStatus) || (!recordStatus && isAcceptedStatus(globalStatus))) {
     return {
       status: 'ACCEPTED',
       reference,
@@ -167,6 +156,25 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
   }
 
   throw new Error('AEAT_VERIFACTU_UNRECOGNIZED_SOAP_RESPONSE');
+}
+
+function isRejectedStatus(value: string): boolean {
+  const normalized = normalizeStatusText(value);
+
+  return normalized === 'incorrecto'
+    || normalized.includes('rechazado')
+    || normalized.includes('rechazada')
+    || normalized.includes('error');
+}
+
+function isAcceptedStatus(value: string): boolean {
+  const normalized = normalizeStatusText(value);
+
+  return normalized === 'correcto'
+    || normalized === 'parcialmentecorrecto'
+    || normalized === 'aceptadoconerrores'
+    || normalized.includes('aceptado')
+    || normalized.includes('aceptada');
 }
 
 function assertRuntime(config: VerifactuRuntimeConfig, environment: AeatVerifactuXmlEnvironment): void {

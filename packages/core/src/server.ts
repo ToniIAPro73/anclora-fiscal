@@ -8,6 +8,7 @@ export * from './storage.js';
 export * from './invoicing.js';
 export * from './tax-identity.js';
 export * from './verifactu.js';
+export * from './verifactu-aeat-spec.js';
 export * from './verifactu-aeat-xml.js';
 export * from './verifactu-aeat-signing.js';
 export * from './verifactu-aeat-transport.js';

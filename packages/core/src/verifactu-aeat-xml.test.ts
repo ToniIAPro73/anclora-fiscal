@@ -5,6 +5,7 @@ import {
   escapeXml,
   type AeatVerifactuUnsignedXmlInput,
 } from './verifactu-aeat-xml';
+import { AEAT_VERIFACTU_NAMESPACES } from './verifactu-aeat-spec';
 
 function baseInput(overrides: Partial<AeatVerifactuUnsignedXmlInput> = {}): AeatVerifactuUnsignedXmlInput {
   const record = createIntegrityRecord({
@@ -48,7 +49,7 @@ describe('escapeXml', () => {
 });
 
 describe('buildAeatVerifactuUnsignedXml', () => {
-  it('construye un XML SOAP determinista para alta en entorno AEAT de pruebas', () => {
+  it('construye un XML SOAP con namespaces oficiales AEAT para alta', () => {
     const payload = buildAeatVerifactuUnsignedXml(baseInput());
 
     expect(payload).toMatchObject({
@@ -57,21 +58,31 @@ describe('buildAeatVerifactuUnsignedXml', () => {
       recordType: 'ALTA',
       documentNumber: 'FS-2026-0001',
     });
+    expect(payload.chainHash).toMatch(/^[A-F0-9]{64}$/);
     expect(payload.xmlSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(payload.xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(payload.xml).toContain('<soapenv:Envelope');
+    expect(payload.xml).toContain(`<soapenv:Envelope xmlns:soapenv="${AEAT_VERIFACTU_NAMESPACES.soapEnvelope}"`);
+    expect(payload.xml).toContain(`xmlns:sum="${AEAT_VERIFACTU_NAMESPACES.suministroLR}"`);
+    expect(payload.xml).toContain(`xmlns:sum1="${AEAT_VERIFACTU_NAMESPACES.suministroInformacion}"`);
+    expect(payload.xml).not.toContain('tikeV1.0');
+
     expect(payload.xml).toContain('<sum:RegFactuSistemaFacturacion>');
+    expect(payload.xml).toContain('<sum:Cabecera><sum1:ObligadoEmision>');
+    expect(payload.xml).not.toContain('<sum:IDVersion>');
+
     expect(payload.xml).toContain('<sum1:RegistroAlta>');
     expect(payload.xml).toContain('<sum1:NumSerieFactura>FS-2026-0001</sum1:NumSerieFactura>');
+    expect(payload.xml).toContain('<sum1:FechaExpedicionFactura>09-07-2026</sum1:FechaExpedicionFactura>');
     expect(payload.xml).toContain('<sum1:CuotaTotal>0.27</sum1:CuotaTotal>');
     expect(payload.xml).toContain('<sum1:ImporteTotal>6.99</sum1:ImporteTotal>');
     expect(payload.xml).toContain('<sum1:PrimerRegistro>S</sum1:PrimerRegistro>');
     expect(payload.xml).toContain('<sum1:NombreSistemaInformatico>Anclora Fiscal</sum1:NombreSistemaInformatico>');
     expect(payload.xml).toContain('Anclora &amp; Fiscal &lt;Test&gt;');
+    expect(payload.xml).toContain(`<sum1:Huella>${payload.chainHash}</sum1:Huella>`);
     expect(payload.xml).not.toMatch(/<script/i);
   });
 
-  it('construye un XML para anulación cuando el registro interno es ANULACION', () => {
+  it('construye un XML para anulación con IDFactura anulada oficial', () => {
     const previousHash = 'a'.repeat(64);
     const record = createIntegrityRecord({
       documentId: 'document-2',
@@ -87,11 +98,14 @@ describe('buildAeatVerifactuUnsignedXml', () => {
 
     expect(payload.recordType).toBe('ANULACION');
     expect(payload.xml).toContain('<sum1:RegistroAnulacion>');
+    expect(payload.xml).toContain('<sum1:IDEmisorFacturaAnulada>B12345678</sum1:IDEmisorFacturaAnulada>');
+    expect(payload.xml).toContain('<sum1:NumSerieFacturaAnulada>FS-2026-0002</sum1:NumSerieFacturaAnulada>');
+    expect(payload.xml).toContain('<sum1:FechaExpedicionFacturaAnulada>09-07-2026</sum1:FechaExpedicionFacturaAnulada>');
     expect(payload.xml).toContain('<sum1:RegistroAnterior>');
-    expect(payload.xml).toContain(`<sum1:Huella>${previousHash}</sum1:Huella>`);
+    expect(payload.xml).toContain(`<sum1:Huella>${previousHash.toUpperCase()}</sum1:Huella>`);
   });
 
-  it('rechaza importes o fechas inválidas antes de generar XML', () => {
+  it('rechaza importes, fechas o huellas inválidas antes de generar XML', () => {
     const invalidAmount = createIntegrityRecord({
       documentId: 'document-invalid',
       documentNumber: 'FS-INVALID',
@@ -117,6 +131,13 @@ describe('buildAeatVerifactuUnsignedXml', () => {
     expect(() => buildAeatVerifactuUnsignedXml(baseInput({ record: invalidDate }))).toThrow(
       'AEAT_VERIFACTU_INVALID_DATE',
     );
+
+    expect(() => buildAeatVerifactuUnsignedXml(baseInput({
+      record: {
+        ...baseInput().record,
+        hash: 'not-a-sha256',
+      },
+    }))).toThrow('AEAT_VERIFACTU_CHAIN_HASH_INVALID');
   });
 
   it('rechaza identidades incompletas', () => {
