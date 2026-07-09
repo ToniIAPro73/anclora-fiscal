@@ -56,17 +56,18 @@ describe('API foundation', () => {
   it('expone configuración runtime VERI*FACTU de pruebas cuando el adapter está configurado por env', async () => {
     await withTemporaryEnv(
       {
-        NODE_ENV: 'test',
+        NODE_ENV: 'production',
         VERIFACTU_MODE: 'test',
         VERIFACTU_AEAT_ADAPTER_ENABLED: 'true',
         VERIFACTU_AEAT_SIGNING_ENABLED: 'true',
-        VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'cert-fp-1',
-        VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://aeat.test.example/verifactu',
+        VERIFACTU_AEAT_CERTIFICATE_PATH: '/secrets/aeat-test.p12',
+        VERIFACTU_AEAT_CERTIFICATE_PASSWORD: 'configured',
+        VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
+        SESSION_SECRET: 'test-session-secret-with-at-least-32-chars',
       },
       async () => {
         const app = await buildApp();
-        apps.push(app);
-
         const response = await app.inject({ method: 'GET', url: '/health' });
 
         expect(response.statusCode).toBe(200);
@@ -76,7 +77,15 @@ describe('API foundation', () => {
           verifactuMode: 'test',
           verifactuCanSubmit: true,
           verifactuProductionSafe: true,
+          aeatPortalReadiness: {
+            ready: true,
+            endpointHost: 'prewww10.aeat.es',
+            certificateConfigured: true,
+            usagePolicy: 'manual-preproduction-tests-only',
+          },
         });
+
+        await app.close();
       },
     );
   });

@@ -3,12 +3,28 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { FieldLabel, StatusBadge } from '@anclora/ui';
 
+interface AeatPortalReadiness {
+  environment: string;
+  endpointUrl: string | null;
+  endpointHost: string | null;
+  preproductionHost: boolean;
+  certificateConfigured: boolean;
+  certificateFingerprint: string | null;
+  productionSubmissionEnabled: boolean;
+  allowAutomatedLoadTests: boolean;
+  ready: boolean;
+  blockedReasons: string[];
+  warnings: string[];
+  usagePolicy: string;
+}
+
 interface VerifactuRuntimeStatus {
   status: string;
   verifactuEnabled: boolean;
   verifactuMode: string;
   verifactuCanSubmit: boolean;
   verifactuProductionSafe: boolean;
+  aeatPortalReadiness?: AeatPortalReadiness | undefined;
 }
 
 interface VerifactuSubmission {
@@ -152,6 +168,99 @@ function productionSafetyLabel(runtime: VerifactuRuntimeStatus | null): string {
   if (!runtime) return 'No disponible';
   if (runtime.verifactuProductionSafe) return 'Configuración segura';
   return 'Producción bloqueada';
+}
+
+function portalReadinessLabel(readiness: AeatPortalReadiness | null): string {
+  if (!readiness) return 'No disponible';
+  if (readiness.ready) return 'Portal de pruebas preparado';
+  return 'Configuración pendiente';
+}
+
+function certificateLabel(readiness: AeatPortalReadiness | null): string {
+  if (!readiness) return 'No disponible';
+  return readiness.certificateConfigured ? 'Certificado configurado' : 'Certificado pendiente';
+}
+
+function portalPolicyLabel(readiness: AeatPortalReadiness | null): string {
+  if (!readiness) return 'No disponible';
+  if (readiness.usagePolicy === 'manual-preproduction-tests-only') return 'Pruebas manuales controladas';
+  return 'Envío productivo';
+}
+
+function portalReasonLabel(reason: string): string {
+  const labels: Record<string, string> = {
+    AEAT_VERIFACTU_ENDPOINT_REQUIRED: 'Falta endpoint AEAT',
+    AEAT_VERIFACTU_ENDPOINT_REQUIRES_HTTPS: 'El endpoint debe usar HTTPS',
+    AEAT_VERIFACTU_ENDPOINT_INVALID: 'Endpoint AEAT inválido',
+    AEAT_VERIFACTU_CERTIFICATE_PATH_REQUIRED: 'Falta ruta del certificado',
+    AEAT_VERIFACTU_CERTIFICATE_PASSWORD_REQUIRED: 'Falta contraseña del certificado',
+    AEAT_VERIFACTU_CERTIFICATE_FINGERPRINT_REQUIRED: 'Falta huella del certificado',
+    AEAT_VERIFACTU_CERTIFICATE_FINGERPRINT_INVALID: 'Huella de certificado inválida',
+    AEAT_VERIFACTU_PREPRODUCTION_LOAD_TESTS_NOT_ALLOWED: 'Las pruebas masivas están bloqueadas',
+    AEAT_VERIFACTU_PRODUCTION_SUBMISSION_NOT_ENABLED: 'Producción no habilitada',
+    AEAT_VERIFACTU_PRODUCTION_ENDPOINT_POINTS_TO_PREPRODUCTION: 'Producción apunta a preproducción',
+  };
+
+  return labels[reason] ?? reason;
+}
+
+function VerifactuAeatPortalStatusCard({ readiness }: { readiness: AeatPortalReadiness | null }) {
+  const blockedReasons = readiness?.blockedReasons ?? [];
+  const warnings = readiness?.warnings ?? [];
+
+  return (
+    <section className="verifactu-status-card" aria-label="Estado del portal AEAT VERI*FACTU">
+      <div className="verifactu-status-heading">
+        <p className="eyebrow">Portal AEAT</p>
+        <h2>Preparación del entorno de pruebas</h2>
+        <p>
+          Comprueba endpoint, certificado y restricciones de uso antes de activar cualquier integración externa.
+        </p>
+      </div>
+
+      <div className="verifactu-status-grid">
+        <article className="verifactu-metric">
+          <span>Estado del portal</span>
+          <strong>{portalReadinessLabel(readiness)}</strong>
+          <StatusBadge tone={readiness?.ready ? 'info' : 'warning'}>
+            {readiness?.ready ? 'Listo' : 'Pendiente'}
+          </StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Certificado</span>
+          <strong>{certificateLabel(readiness)}</strong>
+          <StatusBadge tone={readiness?.certificateConfigured ? 'info' : 'warning'}>
+            {readiness?.certificateConfigured ? 'Configurado' : 'Pendiente'}
+          </StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Política de uso</span>
+          <strong>{portalPolicyLabel(readiness)}</strong>
+          <StatusBadge tone={readiness?.allowAutomatedLoadTests ? 'blocking' : 'info'}>
+            {readiness?.allowAutomatedLoadTests ? 'Bloqueado' : 'Controlado'}
+          </StatusBadge>
+        </article>
+      </div>
+
+      <p className="verifactu-readonly-note">
+        {readiness?.endpointHost ? `Host configurado: ${readiness.endpointHost}` : 'No hay endpoint AEAT configurado.'}
+      </p>
+
+      {blockedReasons.length > 0 ? (
+        <p className="verifactu-readonly-note">
+          Pendiente: {portalReasonLabel(blockedReasons[0] ?? '')}
+        </p>
+      ) : null}
+
+      {warnings.length > 0 ? (
+        <p className="verifactu-readonly-note">
+          Aviso: {portalReasonLabel(warnings[0] ?? '')}
+        </p>
+      ) : null}
+    </section>
+  );
 }
 
 function VerifactuSystemStatusCard({ runtime }: { runtime: VerifactuRuntimeStatus | null }) {
@@ -531,6 +640,7 @@ export function VerifactuSubmissionsPanel() {
   return (
     <div className="verifactu-layout">
       <VerifactuSystemStatusCard runtime={runtime} />
+      <VerifactuAeatPortalStatusCard readiness={runtime?.aeatPortalReadiness ?? null} />
 
       <VerifactuFiltersCard
         status={status}

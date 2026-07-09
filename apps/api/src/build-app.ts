@@ -7,7 +7,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
-import { resolveApiVerifactuRuntimeConfig } from './verifactu-runtime.js';
+import { resolveApiVerifactuRuntimeStatus } from './verifactu-runtime.js';
 import { resolve } from 'node:path';
 import { createImportPreviewHandler } from './import-controller.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
@@ -108,7 +108,13 @@ export async function buildApp(options: {
   await app.register(swagger, { openapi: { info: { title: 'Anclora Fiscal API', version: '0.1.0' }, servers: [{ url: '/api/v1' }] } });
   await app.register(swaggerUi, { routePrefix: '/documentation' });
 
-  const verifactuRuntimeConfig = resolveApiVerifactuRuntimeConfig();
+  const verifactuRuntimeStatus = resolveApiVerifactuRuntimeStatus();
+  const verifactuRuntimeConfig = {
+    mode: verifactuRuntimeStatus.mode,
+    enabled: verifactuRuntimeStatus.enabled,
+    canSubmit: verifactuRuntimeStatus.canSubmit,
+    productionSafe: verifactuRuntimeStatus.productionSafe,
+  };
 
   app.get(
     '/health',
@@ -123,6 +129,7 @@ export async function buildApp(options: {
               verifactuMode: { type: 'string' },
               verifactuCanSubmit: { type: 'boolean' },
               verifactuProductionSafe: { type: 'boolean' },
+              aeatPortalReadiness: { type: 'object', additionalProperties: true },
             },
           },
         },
@@ -137,6 +144,7 @@ export async function buildApp(options: {
         verifactuMode: verifactu.mode,
         verifactuCanSubmit: verifactu.canSubmit,
         verifactuProductionSafe: verifactu.productionSafe,
+        aeatPortalReadiness: verifactuRuntimeStatus.aeatPortalReadiness,
       };
     },
   );

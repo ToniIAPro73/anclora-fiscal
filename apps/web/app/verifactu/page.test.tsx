@@ -28,12 +28,43 @@ function jsonResponse(body: unknown, ok = true) {
   } as Response;
 }
 
+const aeatPortalReady = {
+  environment: 'test',
+  endpointUrl: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
+  endpointHost: 'prewww10.aeat.es',
+  preproductionHost: true,
+  certificateConfigured: true,
+  certificateFingerprint: 'AABBCCDDEEFF00112233445566778899AABBCCDD',
+  productionSubmissionEnabled: false,
+  allowAutomatedLoadTests: false,
+  ready: true,
+  blockedReasons: [],
+  warnings: [],
+  usagePolicy: 'manual-preproduction-tests-only',
+};
+
+const aeatPortalPending = {
+  environment: 'test',
+  endpointUrl: null,
+  endpointHost: null,
+  preproductionHost: false,
+  certificateConfigured: false,
+  certificateFingerprint: null,
+  productionSubmissionEnabled: false,
+  allowAutomatedLoadTests: false,
+  ready: false,
+  blockedReasons: ['AEAT_VERIFACTU_ENDPOINT_REQUIRED'],
+  warnings: [],
+  usagePolicy: 'manual-preproduction-tests-only',
+};
+
 const runtimeTest = {
   status: 'ok',
   verifactuEnabled: true,
   verifactuMode: 'test',
   verifactuCanSubmit: true,
   verifactuProductionSafe: true,
+  aeatPortalReadiness: aeatPortalReady,
 };
 
 const runtimeDisabled = {
@@ -42,6 +73,7 @@ const runtimeDisabled = {
   verifactuMode: 'disabled',
   verifactuCanSubmit: false,
   verifactuProductionSafe: true,
+  aeatPortalReadiness: aeatPortalPending,
 };
 
 const runtimeProductionBlocked = {
@@ -50,6 +82,11 @@ const runtimeProductionBlocked = {
   verifactuMode: 'production',
   verifactuCanSubmit: false,
   verifactuProductionSafe: false,
+  aeatPortalReadiness: {
+    ...aeatPortalPending,
+    environment: 'production',
+    blockedReasons: ['AEAT_VERIFACTU_PRODUCTION_SUBMISSION_NOT_ENABLED'],
+  },
 };
 
 describe('VerifactuPage', () => {
@@ -121,6 +158,8 @@ describe('VerifactuPage', () => {
     expect(await screen.findByText('FS-1')).toBeInTheDocument();
     expect(screen.getByText('Preparación VERI*FACTU')).toBeInTheDocument();
     expect(screen.getByText('Integración preparada')).toBeInTheDocument();
+    expect(screen.getByText('Portal de pruebas preparado')).toBeInTheDocument();
+    expect(screen.getByText('Host configurado: prewww10.aeat.es')).toBeInTheDocument();
     expect(screen.getByText('Preparado')).toBeInTheDocument();
     expect(screen.getByText('Simplificada')).toBeInTheDocument();
     expect(screen.getAllByText('Pendiente').length).toBeGreaterThan(0);

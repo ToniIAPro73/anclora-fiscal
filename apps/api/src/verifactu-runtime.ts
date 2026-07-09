@@ -1,6 +1,8 @@
 import {
   VerifactuSubmissionExecutionService,
+  resolveAeatVerifactuPortalReadiness,
   resolveVerifactuRuntimeConfig,
+  type AeatVerifactuPortalReadiness,
   type VerifactuPort,
   type VerifactuRuntimeConfig,
   type VerifactuSubmissionExecutionRepositoryPort,
@@ -12,11 +14,19 @@ export interface ApiVerifactuEnvironment {
   VERIFACTU_ENABLED?: string | undefined;
   VERIFACTU_AEAT_ADAPTER_ENABLED?: string | undefined;
   VERIFACTU_AEAT_SIGNING_ENABLED?: string | undefined;
+  VERIFACTU_AEAT_CERTIFICATE_PATH?: string | undefined;
+  VERIFACTU_AEAT_CERTIFICATE_PASSWORD?: string | undefined;
+  VERIFACTU_AEAT_CERTIFICATE_PASSWORD_CONFIGURED?: string | undefined;
   VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT?: string | undefined;
   VERIFACTU_AEAT_ENDPOINT_URL?: string | undefined;
   VERIFACTU_AEAT_TEST_ENDPOINT_URL?: string | undefined;
   VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL?: string | undefined;
+  VERIFACTU_AEAT_ALLOW_LOAD_TESTS?: string | undefined;
   VERIFACTU_PRODUCTION_SUBMISSION_ENABLED?: string | undefined;
+}
+
+export interface ApiVerifactuRuntimeStatus extends VerifactuRuntimeConfig {
+  aeatPortalReadiness: AeatVerifactuPortalReadiness;
 }
 
 export type CreateVerifactuExecutionServiceResult =
@@ -43,28 +53,55 @@ function normalizedMode(env: ApiVerifactuEnvironment): string | undefined {
   return env.VERIFACTU_MODE?.trim().toLowerCase();
 }
 
-function endpointConfigured(env: ApiVerifactuEnvironment): boolean {
+function portalEnvironment(env: ApiVerifactuEnvironment): 'test' | 'production' {
+  return normalizedMode(env) === 'production' ? 'production' : 'test';
+}
+
+function endpointForMode(env: ApiVerifactuEnvironment): string | undefined {
   const mode = normalizedMode(env);
 
   if (mode === 'production') {
-    return hasText(env.VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL) || hasText(env.VERIFACTU_AEAT_ENDPOINT_URL);
+    return env.VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL ?? env.VERIFACTU_AEAT_ENDPOINT_URL;
   }
 
   if (mode === 'test' || mode === 'sandbox') {
-    return hasText(env.VERIFACTU_AEAT_TEST_ENDPOINT_URL) || hasText(env.VERIFACTU_AEAT_ENDPOINT_URL);
+    return env.VERIFACTU_AEAT_TEST_ENDPOINT_URL ?? env.VERIFACTU_AEAT_ENDPOINT_URL;
   }
 
-  return false;
+  return env.VERIFACTU_AEAT_ENDPOINT_URL
+    ?? env.VERIFACTU_AEAT_TEST_ENDPOINT_URL
+    ?? env.VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL;
 }
 
-export function hasAeatVerifactuAdapterConfiguration(env: ApiVerifactuEnvironment = process.env): boolean {
+function certificatePasswordConfigured(env: ApiVerifactuEnvironment): boolean {
+  return hasText(env.VERIFACTU_AEAT_CERTIFICATE_PASSWORD)
+    || flag(env.VERIFACTU_AEAT_CERTIFICATE_PASSWORD_CONFIGURED);
+}
+
+export function resolveApiAeatVerifactuPortalReadiness(
+  env: ApiVerifactuEnvironment = process.env,
+): AeatVerifactuPortalReadiness {
+  return resolveAeatVerifactuPortalReadiness({
+    environment: portalEnvironment(env),
+    endpointUrl: endpointForMode(env),
+    certificatePath: env.VERIFACTU_AEAT_CERTIFICATE_PATH,
+    certificatePasswordConfigured: certificatePasswordConfigured(env),
+    certificateFingerprint: env.VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT,
+    productionSubmissionEnabled: flag(env.VERIFACTU_PRODUCTION_SUBMISSION_ENABLED),
+    allowAutomatedLoadTests: flag(env.VERIFACTU_AEAT_ALLOW_LOAD_TESTS),
+  });
+}
+
+export function hasAeatVerifactuAdapterConfiguration(
+  env: ApiVerifactuEnvironment = process.env,
+): boolean {
   return flag(env.VERIFACTU_AEAT_ADAPTER_ENABLED)
-    && flag(env.VERIFACTU_AEAT_SIGNING_ENABLED)
-    && hasText(env.VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT)
-    && endpointConfigured(env);
+    && resolveApiAeatVerifactuPortalReadiness(env).ready;
 }
 
-export function resolveApiVerifactuRuntimeConfig(env: ApiVerifactuEnvironment = process.env): VerifactuRuntimeConfig {
+export function resolveApiVerifactuRuntimeConfig(
+  env: ApiVerifactuEnvironment = process.env,
+): VerifactuRuntimeConfig {
   return resolveVerifactuRuntimeConfig({
     mode: env.VERIFACTU_MODE,
     enabled: env.VERIFACTU_ENABLED,
@@ -72,6 +109,17 @@ export function resolveApiVerifactuRuntimeConfig(env: ApiVerifactuEnvironment = 
     adapterConfigured: hasAeatVerifactuAdapterConfiguration(env),
     productionSubmissionEnabled: flag(env.VERIFACTU_PRODUCTION_SUBMISSION_ENABLED),
   });
+}
+
+export function resolveApiVerifactuRuntimeStatus(
+  env: ApiVerifactuEnvironment = process.env,
+): ApiVerifactuRuntimeStatus {
+  const runtimeConfig = resolveApiVerifactuRuntimeConfig(env);
+
+  return {
+    ...runtimeConfig,
+    aeatPortalReadiness: resolveApiAeatVerifactuPortalReadiness(env),
+  };
 }
 
 export function createInternalVerifactuSubmissionExecutionService(input: {

@@ -3,7 +3,9 @@ import { VerifactuSubmissionExecutionService } from '@anclora/core/server';
 import {
   createInternalVerifactuSubmissionExecutionService,
   hasAeatVerifactuAdapterConfiguration,
+  resolveApiAeatVerifactuPortalReadiness,
   resolveApiVerifactuRuntimeConfig,
+  resolveApiVerifactuRuntimeStatus,
   type ApiVerifactuEnvironment,
 } from './verifactu-runtime';
 
@@ -12,14 +14,41 @@ const testAdapterEnv: ApiVerifactuEnvironment = {
   VERIFACTU_MODE: 'test',
   VERIFACTU_AEAT_ADAPTER_ENABLED: 'true',
   VERIFACTU_AEAT_SIGNING_ENABLED: 'true',
-  VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'cert-fp-1',
-  VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://aeat.test.example/verifactu',
+  VERIFACTU_AEAT_CERTIFICATE_PATH: '/secrets/aeat-test.p12',
+  VERIFACTU_AEAT_CERTIFICATE_PASSWORD: 'configured',
+  VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'a'.repeat(40),
+  VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
 };
 
 const repository = {
   findPendingById: vi.fn(),
   applyAttemptOutcome: vi.fn(),
 };
+
+describe('resolveApiAeatVerifactuPortalReadiness', () => {
+  it('detecta preparación completa del portal de pruebas AEAT', () => {
+    expect(resolveApiAeatVerifactuPortalReadiness(testAdapterEnv)).toMatchObject({
+      environment: 'test',
+      endpointHost: 'prewww10.aeat.es',
+      preproductionHost: true,
+      certificateConfigured: true,
+      ready: true,
+      blockedReasons: [],
+      usagePolicy: 'manual-preproduction-tests-only',
+    });
+  });
+
+  it('bloquea preparación incompleta aunque el modo sea test', () => {
+    expect(resolveApiAeatVerifactuPortalReadiness({
+      NODE_ENV: 'production',
+      VERIFACTU_MODE: 'test',
+      VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
+    })).toMatchObject({
+      ready: false,
+      certificateConfigured: false,
+    });
+  });
+});
 
 describe('resolveApiVerifactuRuntimeConfig', () => {
   it('mantiene VERI*FACTU desactivado por defecto', () => {
@@ -54,14 +83,15 @@ describe('resolveApiVerifactuRuntimeConfig', () => {
     });
   });
 
-  it('mantiene producción bloqueada aunque haya adapter si no se habilita expresamente el envío productivo', () => {
+  it('mantiene producción bloqueada aunque haya portal listo si no se habilita expresamente el envío productivo', () => {
     const env: ApiVerifactuEnvironment = {
       NODE_ENV: 'production',
       VERIFACTU_MODE: 'production',
       VERIFACTU_AEAT_ADAPTER_ENABLED: 'true',
-      VERIFACTU_AEAT_SIGNING_ENABLED: 'true',
-      VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'cert-fp-1',
-      VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL: 'https://aeat.production.example/verifactu',
+      VERIFACTU_AEAT_CERTIFICATE_PATH: '/secrets/aeat-production.p12',
+      VERIFACTU_AEAT_CERTIFICATE_PASSWORD: 'configured',
+      VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'b'.repeat(64),
+      VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL: 'https://www10.agenciatributaria.gob.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
     };
 
     expect(resolveApiVerifactuRuntimeConfig(env)).toMatchObject({
@@ -79,6 +109,22 @@ describe('resolveApiVerifactuRuntimeConfig', () => {
       enabled: true,
       canSubmit: true,
       productionSafe: true,
+    });
+  });
+});
+
+describe('resolveApiVerifactuRuntimeStatus', () => {
+  it('expone runtime y readiness AEAT en un único read model', () => {
+    expect(resolveApiVerifactuRuntimeStatus(testAdapterEnv)).toMatchObject({
+      mode: 'test',
+      enabled: true,
+      canSubmit: true,
+      productionSafe: true,
+      aeatPortalReadiness: {
+        ready: true,
+        endpointHost: 'prewww10.aeat.es',
+        usagePolicy: 'manual-preproduction-tests-only',
+      },
     });
   });
 });
