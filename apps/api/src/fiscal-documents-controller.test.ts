@@ -111,7 +111,9 @@ describe('POST /api/v1/operations/:id/invoices', () => {
         VERIFACTU_MODE: 'test',
         VERIFACTU_AEAT_ADAPTER_ENABLED: 'true',
         VERIFACTU_AEAT_SIGNING_ENABLED: 'true',
-        VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'cert-fp-1',
+        VERIFACTU_AEAT_CERTIFICATE_PATH: '/secrets/aeat-test.p12',
+        VERIFACTU_AEAT_CERTIFICATE_PASSWORD: 'configured',
+        VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
         VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://aeat.test.example/verifactu',
       },
       async () => {
