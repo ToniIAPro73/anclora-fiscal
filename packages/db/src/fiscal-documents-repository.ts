@@ -3,11 +3,14 @@ import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
   createIntegrityRecord,
+  createVerifactuSubmissionDraft,
   decryptTaxIdentity,
   InvoiceSequence,
   issueInvoice,
   rectifyInvoice,
+  resolveVerifactuRuntimeConfig,
   type StoragePort,
+  type VerifactuRuntimeConfig,
 } from '@anclora/core/server';
 import {
   auditEvents,
@@ -19,6 +22,7 @@ import {
   productTaxProfiles,
   shopifyOrderPaymentEvents,
   taxDecisions,
+  verifactuSubmissions,
 } from './schema.js';
 import * as schema from './schema.js';
 
@@ -36,6 +40,7 @@ export interface IssueInvoiceInput {
   actorId: string | null;
   canonicalOperationId: string;
   storage: StoragePort;
+  verifactuConfig?: VerifactuRuntimeConfig;
 }
 
 export type IssueInvoiceResult =
@@ -62,6 +67,7 @@ export interface RectifyInvoiceInput {
   actorId: string | null;
   fiscalDocumentId: string;
   storage: StoragePort;
+  verifactuConfig?: VerifactuRuntimeConfig;
 }
 
 export type RectifyInvoiceResult =
@@ -77,6 +83,11 @@ const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
 type InvoiceNumberAllocator<TQueryResult extends PgQueryResultHKT> = Pick<
   PgDatabase<TQueryResult, typeof schema>,
   'update'
+>;
+
+type VerifactuSubmissionDraftInserter<TQueryResult extends PgQueryResultHKT> = Pick<
+  PgDatabase<TQueryResult, typeof schema>,
+  'insert'
 >;
 
 function documentTypeSeriesCandidates(documentType: string): string[] {
@@ -95,6 +106,31 @@ function isUniqueViolation(error: unknown): boolean {
   return candidate.code === '23505'
     || String(candidate.message ?? '').includes('duplicate key')
     || String(error).includes('duplicate key');
+}
+
+async function insertVerifactuSubmissionDraft<TQueryResult extends PgQueryResultHKT>(
+  transaction: VerifactuSubmissionDraftInserter<TQueryResult>,
+  input: {
+    tenantId: string;
+    integrityRecordId: string;
+    integrityRecord: ReturnType<typeof createIntegrityRecord>;
+    config?: VerifactuRuntimeConfig | undefined;
+  },
+): Promise<void> {
+  const draft = createVerifactuSubmissionDraft(
+    input.integrityRecord,
+    input.config ?? resolveVerifactuRuntimeConfig({}),
+  );
+
+  await transaction.insert(verifactuSubmissions).values({
+    tenantId: input.tenantId,
+    integrityRecordId: input.integrityRecordId,
+    environment: draft.environment,
+    status: draft.status,
+    payloadRedacted: draft.payloadRedacted,
+    responseRedacted: draft.responseRedacted,
+    attemptCount: String(draft.attemptCount),
+  });
 }
 
 async function allocateInvoiceNumber<TQueryResult extends PgQueryResultHKT>(
@@ -378,7 +414,7 @@ try {
         issuedAt.toISOString(),
       );
 
-      await transaction.insert(integrityChainRecords).values({
+      const [storedIntegrityRecord] = await transaction.insert(integrityChainRecords).values({
         tenantId: input.tenantId,
         fiscalDocumentId: document.id,
         recordType: 'ALTA',
@@ -386,6 +422,15 @@ try {
         previousHash: integrityRecord.previousHash ?? null,
         hash: integrityRecord.hash,
         algorithm: integrityRecord.algorithm,
+      }).returning({ id: integrityChainRecords.id });
+
+      if (!storedIntegrityRecord) throw new Error('No se pudo crear el registro de integridad fiscal');
+
+      await insertVerifactuSubmissionDraft(transaction, {
+        tenantId: input.tenantId,
+        integrityRecordId: storedIntegrityRecord.id,
+        integrityRecord,
+        config: input.verifactuConfig,
       });
 
       await transaction.insert(auditEvents).values({
@@ -583,7 +628,7 @@ try {
         issuedAt.toISOString(),
       );
 
-      await transaction.insert(integrityChainRecords).values({
+      const [storedIntegrityRecord] = await transaction.insert(integrityChainRecords).values({
         tenantId: input.tenantId,
         fiscalDocumentId: document.id,
         recordType: 'ANULACION',
@@ -591,6 +636,15 @@ try {
         previousHash: integrityRecord.previousHash ?? null,
         hash: integrityRecord.hash,
         algorithm: integrityRecord.algorithm,
+      }).returning({ id: integrityChainRecords.id });
+
+      if (!storedIntegrityRecord) throw new Error('No se pudo crear el registro de integridad fiscal rectificativo');
+
+      await insertVerifactuSubmissionDraft(transaction, {
+        tenantId: input.tenantId,
+        integrityRecordId: storedIntegrityRecord.id,
+        integrityRecord,
+        config: input.verifactuConfig,
       });
 
       await transaction.insert(auditEvents).values({

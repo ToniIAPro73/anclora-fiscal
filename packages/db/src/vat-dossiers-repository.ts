@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import { createVatDossier, type DossierIssue, type StoragePort } from '@anclora/core/server';
+import {
+  createVatDossier,
+  type DossierIssue,
+  type DossierVerifactuRecord,
+  type StoragePort,
+} from '@anclora/core/server';
 import {
   auditEvents,
   canonicalOperations,
@@ -17,11 +22,48 @@ import {
 } from './schema.js';
 import * as schema from './schema.js';
 
-export type VatDossier = typeof vatDossiers.$inferSelect;
+type VatDossierRow = typeof vatDossiers.$inferSelect;
+export type VatDossier = Omit<VatDossierRow, 'manifest'> & {
+  manifest: Record<string, string>;
+};
 
 const SCHEMA_VERSION = 'anclora-vat-dossier-v1';
 const CLOSED_PERIOD_STATUS = 'CLOSED';
 const DOSSIER_STATUS = 'CLOSED';
+
+function asDossierManifest(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('VAT_DOSSIER_MANIFEST_INVALID');
+  }
+
+  const manifest: Record<string, string> = {};
+
+  for (const [key, hash] of Object.entries(value)) {
+    if (typeof hash !== 'string') {
+      throw new Error('VAT_DOSSIER_MANIFEST_INVALID');
+    }
+
+    manifest[key] = hash;
+  }
+
+  return manifest;
+}
+
+function toVatDossier(row: VatDossierRow): VatDossier {
+  return {
+    ...row,
+    manifest: asDossierManifest(row.manifest),
+  };
+}
+
+function asJsonObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value : null;
+}
 
 export interface GenerateVatDossierInput {
   tenantId: string;
@@ -74,7 +116,7 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
       .from(vatDossiers)
       .where(and(eq(vatDossiers.tenantId, input.tenantId), eq(vatDossiers.periodCloseId, periodClose.id)))
       .limit(1);
-    if (existing && !input.force) return { ok: true, dossier: existing, alreadyGenerated: true };
+    if (existing && !input.force) return { ok: true, dossier: toVatDossier(existing), alreadyGenerated: true };
 
     const documentRows = await this.db
       .select({
@@ -142,16 +184,54 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
     }));
 
     const verifactuRows = await this.db
-      .select({ status: verifactuSubmissions.status })
+      .select({
+        invoiceNumber: fiscalDocuments.number,
+        documentType: fiscalDocuments.documentType,
+        issuedAt: fiscalDocuments.issuedAt,
+        environment: verifactuSubmissions.environment,
+        status: verifactuSubmissions.status,
+        responseRedacted: verifactuSubmissions.responseRedacted,
+        attemptCount: verifactuSubmissions.attemptCount,
+        recordType: integrityChainRecords.recordType,
+        chainHash: integrityChainRecords.hash,
+        previousHash: integrityChainRecords.previousHash,
+      })
       .from(verifactuSubmissions)
       .innerJoin(integrityChainRecords, eq(verifactuSubmissions.integrityRecordId, integrityChainRecords.id))
       .innerJoin(fiscalDocuments, eq(integrityChainRecords.fiscalDocumentId, fiscalDocuments.id))
       .where(and(
         eq(verifactuSubmissions.tenantId, input.tenantId),
         sql`to_char(${fiscalDocuments.issuedAt}, 'YYYY-MM') = ${input.period}`,
-      ));
+      ))
+      .orderBy(
+        asc(fiscalDocuments.issuedAt),
+        asc(fiscalDocuments.number),
+        asc(verifactuSubmissions.createdAt),
+      );
+
     const verifactuStatuses: Record<string, number> = {};
-    for (const row of verifactuRows) verifactuStatuses[row.status] = (verifactuStatuses[row.status] ?? 0) + 1;
+    const verifactuRecords: DossierVerifactuRecord[] = [];
+
+    for (const row of verifactuRows) {
+      verifactuStatuses[row.status] = (verifactuStatuses[row.status] ?? 0) + 1;
+
+      const response = asJsonObject(row.responseRedacted);
+
+      verifactuRecords.push({
+        invoiceNumber: row.invoiceNumber,
+        documentType: row.documentType,
+        issuedAt: row.issuedAt.toISOString(),
+        environment: row.environment,
+        status: row.status,
+        recordType: row.recordType,
+        attemptCount: Number(row.attemptCount),
+        chainHash: row.chainHash,
+        previousHash: row.previousHash,
+        responseReference: stringOrNull(response?.reference),
+        responseStatus: stringOrNull(response?.status),
+        submittedAt: stringOrNull(response?.submittedAt),
+      });
+    }
 
     let generated;
     try {
@@ -160,6 +240,7 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
         invoices,
         issues: dossierIssues,
         verifactuStatuses,
+        verifactuRecords,
         ...(periodClose.blockingApprovalId ? { blockingApprovalId: periodClose.blockingApprovalId } : {}),
       });
     } catch (error) {
@@ -213,7 +294,7 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
         metadata: { period: input.period, force: Boolean(input.force) },
       });
 
-      return { ok: true, dossier, alreadyGenerated: false };
+      return { ok: true, dossier: toVatDossier(dossier), alreadyGenerated: false };
     });
   }
 
@@ -233,6 +314,6 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
       .limit(1);
     if (!dossier) return { ok: false, reason: 'NOT_FOUND' };
 
-    return { ok: true, dossier };
+    return { ok: true, dossier: toVatDossier(dossier) };
   }
 }

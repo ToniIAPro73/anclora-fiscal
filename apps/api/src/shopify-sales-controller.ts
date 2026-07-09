@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { StoragePort } from '@anclora/core/server';
+import type { StoragePort, VerifactuRuntimeConfig } from '@anclora/core/server';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import {
   evaluarPuertaEmisionManual,
@@ -181,6 +181,7 @@ export function createShopifySaleInvoiceHandler(dependencies: {
   repository?: ShopifySalesRepositoryPort | undefined;
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   storage: StoragePort;
+  verifactuConfig?: VerifactuRuntimeConfig | undefined;
 }) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     const session = request.authSession;
@@ -268,6 +269,9 @@ export function createShopifySaleInvoiceHandler(dependencies: {
       actorId: session.actorId,
       canonicalOperationId: detail.operation.id,
       storage: dependencies.storage,
+      ...(dependencies.verifactuConfig
+        ? { verifactuConfig: dependencies.verifactuConfig }
+        : {}),
     });
 
     if (!result.ok) {

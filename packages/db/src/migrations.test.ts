@@ -41,10 +41,12 @@ describe('migrateOfflineDatabase', () => {
       '0016_fiscal_issuer_refactor.sql',
       '0017_tax_decision_document_type.sql',
       '0018_fiscal_document_idempotency.sql',
+      '0019_verifactu_submission_idempotency.sql',
+      '0020_verifactu_submission_attempts.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
-      expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines', 'order_lines', 'product_tax_profiles', 'channel_fiscal_policies', 'fiscal_counterparties', 'tax_periods', 'payouts', 'shopify_order_payment_events', 'shopify_payments_ledger_entries', 'shopify_evidence_links']),
+      expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines', 'order_lines', 'product_tax_profiles', 'channel_fiscal_policies', 'fiscal_counterparties', 'tax_periods', 'payouts', 'shopify_order_payment_events', 'shopify_payments_ledger_entries', 'shopify_evidence_links', 'verifactu_submission_attempts']),
     );
   });
 });

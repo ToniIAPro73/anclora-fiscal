@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   encryptTaxIdentity,
+  readVatDossierJsonFile,
   verifyVatDossier,
   type StoragePort,
   type StoredObject,
@@ -327,6 +328,8 @@ describe('DrizzleVatDossiersRepository', () => {
 
       expect(result.alreadyGenerated).toBe(false);
       expect(result.dossier.status).toBe('CLOSED');
+      expect(result.dossier.manifest['estado-verifactu.json']).toEqual(expect.any(String));
+      expect(result.dossier.manifest['manifest.json']).toBeUndefined();
       expect(storage.puts).toHaveLength(1);
 
       const persistedBytes = await storage.get(
@@ -334,6 +337,38 @@ describe('DrizzleVatDossiersRepository', () => {
       );
 
       expect(verifyVatDossier(persistedBytes)).toBe(true);
+
+      const verifactuState = readVatDossierJsonFile<{
+        schemaVersion: string;
+        period: string;
+        summary: Record<string, number>;
+        records: Array<Record<string, unknown>>;
+      }>(persistedBytes, 'estado-verifactu.json');
+
+      if (!verifactuState) {
+        throw new Error('No se encontró estado-verifactu.json');
+      }
+
+      expect(verifactuState).toMatchObject({
+        schemaVersion: 'anclora-verifactu-state-v1',
+        period: PERIOD,
+        summary: { BLOCKED: 1 },
+      });
+
+      expect(verifactuState.records).toHaveLength(1);
+      expect(verifactuState.records[0]).toMatchObject({
+        environment: 'mock',
+        status: 'BLOCKED',
+        recordType: 'ALTA',
+        attemptCount: 0,
+        previousHash: null,
+        responseReference: null,
+        responseStatus: null,
+        submittedAt: null,
+      });
+      expect(verifactuState.records[0]?.invoiceNumber).toEqual(expect.any(String));
+      expect(verifactuState.records[0]?.issuedAt).toEqual(expect.any(String));
+      expect(verifactuState.records[0]?.chainHash).toEqual(expect.any(String));
 
       const events = await db
         .select()

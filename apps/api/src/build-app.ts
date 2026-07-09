@@ -7,6 +7,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
+import { resolveApiVerifactuRuntimeStatus } from './verifactu-runtime.js';
 import { resolve } from 'node:path';
 import { createImportPreviewHandler } from './import-controller.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
@@ -22,6 +23,11 @@ import { createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceR
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
+import {
+  createVerifactuSubmissionAttemptsListHandler,
+  createVerifactuSubmissionsListHandler,
+} from './verifactu-submissions-controller.js';
+import type { VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
 import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
@@ -80,6 +86,7 @@ export async function buildApp(options: {
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
+  verifactuSubmissionsRepository?: VerifactuSubmissionsRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
   shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort | undefined;
@@ -101,7 +108,46 @@ export async function buildApp(options: {
   await app.register(swagger, { openapi: { info: { title: 'Anclora Fiscal API', version: '0.1.0' }, servers: [{ url: '/api/v1' }] } });
   await app.register(swaggerUi, { routePrefix: '/documentation' });
 
-  app.get('/health', { schema: { response: { 200: { type: 'object', properties: { status: { type: 'string' }, verifactuEnabled: { type: 'boolean' } } } } } }, async () => ({ status: 'ok', verifactuEnabled: process.env.VERIFACTU_ENABLED === 'true' }));
+  const verifactuRuntimeStatus = resolveApiVerifactuRuntimeStatus();
+  const verifactuRuntimeConfig = {
+    mode: verifactuRuntimeStatus.mode,
+    enabled: verifactuRuntimeStatus.enabled,
+    canSubmit: verifactuRuntimeStatus.canSubmit,
+    productionSafe: verifactuRuntimeStatus.productionSafe,
+  };
+
+  app.get(
+    '/health',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              verifactuEnabled: { type: 'boolean' },
+              verifactuMode: { type: 'string' },
+              verifactuCanSubmit: { type: 'boolean' },
+              verifactuProductionSafe: { type: 'boolean' },
+              aeatPortalReadiness: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+      },
+    },
+    async () => {
+      const verifactu = verifactuRuntimeConfig;
+
+      return {
+        status: 'ok',
+        verifactuEnabled: verifactu.enabled,
+        verifactuMode: verifactu.mode,
+        verifactuCanSubmit: verifactu.canSubmit,
+        verifactuProductionSafe: verifactu.productionSafe,
+        aeatPortalReadiness: verifactuRuntimeStatus.aeatPortalReadiness,
+      };
+    },
+  );
   const authService = options.authService ?? new AuthService(
     new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON),
     { record: async () => undefined },
@@ -147,7 +193,12 @@ export async function buildApp(options: {
   app.post(
     '/api/v1/shopify/sales/:orderId/invoice',
     { preHandler: requireRole(['documents:issue']) },
-    createShopifySaleInvoiceHandler({ repository: options.shopifySalesRepository, fiscalDocumentsRepository: options.fiscalDocumentsRepository, storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')) }),
+    createShopifySaleInvoiceHandler({
+      repository: options.shopifySalesRepository,
+      fiscalDocumentsRepository: options.fiscalDocumentsRepository,
+      storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
+    }),
   );
   app.get(
     '/api/v1/commercial-orders',
@@ -200,6 +251,7 @@ export async function buildApp(options: {
     createInvoiceIssueHandler({
       repository: options.fiscalDocumentsRepository,
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
     }),
   );
   app.post(
@@ -208,6 +260,7 @@ export async function buildApp(options: {
     createInvoiceRectifyHandler({
       repository: options.fiscalDocumentsRepository,
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
     }),
   );
   app.get(
@@ -240,6 +293,16 @@ export async function buildApp(options: {
     '/api/v1/periods/:period/vat-dossier',
     { preHandler: requireRole(['dossier:read']) },
     createVatDossierGetHandler({ repository: options.vatDossiersRepository }),
+  );
+  app.get(
+    '/api/v1/verifactu/submissions',
+    { preHandler: requireRole(['documents:read']) },
+    createVerifactuSubmissionsListHandler({ repository: options.verifactuSubmissionsRepository }),
+  );
+  app.get(
+    '/api/v1/verifactu/submissions/:submissionId/attempts',
+    { preHandler: requireRole(['documents:read']) },
+    createVerifactuSubmissionAttemptsListHandler({ repository: options.verifactuSubmissionsRepository }),
   );
   app.get(
     '/api/v1/dashboard/summary',

@@ -4,13 +4,48 @@ import { buildApp } from './build-app';
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
+async function withTemporaryEnv(
+  values: Record<string, string | undefined>,
+  run: () => Promise<void>,
+) {
+  const previous = new Map<string, string | undefined>();
+
+  for (const key of Object.keys(values)) {
+    previous.set(key, process.env[key]);
+    const value = values[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    await run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 describe('API foundation', () => {
   it('mantiene VERI*FACTU desactivado por defecto', async () => {
     const app = await buildApp();
     apps.push(app);
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ status: 'ok', verifactuEnabled: false });
+    expect(response.json()).toMatchObject({
+      status: 'ok',
+      verifactuEnabled: false,
+      verifactuMode: 'disabled',
+      verifactuCanSubmit: false,
+      verifactuProductionSafe: true,
+    });
   });
 
   // FASE 00: confirms not just the flag default but the actual absence of an
@@ -18,6 +53,43 @@ describe('API foundation', () => {
   // Fastify's printRoutes() dumps the full registered route tree as text; asserting
   // it contains no submission-style path is the cheapest way to catch a future
   // accidental registration without hardcoding the full route list here.
+  it('expone configuración runtime VERI*FACTU de pruebas cuando el adapter está configurado por env', async () => {
+    await withTemporaryEnv(
+      {
+        NODE_ENV: 'production',
+        VERIFACTU_MODE: 'test',
+        VERIFACTU_AEAT_ADAPTER_ENABLED: 'true',
+        VERIFACTU_AEAT_SIGNING_ENABLED: 'true',
+        VERIFACTU_AEAT_CERTIFICATE_PATH: '/secrets/aeat-test.p12',
+        VERIFACTU_AEAT_CERTIFICATE_PASSWORD: 'configured',
+        VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
+        SESSION_SECRET: 'test-session-secret-with-at-least-32-chars',
+      },
+      async () => {
+        const app = await buildApp();
+        const response = await app.inject({ method: 'GET', url: '/health' });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({
+          status: 'ok',
+          verifactuEnabled: true,
+          verifactuMode: 'test',
+          verifactuCanSubmit: true,
+          verifactuProductionSafe: true,
+          aeatPortalReadiness: {
+            ready: true,
+            endpointHost: 'prewww10.aeat.es',
+            certificateConfigured: true,
+            usagePolicy: 'manual-preproduction-tests-only',
+          },
+        });
+
+        await app.close();
+      },
+    );
+  });
+
   it('no registra ningún endpoint de envío VERI*FACTU (preparación, no integración activa)', async () => {
     const app = await buildApp();
     apps.push(app);
@@ -54,5 +126,21 @@ describe('API foundation', () => {
     const response = await app.inject({ method: 'GET', url: '/api/v1/reconciliation/unmatched-orders' });
     expect(response.statusCode).not.toBe(404);
     expect(response.json()).not.toMatchObject({ error: 'Not Found' });
+  });
+
+  it('registra la ruta GET /api/v1/verifactu/submissions como read model sin envío', async () => {
+    const app = await buildApp();
+    apps.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/verifactu/submissions' });
+    expect(response.statusCode).not.toBe(404);
+    expect(response.json()).not.toMatchObject({ error: 'Not Found' });
+
+    await app.ready();
+    const routes = app.printRoutes();
+    expect(routes).toMatch(/verifactu\/submissions/i);
+    expect(routes).toMatch(/verifactu\/submissions[\s\S]*:submissionId[\s\S]*\/attempts/i);
+    expect(routes).not.toMatch(/verifactu\/submit/i);
+    expect(routes).not.toMatch(/verifactu\/send/i);
   });
 });

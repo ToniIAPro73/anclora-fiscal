@@ -8,6 +8,35 @@ import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controlle
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
+async function withTemporaryEnv(
+  values: Record<string, string | undefined>,
+  run: () => Promise<void>,
+) {
+  const previous = new Map<string, string | undefined>();
+
+  for (const key of Object.keys(values)) {
+    previous.set(key, process.env[key]);
+    const value = values[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    await run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 const noopStorage: StoragePort = {
   put: vi.fn().mockResolvedValue({ key: 'k', sha256: 'h', size: 1, mimeType: 'application/pdf' }),
   get: vi.fn(),
@@ -66,7 +95,49 @@ describe('POST /api/v1/operations/:id/invoices', () => {
       actorId: '01977d43-75de-7000-8000-000000000020',
       canonicalOperationId: 'op-1',
       storage: noopStorage,
+      verifactuConfig: expect.objectContaining({
+        mode: 'disabled',
+        enabled: false,
+        canSubmit: false,
+        productionSafe: true,
+      }),
     });
+  });
+
+  it('pasa configuración VERI*FACTU test al emitir cuando el runtime está configurado', async () => {
+    await withTemporaryEnv(
+      {
+        NODE_ENV: 'test',
+        VERIFACTU_MODE: 'test',
+        VERIFACTU_AEAT_ADAPTER_ENABLED: 'true',
+        VERIFACTU_AEAT_SIGNING_ENABLED: 'true',
+        VERIFACTU_AEAT_CERTIFICATE_PATH: '/secrets/aeat-test.p12',
+        VERIFACTU_AEAT_CERTIFICATE_PASSWORD: 'configured',
+        VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://aeat.test.example/verifactu',
+      },
+      async () => {
+        const document = { id: 'doc-1', tenantId: '01977d43-75de-7000-8000-000000000010', documentType: 'FULL_INVOICE' };
+        const issue = vi.fn().mockResolvedValue({ ok: true, document, alreadyIssued: false });
+        const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue });
+
+        const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/invoices', headers: { cookie } });
+
+        expect(response.statusCode).toBe(201);
+        expect(issue).toHaveBeenCalledWith(expect.objectContaining({
+          tenantId: '01977d43-75de-7000-8000-000000000010',
+          actorId: '01977d43-75de-7000-8000-000000000020',
+          canonicalOperationId: 'op-1',
+          storage: noopStorage,
+          verifactuConfig: expect.objectContaining({
+            mode: 'test',
+            enabled: true,
+            canSubmit: true,
+            productionSafe: true,
+          }),
+        }));
+      },
+    );
   });
 
   it('devuelve 200 e el documento existente cuando la factura ya se había emitido (idempotente)', async () => {
@@ -135,6 +206,12 @@ describe('POST /api/v1/fiscal-documents/:id/rectify', () => {
       actorId: '01977d43-75de-7000-8000-000000000020',
       fiscalDocumentId: 'doc-1',
       storage: noopStorage,
+      verifactuConfig: expect.objectContaining({
+        mode: 'disabled',
+        enabled: false,
+        canSubmit: false,
+        productionSafe: true,
+      }),
     });
   });
 

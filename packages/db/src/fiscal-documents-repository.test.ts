@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
   encryptTaxIdentity,
+  resolveVerifactuRuntimeConfig,
   verifyIntegrityChain,
   type IntegrityRecord,
   type StoragePort,
@@ -24,6 +25,7 @@ import {
   taxDecisions,
   tenants,
   users,
+  verifactuSubmissions,
 } from './schema';
 
 const clients: Array<ReturnType<typeof createOfflineDatabase>['client']> = [];
@@ -214,6 +216,16 @@ async function getTenantIntegrityRecords(
     .select()
     .from(integrityChainRecords)
     .where(eq(integrityChainRecords.tenantId, tenantId));
+}
+
+async function getTenantVerifactuSubmissions(
+  db: ReturnType<typeof createOfflineDatabase>['db'],
+  tenantId: string,
+) {
+  return db
+    .select()
+    .from(verifactuSubmissions)
+    .where(eq(verifactuSubmissions.tenantId, tenantId));
 }
 
 async function seedAdditionalOperationWithDecision(
@@ -881,5 +893,145 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(await getSeriesNextNumber(db, tenantId, 'RECTIFICATIVA')).toBe(2);
     });
 
+  });
+});
+
+
+describe('VERI*FACTU submission drafts', () => {
+  it('prepara un draft bloqueado por defecto al emitir una factura', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-verifactu-draft-disabled');
+
+    const result = await repository.issue({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+    });
+
+    expect(result.ok).toBe(true);
+
+    const submissions = await getTenantVerifactuSubmissions(db, tenantId);
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({
+      tenantId,
+      environment: 'mock',
+      status: 'BLOCKED',
+      responseRedacted: null,
+    });
+    expect(Number(submissions[0]?.attemptCount)).toBe(0);
+    expect(submissions[0]?.payloadRedacted).toMatchObject({
+      schemaVersion: 'anclora-verifactu-payload-redacted-v1',
+      environment: 'mock',
+      recordType: 'ALTA',
+      documentNumber: result.ok ? result.document.number : undefined,
+      algorithm: 'SHA-256',
+    });
+  });
+
+  it('prepara un draft pendiente en modo mock explícito', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-verifactu-draft-mock');
+
+    const result = await repository.issue({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    expect(result.ok).toBe(true);
+
+    const submissions = await getTenantVerifactuSubmissions(db, tenantId);
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0]).toMatchObject({
+      tenantId,
+      environment: 'mock',
+      status: 'PENDING',
+      responseRedacted: null,
+    });
+  });
+
+  it('no duplica el draft VERI*FACTU si la emisión se repite de forma idempotente', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-verifactu-draft-idempotente');
+
+    const first = await repository.issue({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    const second = await repository.issue({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (first.ok && second.ok) {
+      expect(second.document.id).toBe(first.document.id);
+      expect(second.alreadyIssued).toBe(true);
+    }
+
+    expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(1);
+    expect(await getTenantVerifactuSubmissions(db, tenantId)).toHaveLength(1);
+  });
+
+  it('prepara un draft VERI*FACTU para rectificativas', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-verifactu-draft-rectificativa');
+
+    const issued = await repository.issue({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    expect(issued.ok).toBe(true);
+    if (!issued.ok) return;
+
+    const rectified = await repository.rectify({
+      tenantId,
+      actorId,
+      fiscalDocumentId: issued.document.id,
+      storage,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    expect(rectified.ok).toBe(true);
+
+    const submissions = await getTenantVerifactuSubmissions(db, tenantId);
+    expect(submissions).toHaveLength(2);
+    expect(submissions.map((submission) => submission.status)).toEqual(['PENDING', 'PENDING']);
+    expect(submissions.map((submission) => (submission.payloadRedacted as { recordType: string }).recordType)).toEqual(['ALTA', 'ANULACION']);
   });
 });

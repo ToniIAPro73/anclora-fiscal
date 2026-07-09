@@ -36,3 +36,4 @@ export * from './fiscal-configuration-repository.js';
 export * from './shopify-order-payment-events-repository.js';
 export * from './shopify-payments-ledger-repository.js';
 export * from './shopify-evidence-links-repository.js';
+export * from './verifactu-submissions-repository.js';
