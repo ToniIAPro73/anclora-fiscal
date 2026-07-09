@@ -22,6 +22,7 @@ export interface ApiVerifactuEnvironment {
   VERIFACTU_AEAT_TEST_ENDPOINT_URL?: string | undefined;
   VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL?: string | undefined;
   VERIFACTU_AEAT_ALLOW_LOAD_TESTS?: string | undefined;
+  VERIFACTU_AEAT_REAL_SOAP_TRANSPORT_ENABLED?: string | undefined;
   VERIFACTU_PRODUCTION_SUBMISSION_ENABLED?: string | undefined;
 }
 
@@ -32,9 +33,19 @@ export interface ApiAeatVerifactuXmlPreflightStatus {
   maxRegistroFacturaPerEnvelope: number;
 }
 
+export interface ApiAeatVerifactuSoapTransportStatus {
+  implemented: boolean;
+  wiredIntoSubmissionFlow: boolean;
+  networkEnabled: boolean;
+  operation: 'RegFactuSistemaFacturacion';
+  soapAction: '';
+  safety: 'disabled-by-default';
+}
+
 export interface ApiVerifactuRuntimeStatus extends VerifactuRuntimeConfig {
   aeatPortalReadiness: AeatVerifactuPortalReadiness;
   aeatXmlPreflight: ApiAeatVerifactuXmlPreflightStatus;
+  aeatSoapTransport: ApiAeatVerifactuSoapTransportStatus;
 }
 
 export type CreateVerifactuExecutionServiceResult =
@@ -128,6 +139,19 @@ export function resolveApiAeatVerifactuXmlPreflightStatus(): ApiAeatVerifactuXml
   };
 }
 
+export function resolveApiAeatVerifactuSoapTransportStatus(
+  env: ApiVerifactuEnvironment = process.env,
+): ApiAeatVerifactuSoapTransportStatus {
+  return {
+    implemented: true,
+    wiredIntoSubmissionFlow: false,
+    networkEnabled: flag(env.VERIFACTU_AEAT_REAL_SOAP_TRANSPORT_ENABLED),
+    operation: 'RegFactuSistemaFacturacion',
+    soapAction: '',
+    safety: 'disabled-by-default',
+  };
+}
+
 export function resolveApiVerifactuRuntimeStatus(
   env: ApiVerifactuEnvironment = process.env,
 ): ApiVerifactuRuntimeStatus {
@@ -137,6 +161,7 @@ export function resolveApiVerifactuRuntimeStatus(
     ...runtimeConfig,
     aeatPortalReadiness: resolveApiAeatVerifactuPortalReadiness(env),
     aeatXmlPreflight: resolveApiAeatVerifactuXmlPreflightStatus(),
+    aeatSoapTransport: resolveApiAeatVerifactuSoapTransportStatus(env),
   };
 }
 

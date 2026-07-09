@@ -131,6 +131,14 @@ describe('resolveApiVerifactuRuntimeStatus', () => {
         blocksInvalidXmlBeforeAdapter: true,
         maxRegistroFacturaPerEnvelope: 1000,
       },
+      aeatSoapTransport: {
+        implemented: true,
+        wiredIntoSubmissionFlow: false,
+        networkEnabled: false,
+        operation: 'RegFactuSistemaFacturacion',
+        soapAction: '',
+        safety: 'disabled-by-default',
+      },
     });
   });
 });

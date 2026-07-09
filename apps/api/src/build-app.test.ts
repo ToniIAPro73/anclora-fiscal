@@ -89,6 +89,12 @@ describe('API foundation', () => {
             blocksInvalidXmlBeforeAdapter: true,
             maxRegistroFacturaPerEnvelope: 1000,
           },
+          aeatSoapTransport: {
+            implemented: true,
+            wiredIntoSubmissionFlow: false,
+            networkEnabled: false,
+            operation: 'RegFactuSistemaFacturacion',
+          },
         });
 
         await app.close();
