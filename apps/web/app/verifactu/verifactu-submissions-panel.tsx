@@ -18,6 +18,13 @@ interface AeatPortalReadiness {
   usagePolicy: string;
 }
 
+interface AeatXmlPreflightStatus {
+  enabled: boolean;
+  schemaProfile: string;
+  blocksInvalidXmlBeforeAdapter: boolean;
+  maxRegistroFacturaPerEnvelope: number;
+}
+
 interface VerifactuRuntimeStatus {
   status: string;
   verifactuEnabled: boolean;
@@ -25,6 +32,7 @@ interface VerifactuRuntimeStatus {
   verifactuCanSubmit: boolean;
   verifactuProductionSafe: boolean;
   aeatPortalReadiness?: AeatPortalReadiness | undefined;
+  aeatXmlPreflight?: AeatXmlPreflightStatus | undefined;
 }
 
 interface VerifactuSubmission {
@@ -259,6 +267,48 @@ function VerifactuAeatPortalStatusCard({ readiness }: { readiness: AeatPortalRea
           Aviso: {portalReasonLabel(warnings[0] ?? '')}
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function VerifactuAeatXmlPreflightCard({ preflight }: { preflight: AeatXmlPreflightStatus | null }) {
+  return (
+    <section className="verifactu-status-card" aria-label="Validación local AEAT VERI*FACTU">
+      <div className="verifactu-status-heading">
+        <p className="eyebrow">Preflight XML</p>
+        <h2>Validación local antes del adaptador</h2>
+        <p>
+          Comprueba la estructura AEAT del XML antes de cualquier intento técnico de integración.
+        </p>
+      </div>
+
+      <div className="verifactu-status-grid">
+        <article className="verifactu-metric">
+          <span>Estado</span>
+          <strong>{preflight?.enabled ? 'Validación activa' : 'No disponible'}</strong>
+          <StatusBadge tone={preflight?.enabled ? 'info' : 'warning'}>
+            {preflight?.enabled ? 'Activo' : 'Pendiente'}
+          </StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Perfil</span>
+          <strong>{preflight?.schemaProfile ?? 'No disponible'}</strong>
+          <StatusBadge tone="info">Local</StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Límite por envío</span>
+          <strong>{preflight?.maxRegistroFacturaPerEnvelope ?? 0} registros</strong>
+          <StatusBadge tone={preflight?.blocksInvalidXmlBeforeAdapter ? 'info' : 'warning'}>
+            {preflight?.blocksInvalidXmlBeforeAdapter ? 'Bloqueante' : 'Informativo'}
+          </StatusBadge>
+        </article>
+      </div>
+
+      <p className="verifactu-readonly-note">
+        Este control no envía datos a AEAT. Sólo bloquea XML inválido antes del adaptador interno.
+      </p>
     </section>
   );
 }
@@ -641,6 +691,7 @@ export function VerifactuSubmissionsPanel() {
     <div className="verifactu-layout">
       <VerifactuSystemStatusCard runtime={runtime} />
       <VerifactuAeatPortalStatusCard readiness={runtime?.aeatPortalReadiness ?? null} />
+      <VerifactuAeatXmlPreflightCard preflight={runtime?.aeatXmlPreflight ?? null} />
 
       <VerifactuFiltersCard
         status={status}

@@ -25,8 +25,16 @@ export interface ApiVerifactuEnvironment {
   VERIFACTU_PRODUCTION_SUBMISSION_ENABLED?: string | undefined;
 }
 
+export interface ApiAeatVerifactuXmlPreflightStatus {
+  enabled: boolean;
+  schemaProfile: 'aeat-suministro-lr-local-preflight-v1';
+  blocksInvalidXmlBeforeAdapter: boolean;
+  maxRegistroFacturaPerEnvelope: number;
+}
+
 export interface ApiVerifactuRuntimeStatus extends VerifactuRuntimeConfig {
   aeatPortalReadiness: AeatVerifactuPortalReadiness;
+  aeatXmlPreflight: ApiAeatVerifactuXmlPreflightStatus;
 }
 
 export type CreateVerifactuExecutionServiceResult =
@@ -111,6 +119,15 @@ export function resolveApiVerifactuRuntimeConfig(
   });
 }
 
+export function resolveApiAeatVerifactuXmlPreflightStatus(): ApiAeatVerifactuXmlPreflightStatus {
+  return {
+    enabled: true,
+    schemaProfile: 'aeat-suministro-lr-local-preflight-v1',
+    blocksInvalidXmlBeforeAdapter: true,
+    maxRegistroFacturaPerEnvelope: 1000,
+  };
+}
+
 export function resolveApiVerifactuRuntimeStatus(
   env: ApiVerifactuEnvironment = process.env,
 ): ApiVerifactuRuntimeStatus {
@@ -119,6 +136,7 @@ export function resolveApiVerifactuRuntimeStatus(
   return {
     ...runtimeConfig,
     aeatPortalReadiness: resolveApiAeatVerifactuPortalReadiness(env),
+    aeatXmlPreflight: resolveApiAeatVerifactuXmlPreflightStatus(),
   };
 }
 
