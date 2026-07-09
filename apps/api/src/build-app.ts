@@ -6,7 +6,8 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { FilesystemStorage, type StoragePort , resolveVerifactuRuntimeConfig } from '@anclora/core/server';
+import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
+import { resolveApiVerifactuRuntimeConfig } from './verifactu-runtime.js';
 import { resolve } from 'node:path';
 import { createImportPreviewHandler } from './import-controller.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
@@ -122,11 +123,7 @@ export async function buildApp(options: {
       },
     },
     async () => {
-      const verifactu = resolveVerifactuRuntimeConfig({
-        mode: process.env.VERIFACTU_MODE,
-        enabled: process.env.VERIFACTU_ENABLED,
-        nodeEnv: process.env.NODE_ENV,
-      });
+      const verifactu = resolveApiVerifactuRuntimeConfig();
 
       return {
         status: 'ok',
