@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  AeatVerifactuAdapter,
   MockVerifactuAdapter,
   createIntegrityRecord,
   createVerifactuSubmissionDraft,
@@ -181,5 +182,133 @@ describe('createVerifactuSubmissionDraft', () => {
       canSubmit: false,
       blockReason: 'VERIFACTU_PRODUCTION_ADAPTER_NOT_CONFIGURED',
     });
+  });
+});
+
+
+describe('AeatVerifactuAdapter', () => {
+  const record = createIntegrityRecord(
+    {
+      documentId: 'doc-1',
+      documentNumber: 'F-2026-000001',
+      recordType: 'ALTA',
+      issuedAt: '2026-07-09T00:00:00.000Z',
+      totalAmount: 10,
+      taxAmount: 2.1,
+    },
+    '2026-07-09T00:00:00.000Z',
+  );
+
+  it('keeps AEAT test mode enabled but not submittable until an adapter is configured', () => {
+    expect(resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production' })).toMatchObject({
+      mode: 'test',
+      enabled: true,
+      canSubmit: false,
+      productionSafe: true,
+    });
+  });
+
+  it('allows AEAT test submissions when adapter configuration is explicitly present', () => {
+    expect(resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true })).toMatchObject({
+      mode: 'test',
+      enabled: true,
+      canSubmit: true,
+      productionSafe: true,
+    });
+  });
+
+  it('keeps production blocked unless adapter and production submission are explicitly enabled', () => {
+    expect(resolveVerifactuRuntimeConfig({ mode: 'production', nodeEnv: 'production', adapterConfigured: true })).toMatchObject({
+      mode: 'production',
+      enabled: true,
+      canSubmit: false,
+      productionSafe: false,
+    });
+
+    expect(resolveVerifactuRuntimeConfig({
+      mode: 'production',
+      nodeEnv: 'production',
+      adapterConfigured: true,
+      productionSubmissionEnabled: true,
+    })).toMatchObject({
+      mode: 'production',
+      enabled: true,
+      canSubmit: true,
+      productionSafe: true,
+    });
+  });
+
+  it('submits through the injected AEAT test transport without using the mock adapter', async () => {
+    const signer = {
+      sign: vi.fn().mockResolvedValue({
+        signedXml: '<SignedVerifactuRecord />',
+        signatureDigest: 'digest-1',
+        certificateFingerprint: 'cert-1',
+      }),
+    };
+
+    const transport = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        reference: 'aeat-test-ref-1',
+        message: 'Aceptado en entorno de pruebas',
+      }),
+    };
+
+    const adapter = new AeatVerifactuAdapter(
+      resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      {
+        environment: 'test',
+        endpointUrl: 'https://aeat.test.example/verifactu',
+        signer,
+        transport,
+      },
+    );
+
+    await expect(adapter.submit(record)).resolves.toEqual({
+      status: 'ACCEPTED',
+      reference: 'aeat-test-ref-1',
+      message: 'Aceptado en entorno de pruebas',
+    });
+
+    expect(signer.sign).toHaveBeenCalledWith(record);
+    expect(transport.submit).toHaveBeenCalledWith({
+      environment: 'test',
+      endpointUrl: 'https://aeat.test.example/verifactu',
+      record,
+      signedPayload: {
+        signedXml: '<SignedVerifactuRecord />',
+        signatureDigest: 'digest-1',
+        certificateFingerprint: 'cert-1',
+      },
+    });
+  });
+
+  it('rejects AEAT adapter usage in mock mode', async () => {
+    const adapter = new AeatVerifactuAdapter(
+      resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+      {
+        environment: 'test',
+        endpointUrl: 'https://aeat.test.example/verifactu',
+        signer: { sign: vi.fn() },
+        transport: { submit: vi.fn() },
+      },
+    );
+
+    await expect(adapter.submit(record)).rejects.toThrow('VERIFACTU_AEAT_ADAPTER_REQUIRES_AEAT_MODE');
+  });
+
+  it('rejects mismatched AEAT environment', async () => {
+    const adapter = new AeatVerifactuAdapter(
+      resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      {
+        environment: 'production',
+        endpointUrl: 'https://aeat.production.example/verifactu',
+        signer: { sign: vi.fn() },
+        transport: { submit: vi.fn() },
+      },
+    );
+
+    await expect(adapter.submit(record)).rejects.toThrow('VERIFACTU_AEAT_ENVIRONMENT_MISMATCH');
   });
 });

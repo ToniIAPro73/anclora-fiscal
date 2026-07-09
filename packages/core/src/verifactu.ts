@@ -161,6 +161,8 @@ export function resolveVerifactuRuntimeConfig(input: {
   mode?: string | undefined;
   enabled?: string | boolean | undefined;
   nodeEnv?: string | undefined;
+  adapterConfigured?: boolean | undefined;
+  productionSubmissionEnabled?: boolean | undefined;
 }): VerifactuRuntimeConfig {
   const legacyEnabled = input.enabled === true || input.enabled === 'true';
   const mode = normalizeVerifactuMode(input.mode, legacyEnabled);
@@ -171,11 +173,12 @@ export function resolveVerifactuRuntimeConfig(input: {
   }
 
   if (mode === 'production') {
+    const canSubmit = Boolean(input.adapterConfigured && input.productionSubmissionEnabled);
     return {
       mode,
       enabled: true,
-      canSubmit: false,
-      productionSafe: false,
+      canSubmit,
+      productionSafe: canSubmit,
     };
   }
 
@@ -183,7 +186,7 @@ export function resolveVerifactuRuntimeConfig(input: {
     return {
       mode,
       enabled: true,
-      canSubmit: false,
+      canSubmit: Boolean(input.adapterConfigured),
       productionSafe: true,
     };
   }
@@ -203,6 +206,91 @@ export function resolveVerifactuRuntimeConfig(input: {
     canSubmit: false,
     productionSafe: true,
   };
+}
+
+
+export type AeatVerifactuEnvironment = 'test' | 'production';
+
+export interface AeatVerifactuSignedPayload {
+  signedXml: string;
+  signatureDigest: string;
+  certificateFingerprint: string;
+}
+
+export interface AeatVerifactuTransportRequest {
+  environment: AeatVerifactuEnvironment;
+  endpointUrl: string;
+  record: IntegrityRecord;
+  signedPayload: AeatVerifactuSignedPayload;
+}
+
+export interface AeatVerifactuTransportResponse {
+  status: VerifactuSubmissionResult['status'];
+  reference: string;
+  message: string;
+}
+
+export interface AeatVerifactuSignerPort {
+  sign(record: IntegrityRecord): Promise<AeatVerifactuSignedPayload>;
+}
+
+export interface AeatVerifactuTransportPort {
+  submit(request: AeatVerifactuTransportRequest): Promise<AeatVerifactuTransportResponse>;
+}
+
+export interface AeatVerifactuAdapterOptions {
+  environment: AeatVerifactuEnvironment;
+  endpointUrl: string;
+  signer: AeatVerifactuSignerPort;
+  transport: AeatVerifactuTransportPort;
+}
+
+export class AeatVerifactuAdapter implements VerifactuPort {
+  constructor(
+    private readonly config: VerifactuRuntimeConfig,
+    private readonly options: AeatVerifactuAdapterOptions,
+  ) {}
+
+  async submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult> {
+    if (!this.config.enabled || !this.config.canSubmit) {
+      throw new Error('VERIFACTU_NOT_ENABLED');
+    }
+
+    if (this.config.mode === 'disabled' || this.config.mode === 'mock') {
+      throw new Error('VERIFACTU_AEAT_ADAPTER_REQUIRES_AEAT_MODE');
+    }
+
+    if (this.config.mode !== this.options.environment) {
+      throw new Error('VERIFACTU_AEAT_ENVIRONMENT_MISMATCH');
+    }
+
+    if (this.config.mode === 'production' && !this.config.productionSafe) {
+      throw new Error('VERIFACTU_PRODUCTION_NOT_SAFE');
+    }
+
+    if (!this.options.endpointUrl.trim()) {
+      throw new Error('VERIFACTU_AEAT_ENDPOINT_NOT_CONFIGURED');
+    }
+
+    const signedPayload = await this.options.signer.sign(record);
+
+    if (!signedPayload.signedXml.trim()) {
+      throw new Error('VERIFACTU_AEAT_SIGNED_PAYLOAD_EMPTY');
+    }
+
+    const response = await this.options.transport.submit({
+      environment: this.options.environment,
+      endpointUrl: this.options.endpointUrl,
+      record,
+      signedPayload,
+    });
+
+    return {
+      status: response.status,
+      reference: response.reference,
+      message: response.message,
+    };
+  }
 }
 
 export class MockVerifactuAdapter implements VerifactuPort {
