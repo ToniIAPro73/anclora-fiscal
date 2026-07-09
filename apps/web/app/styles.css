@@ -2652,3 +2652,24 @@ body {
   color: var(--muted-foreground);
   font-size: 0.9rem;
 }
+
+/* Native select dropdowns: keep option menus legible in the dark UI. */
+select {
+  color-scheme: dark;
+}
+
+select option,
+select optgroup {
+  background-color: #0b1523;
+  color: #f8fafc;
+}
+
+select option:disabled {
+  color: #94a3b8;
+}
+
+select option:checked {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
