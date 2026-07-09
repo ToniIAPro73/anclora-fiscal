@@ -1,4 +1,4 @@
-import type { StoragePort } from '@anclora/core/server';
+import type { StoragePort, VerifactuRuntimeConfig } from '@anclora/core/server';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 export interface FiscalDocument {
@@ -56,6 +56,7 @@ export interface FiscalDocumentsRepositoryPort {
     actorId: string | null;
     canonicalOperationId: string;
     storage: StoragePort;
+    verifactuConfig?: VerifactuRuntimeConfig | undefined;
   }): Promise<IssueInvoiceResult>;
 
   findById?(
@@ -68,12 +69,14 @@ export interface FiscalDocumentsRepositoryPort {
     actorId: string | null;
     fiscalDocumentId: string;
     storage: StoragePort;
+    verifactuConfig?: VerifactuRuntimeConfig | undefined;
   }): Promise<RectifyInvoiceResult>;
 }
 
 export function createInvoiceIssueHandler(dependencies: {
   repository?: FiscalDocumentsRepositoryPort | undefined;
   storage: StoragePort;
+  verifactuConfig?: VerifactuRuntimeConfig | undefined;
 }) {
   return async function invoiceIssueHandler(
     request: FastifyRequest,
@@ -103,6 +106,9 @@ export function createInvoiceIssueHandler(dependencies: {
       actorId,
       canonicalOperationId: id,
       storage: dependencies.storage,
+      ...(dependencies.verifactuConfig
+        ? { verifactuConfig: dependencies.verifactuConfig }
+        : {}),
     });
 
     if (isIssueInvoiceError(result)) {
@@ -199,6 +205,7 @@ function isRectifyInvoiceError(
 export function createInvoiceRectifyHandler(dependencies: {
   repository?: FiscalDocumentsRepositoryPort | undefined;
   storage: StoragePort;
+  verifactuConfig?: VerifactuRuntimeConfig | undefined;
 }) {
   return async function invoiceRectifyHandler(
     request: FastifyRequest,
@@ -228,6 +235,9 @@ export function createInvoiceRectifyHandler(dependencies: {
       actorId,
       fiscalDocumentId: id,
       storage: dependencies.storage,
+      ...(dependencies.verifactuConfig
+        ? { verifactuConfig: dependencies.verifactuConfig }
+        : {}),
     });
 
     if (isRectifyInvoiceError(result)) {

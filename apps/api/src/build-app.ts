@@ -104,6 +104,8 @@ export async function buildApp(options: {
   await app.register(swagger, { openapi: { info: { title: 'Anclora Fiscal API', version: '0.1.0' }, servers: [{ url: '/api/v1' }] } });
   await app.register(swaggerUi, { routePrefix: '/documentation' });
 
+  const verifactuRuntimeConfig = resolveApiVerifactuRuntimeConfig();
+
   app.get(
     '/health',
     {
@@ -123,7 +125,7 @@ export async function buildApp(options: {
       },
     },
     async () => {
-      const verifactu = resolveApiVerifactuRuntimeConfig();
+      const verifactu = verifactuRuntimeConfig;
 
       return {
         status: 'ok',
@@ -179,7 +181,12 @@ export async function buildApp(options: {
   app.post(
     '/api/v1/shopify/sales/:orderId/invoice',
     { preHandler: requireRole(['documents:issue']) },
-    createShopifySaleInvoiceHandler({ repository: options.shopifySalesRepository, fiscalDocumentsRepository: options.fiscalDocumentsRepository, storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')) }),
+    createShopifySaleInvoiceHandler({
+      repository: options.shopifySalesRepository,
+      fiscalDocumentsRepository: options.fiscalDocumentsRepository,
+      storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
+    }),
   );
   app.get(
     '/api/v1/commercial-orders',
@@ -232,6 +239,7 @@ export async function buildApp(options: {
     createInvoiceIssueHandler({
       repository: options.fiscalDocumentsRepository,
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
     }),
   );
   app.post(
@@ -240,6 +248,7 @@ export async function buildApp(options: {
     createInvoiceRectifyHandler({
       repository: options.fiscalDocumentsRepository,
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
     }),
   );
   app.get(
