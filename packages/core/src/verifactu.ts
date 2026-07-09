@@ -245,6 +245,79 @@ export interface AeatVerifactuAdapterOptions {
   transport: AeatVerifactuTransportPort;
 }
 
+
+export interface VerifactuResponseRedacted {
+  schemaVersion: 'anclora-verifactu-response-redacted-v1';
+  environment: VerifactuSubmissionEnvironment;
+  status: 'ACCEPTED' | 'REJECTED' | 'TECHNICAL_ERROR';
+  reference: string | null;
+  message: string;
+  submittedAt: string;
+}
+
+export interface VerifactuSubmissionAttemptOutcome {
+  status: Extract<VerifactuSubmissionStatus, 'ACCEPTED' | 'REJECTED' | 'TECHNICAL_ERROR'>;
+  responseRedacted: VerifactuResponseRedacted;
+  attemptCountIncrement: 1;
+}
+
+function safeTechnicalErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  return 'VERIFACTU_TECHNICAL_ERROR';
+}
+
+export async function createVerifactuSubmissionAttempt(
+  adapter: VerifactuPort,
+  record: IntegrityRecord,
+  draft: VerifactuSubmissionDraft,
+  submittedAt: string,
+): Promise<VerifactuSubmissionAttemptOutcome> {
+  if (draft.status !== 'PENDING') {
+    throw new Error('VERIFACTU_SUBMISSION_NOT_PENDING');
+  }
+
+  if (!draft.canSubmit) {
+    throw new Error('VERIFACTU_SUBMISSION_NOT_SUBMITTABLE');
+  }
+
+  try {
+    const result = await adapter.submit(record);
+
+    return {
+      status: result.status,
+      responseRedacted: {
+        schemaVersion: 'anclora-verifactu-response-redacted-v1',
+        environment: draft.environment,
+        status: result.status,
+        reference: result.reference,
+        message: result.message,
+        submittedAt,
+      },
+      attemptCountIncrement: 1,
+    };
+  } catch (error) {
+    return {
+      status: 'TECHNICAL_ERROR',
+      responseRedacted: {
+        schemaVersion: 'anclora-verifactu-response-redacted-v1',
+        environment: draft.environment,
+        status: 'TECHNICAL_ERROR',
+        reference: null,
+        message: safeTechnicalErrorMessage(error),
+        submittedAt,
+      },
+      attemptCountIncrement: 1,
+    };
+  }
+}
+
 export class AeatVerifactuAdapter implements VerifactuPort {
   constructor(
     private readonly config: VerifactuRuntimeConfig,

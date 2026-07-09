@@ -3,6 +3,7 @@ import {
   AeatVerifactuAdapter,
   MockVerifactuAdapter,
   createIntegrityRecord,
+  createVerifactuSubmissionAttempt,
   createVerifactuSubmissionDraft,
   resolveVerifactuRuntimeConfig,
 } from './verifactu.js';
@@ -310,5 +311,165 @@ describe('AeatVerifactuAdapter', () => {
     );
 
     await expect(adapter.submit(record)).rejects.toThrow('VERIFACTU_AEAT_ENVIRONMENT_MISMATCH');
+  });
+});
+
+
+describe('createVerifactuSubmissionAttempt', () => {
+  const record = createIntegrityRecord(
+    {
+      documentId: 'doc-1',
+      documentNumber: 'F-2026-000001',
+      recordType: 'ALTA',
+      issuedAt: '2026-07-09T00:00:00.000Z',
+      totalAmount: 10,
+      taxAmount: 2.1,
+    },
+    '2026-07-09T00:00:00.000Z',
+  );
+
+  it('returns a redacted accepted response for a successful submission', async () => {
+    const draft = createVerifactuSubmissionDraft(
+      record,
+      resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    );
+
+    const adapter = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        reference: 'ref-accepted-1',
+        message: 'Aceptado',
+      }),
+    };
+
+    await expect(
+      createVerifactuSubmissionAttempt(
+        adapter,
+        record,
+        draft,
+        '2026-07-09T10:00:00.000Z',
+      ),
+    ).resolves.toEqual({
+      status: 'ACCEPTED',
+      responseRedacted: {
+        schemaVersion: 'anclora-verifactu-response-redacted-v1',
+        environment: 'mock',
+        status: 'ACCEPTED',
+        reference: 'ref-accepted-1',
+        message: 'Aceptado',
+        submittedAt: '2026-07-09T10:00:00.000Z',
+      },
+      attemptCountIncrement: 1,
+    });
+
+    expect(adapter.submit).toHaveBeenCalledWith(record);
+  });
+
+  it('returns a redacted rejected response for a business rejection', async () => {
+    const draft = createVerifactuSubmissionDraft(
+      record,
+      resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    );
+
+    const adapter = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'REJECTED',
+        reference: 'ref-rejected-1',
+        message: 'Rechazado por validación',
+      }),
+    };
+
+    await expect(
+      createVerifactuSubmissionAttempt(
+        adapter,
+        record,
+        draft,
+        '2026-07-09T10:00:00.000Z',
+      ),
+    ).resolves.toMatchObject({
+      status: 'REJECTED',
+      responseRedacted: {
+        environment: 'mock',
+        status: 'REJECTED',
+        reference: 'ref-rejected-1',
+        message: 'Rechazado por validación',
+      },
+      attemptCountIncrement: 1,
+    });
+  });
+
+  it('maps adapter failures to TECHNICAL_ERROR without throwing', async () => {
+    const draft = createVerifactuSubmissionDraft(
+      record,
+      resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    );
+
+    const adapter = {
+      submit: vi.fn().mockRejectedValue(new Error('SOAP_TIMEOUT')),
+    };
+
+    await expect(
+      createVerifactuSubmissionAttempt(
+        adapter,
+        record,
+        draft,
+        '2026-07-09T10:00:00.000Z',
+      ),
+    ).resolves.toEqual({
+      status: 'TECHNICAL_ERROR',
+      responseRedacted: {
+        schemaVersion: 'anclora-verifactu-response-redacted-v1',
+        environment: 'mock',
+        status: 'TECHNICAL_ERROR',
+        reference: null,
+        message: 'SOAP_TIMEOUT',
+        submittedAt: '2026-07-09T10:00:00.000Z',
+      },
+      attemptCountIncrement: 1,
+    });
+  });
+
+  it('does not submit blocked drafts', async () => {
+    const draft = createVerifactuSubmissionDraft(
+      record,
+      resolveVerifactuRuntimeConfig({}),
+    );
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    await expect(
+      createVerifactuSubmissionAttempt(
+        adapter,
+        record,
+        draft,
+        '2026-07-09T10:00:00.000Z',
+      ),
+    ).rejects.toThrow('VERIFACTU_SUBMISSION_NOT_PENDING');
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+  });
+
+  it('does not submit pending drafts that are not submittable yet', async () => {
+    const draft = createVerifactuSubmissionDraft(
+      record,
+      resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production' }),
+    );
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    await expect(
+      createVerifactuSubmissionAttempt(
+        adapter,
+        record,
+        draft,
+        '2026-07-09T10:00:00.000Z',
+      ),
+    ).rejects.toThrow('VERIFACTU_SUBMISSION_NOT_SUBMITTABLE');
+
+    expect(adapter.submit).not.toHaveBeenCalled();
   });
 });
