@@ -15,6 +15,7 @@ import type {
   AeatVerifactuSignedXmlPayload,
   AeatVerifactuXmlSignerPort,
 } from './verifactu-aeat-signing.js';
+import { validateAeatVerifactuUnsignedXml } from './verifactu-aeat-local-validation.js';
 
 export interface AeatVerifactuSoapTransportRequest {
   environment: AeatVerifactuXmlEnvironment;
@@ -69,6 +70,14 @@ export class AeatVerifactuXmlSubmissionAdapter implements VerifactuPort {
       operationDescription: this.options.operationDescription,
       externalReference: record.documentId,
     });
+
+    const validationReport = validateAeatVerifactuUnsignedXml(unsignedPayload);
+
+    if (!validationReport.valid) {
+      throw new Error(
+        `AEAT_VERIFACTU_XML_PREFLIGHT_FAILED:${validationReport.blockingIssues[0]?.code ?? 'UNKNOWN'}`,
+      );
+    }
 
     const signedPayload = await this.options.signer.signXml({
       unsignedPayload,
