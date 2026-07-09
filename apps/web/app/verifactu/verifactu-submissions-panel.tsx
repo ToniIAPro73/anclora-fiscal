@@ -41,6 +41,64 @@ const environmentLabels: Record<string, string> = {
   production: 'AEAT producción',
 };
 
+
+interface VerifactuRuntimeStatus {
+  status: string;
+  verifactuEnabled: boolean;
+  verifactuMode: string;
+  verifactuCanSubmit: boolean;
+  verifactuProductionSafe: boolean;
+}
+
+function modeLabel(mode: string): string {
+  if (mode === 'disabled') return 'Desactivado';
+  if (mode === 'mock') return 'Mock local';
+  if (mode === 'test') return 'AEAT pruebas';
+  if (mode === 'production') return 'Producción';
+  return mode;
+}
+
+function runtimeTone(runtime: VerifactuRuntimeStatus | null): 'info' | 'warning' | 'blocking' {
+  if (!runtime) return 'warning';
+  if (!runtime.verifactuEnabled) return 'warning';
+  if (!runtime.verifactuProductionSafe) return 'blocking';
+  return 'info';
+}
+
+function RuntimeStatusCard({ runtime }: { runtime: VerifactuRuntimeStatus | null }) {
+  const tone = runtimeTone(runtime);
+
+  return (
+    <section className="verifactu-runtime-card" aria-label="Estado runtime VERI*FACTU">
+      <div>
+        <p className="eyebrow">Runtime VERI*FACTU</p>
+        <h2>{runtime ? modeLabel(runtime.verifactuMode) : 'No disponible'}</h2>
+        <p>
+          {runtime
+            ? runtime.verifactuEnabled
+              ? 'La preparación VERI*FACTU está activa para nuevas facturas.'
+              : 'La preparación VERI*FACTU está desactivada. Las nuevas facturas quedarán bloqueadas para envío.'
+            : 'No se ha podido consultar el estado runtime.'}
+        </p>
+      </div>
+
+      <div className="verifactu-runtime-badges">
+        <StatusBadge tone={tone}>{runtime?.verifactuEnabled ? 'Activo' : 'Inactivo'}</StatusBadge>
+        <StatusBadge tone={runtime?.verifactuCanSubmit ? 'info' : 'warning'}>
+          {runtime?.verifactuCanSubmit ? 'Adapter preparado' : 'Sin envío activo'}
+        </StatusBadge>
+        <StatusBadge tone={runtime?.verifactuProductionSafe === false ? 'blocking' : 'info'}>
+          {runtime?.verifactuProductionSafe === false ? 'Producción bloqueada' : 'Seguro'}
+        </StatusBadge>
+      </div>
+
+      <p className="verifactu-runtime-note">
+        Esta pantalla es sólo de lectura. No existe acción de envío manual a la AEAT desde la interfaz.
+      </p>
+    </section>
+  );
+}
+
 function statusTone(status: string): 'info' | 'warning' | 'high' | 'blocking' {
   if (status === 'ACCEPTED') return 'info';
   if (status === 'REJECTED' || status === 'TECHNICAL_ERROR') return 'blocking';

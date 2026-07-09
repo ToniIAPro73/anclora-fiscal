@@ -2622,3 +2622,33 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+
+.verifactu-runtime-card {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 18px;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.03);
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.verifactu-runtime-card h2 {
+  margin: 0.15rem 0 0.35rem;
+}
+
+.verifactu-runtime-card p {
+  margin: 0;
+}
+
+.verifactu-runtime-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.verifactu-runtime-note {
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+}
