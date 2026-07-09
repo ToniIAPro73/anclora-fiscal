@@ -23,7 +23,11 @@ import { createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceR
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
-import { createVerifactuSubmissionsListHandler, type VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
+import {
+  createVerifactuSubmissionAttemptsListHandler,
+  createVerifactuSubmissionsListHandler,
+} from './verifactu-submissions-controller.js';
+import type { VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
 import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
