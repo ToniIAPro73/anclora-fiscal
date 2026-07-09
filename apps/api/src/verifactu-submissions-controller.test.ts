@@ -105,3 +105,71 @@ describe('GET /api/v1/verifactu/submissions', () => {
     });
   });
 });
+
+describe('GET /api/v1/verifactu/submissions/:submissionId/attempts', () => {
+  it('devuelve 401 cuando no existe sesión autenticada', async () => {
+    const app = await buildApp({ verifactuSubmissionsRepository: { list: vi.fn(), listAttempts: vi.fn() } });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/verifactu/submissions/vs-1/attempts',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: 'UNAUTHENTICATED' });
+  });
+
+  it('devuelve 503 cuando el historial no está disponible', async () => {
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { list: vi.fn() });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/verifactu/submissions/vs-1/attempts',
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({ code: 'VERIFACTU_SUBMISSION_ATTEMPTS_REPOSITORY_UNAVAILABLE' });
+  });
+
+  it('lista intentos pasando tenant y submissionId al repositorio', async () => {
+    const items = [
+      {
+        id: 'attempt-1',
+        tenantId: '01977d43-75de-7000-8000-000000000010',
+        verifactuSubmissionId: 'vs-1',
+        attemptNumber: '1',
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-ref-1',
+          message: 'Aceptado',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptedAt: '2026-07-09T10:00:00.000Z',
+        createdAt: '2026-07-09T10:00:00.000Z',
+        updatedAt: '2026-07-09T10:00:00.000Z',
+      },
+    ];
+
+    const list = vi.fn();
+    const listAttempts = vi.fn().mockResolvedValue(items);
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { list, listAttempts });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/verifactu/submissions/vs-1/attempts',
+      headers: { cookie },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ items });
+    expect(listAttempts).toHaveBeenCalledWith({
+      tenantId: '01977d43-75de-7000-8000-000000000010',
+      submissionId: 'vs-1',
+    });
+  });
+});

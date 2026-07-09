@@ -22,6 +22,18 @@ export interface VerifactuSubmissionListItem {
   previousHash: string | null;
 }
 
+export interface VerifactuSubmissionAttemptItem {
+  id: string;
+  tenantId: string;
+  verifactuSubmissionId: string;
+  attemptNumber: string;
+  status: string;
+  responseRedacted: unknown;
+  attemptedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface VerifactuSubmissionsRepositoryPort {
   list(input: {
     tenantId: string;
@@ -30,6 +42,18 @@ export interface VerifactuSubmissionsRepositoryPort {
     status?: string | undefined;
     environment?: string | undefined;
   }): Promise<Paginated<VerifactuSubmissionListItem>>;
+
+  listAttempts?(input: {
+    tenantId: string;
+    submissionId: string;
+  }): Promise<VerifactuSubmissionAttemptItem[]>;
+}
+
+function unauthenticated(reply: FastifyReply) {
+  return reply.code(401).send({
+    code: 'UNAUTHENTICATED',
+    message: 'Debe iniciar sesión',
+  });
 }
 
 export function createVerifactuSubmissionsListHandler(dependencies: {
@@ -37,12 +61,7 @@ export function createVerifactuSubmissionsListHandler(dependencies: {
 }) {
   return async function verifactuSubmissionsListHandler(request: FastifyRequest, reply: FastifyReply) {
     const tenantId = request.authSession?.tenantId;
-    if (!tenantId) {
-      return reply.code(401).send({
-        code: 'UNAUTHENTICATED',
-        message: 'Debe iniciar sesión',
-      });
-    }
+    if (!tenantId) return unauthenticated(reply);
 
     if (!dependencies.repository) {
       return reply.code(503).send({
@@ -61,5 +80,38 @@ export function createVerifactuSubmissionsListHandler(dependencies: {
       status: query?.status,
       environment: query?.environment,
     });
+  };
+}
+
+export function createVerifactuSubmissionAttemptsListHandler(dependencies: {
+  repository?: VerifactuSubmissionsRepositoryPort | undefined;
+}) {
+  return async function verifactuSubmissionAttemptsListHandler(request: FastifyRequest, reply: FastifyReply) {
+    const tenantId = request.authSession?.tenantId;
+    if (!tenantId) return unauthenticated(reply);
+
+    if (!dependencies.repository?.listAttempts) {
+      return reply.code(503).send({
+        code: 'VERIFACTU_SUBMISSION_ATTEMPTS_REPOSITORY_UNAVAILABLE',
+        message: 'El historial de intentos VERI*FACTU no está disponible',
+      });
+    }
+
+    const params = request.params as { submissionId?: string } | undefined;
+    const submissionId = params?.submissionId?.trim();
+
+    if (!submissionId) {
+      return reply.code(400).send({
+        code: 'VERIFACTU_SUBMISSION_ID_REQUIRED',
+        message: 'Debe indicar el registro VERI*FACTU',
+      });
+    }
+
+    const items = await dependencies.repository.listAttempts({
+      tenantId,
+      submissionId,
+    });
+
+    return { items };
   };
 }

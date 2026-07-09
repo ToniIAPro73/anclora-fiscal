@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { FieldLabel, StatusBadge } from '@anclora/ui';
 
 interface VerifactuRuntimeStatus {
@@ -29,6 +29,19 @@ interface VerifactuSubmissionListResponse {
   page: number;
   pageSize: number;
   total: number;
+}
+
+interface VerifactuSubmissionAttempt {
+  id: string;
+  verifactuSubmissionId: string;
+  attemptNumber: string;
+  status: string;
+  responseRedacted: unknown;
+  attemptedAt: string;
+}
+
+interface VerifactuSubmissionAttemptsResponse {
+  items: VerifactuSubmissionAttempt[];
 }
 
 const statusOptions = [
@@ -97,7 +110,6 @@ function modeLabel(mode: string): string {
 
 function formatDate(value: string): string {
   const date = new Date(value);
-
   if (Number.isNaN(date.getTime())) return value;
 
   return new Intl.DateTimeFormat('es-ES', {
@@ -110,6 +122,16 @@ function shortHash(value: string | null): string {
   if (!value) return '—';
   if (value.length <= 18) return value;
   return `${value.slice(0, 10)}…${value.slice(-6)}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function responseText(value: unknown, key: 'reference' | 'message' | 'submittedAt'): string {
+  if (!isRecord(value)) return '—';
+  const field = value[key];
+  return typeof field === 'string' && field.trim() ? field : '—';
 }
 
 function runtimeTone(runtime: VerifactuRuntimeStatus | null): 'info' | 'warning' | 'blocking' {
@@ -198,30 +220,18 @@ function VerifactuFiltersCard({
       <div className="verifactu-filters-grid">
         <div className="verifactu-filter-field">
           <FieldLabel htmlFor="verifactu-status-filter">Estado</FieldLabel>
-          <select
-            id="verifactu-status-filter"
-            value={status}
-            onChange={(event) => onStatusChange(event.target.value)}
-          >
+          <select id="verifactu-status-filter" value={status} onChange={(event) => onStatusChange(event.target.value)}>
             {statusOptions.map((option) => (
-              <option key={option.value || 'all-statuses'} value={option.value}>
-                {option.label}
-              </option>
+              <option key={option.value || 'all-statuses'} value={option.value}>{option.label}</option>
             ))}
           </select>
         </div>
 
         <div className="verifactu-filter-field">
           <FieldLabel htmlFor="verifactu-environment-filter">Entorno</FieldLabel>
-          <select
-            id="verifactu-environment-filter"
-            value={environment}
-            onChange={(event) => onEnvironmentChange(event.target.value)}
-          >
+          <select id="verifactu-environment-filter" value={environment} onChange={(event) => onEnvironmentChange(event.target.value)}>
             {environmentOptions.map((option) => (
-              <option key={option.value || 'all-environments'} value={option.value}>
-                {option.label}
-              </option>
+              <option key={option.value || 'all-environments'} value={option.value}>{option.label}</option>
             ))}
           </select>
         </div>
@@ -237,11 +247,66 @@ function VerifactuEmptyState() {
       <div>
         <p className="eyebrow">Sin actividad registrada</p>
         <h2>Sin registros VERI*FACTU aún</h2>
-        <p>
-          Las facturas emitidas o rectificadas aparecerán aquí con su estado de preparación, entorno y trazabilidad de cadena.
-        </p>
+        <p>Las facturas emitidas o rectificadas aparecerán aquí con su estado de preparación, entorno y trazabilidad de cadena.</p>
       </div>
     </section>
+  );
+}
+
+function VerifactuAttemptsPanel({
+  attempts,
+  loading,
+  error,
+}: {
+  attempts: VerifactuSubmissionAttempt[] | undefined;
+  loading: boolean;
+  error: string | undefined;
+}) {
+  if (loading) {
+    return <p className="verifactu-attempts-muted">Cargando historial de intentos…</p>;
+  }
+
+  if (error) {
+    return <p className="import-error" role="status">{error}</p>;
+  }
+
+  if (!attempts || attempts.length === 0) {
+    return <p className="verifactu-attempts-muted">Este registro todavía no tiene intentos auditables.</p>;
+  }
+
+  return (
+    <div className="verifactu-attempts-card">
+      <div className="verifactu-attempts-heading">
+        <p className="eyebrow">Historial auditable</p>
+        <h3>Historial de intentos</h3>
+      </div>
+
+      <ol className="verifactu-attempts-list">
+        {attempts.map((attempt) => (
+          <li key={attempt.id} className="verifactu-attempt-item">
+            <div className="verifactu-attempt-header">
+              <strong>Intento {attempt.attemptNumber}</strong>
+              <StatusBadge tone={statusTone(attempt.status)}>{statusLabel(attempt.status)}</StatusBadge>
+            </div>
+            <dl className="verifactu-attempt-meta">
+              <div>
+                <dt>Fecha</dt>
+                <dd>{formatDate(attempt.attemptedAt)}</dd>
+              </div>
+              <div>
+                <dt>Referencia</dt>
+                <dd>{responseText(attempt.responseRedacted, 'reference')}</dd>
+              </div>
+              <div>
+                <dt>Enviado</dt>
+                <dd>{formatDate(responseText(attempt.responseRedacted, 'submittedAt'))}</dd>
+              </div>
+            </dl>
+            <p className="verifactu-attempt-message">{responseText(attempt.responseRedacted, 'message')}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }
 
@@ -249,10 +314,20 @@ function VerifactuResultsCard({
   items,
   total,
   loading,
+  expandedId,
+  attemptsBySubmission,
+  attemptsLoading,
+  attemptsError,
+  onToggleAttempts,
 }: {
   items: VerifactuSubmission[];
   total: number;
   loading: boolean;
+  expandedId: string | null;
+  attemptsBySubmission: Record<string, VerifactuSubmissionAttempt[]>;
+  attemptsLoading: Record<string, boolean>;
+  attemptsError: Record<string, string>;
+  onToggleAttempts: (item: VerifactuSubmission) => void;
 }) {
   if (loading) {
     return (
@@ -262,9 +337,7 @@ function VerifactuResultsCard({
     );
   }
 
-  if (items.length === 0) {
-    return <VerifactuEmptyState />;
-  }
+  if (items.length === 0) return <VerifactuEmptyState />;
 
   return (
     <section className="verifactu-results-card">
@@ -287,22 +360,47 @@ function VerifactuResultsCard({
               <th scope="col">Fecha</th>
               <th scope="col">Intentos</th>
               <th scope="col">Hash de cadena</th>
+              <th scope="col">Auditoría</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id}>
-                <td>
-                  <strong>{item.fiscalDocumentNumber}</strong>
-                  <span>{documentTypeLabel(item.documentType)}</span>
-                </td>
-                <td><StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></td>
-                <td>{environmentLabel(item.environment)}</td>
-                <td>{recordTypeLabel(item.recordType)}</td>
-                <td>{formatDate(item.issuedAt)}</td>
-                <td>{item.attemptCount}</td>
-                <td><code>{shortHash(item.chainHash)}</code></td>
-              </tr>
+              <Fragment key={item.id}>
+                <tr>
+                  <td>
+                    <strong>{item.fiscalDocumentNumber}</strong>
+                    <span>{documentTypeLabel(item.documentType)}</span>
+                  </td>
+                  <td><StatusBadge tone={statusTone(item.status)}>{statusLabel(item.status)}</StatusBadge></td>
+                  <td>{environmentLabel(item.environment)}</td>
+                  <td>{recordTypeLabel(item.recordType)}</td>
+                  <td>{formatDate(item.issuedAt)}</td>
+                  <td>{item.attemptCount}</td>
+                  <td><code>{shortHash(item.chainHash)}</code></td>
+                  <td>
+                    <button
+                      type="button"
+                      className="verifactu-link-button"
+                      aria-expanded={expandedId === item.id}
+                      aria-label={`${expandedId === item.id ? 'Ocultar' : 'Ver'} historial de ${item.fiscalDocumentNumber}`}
+                      onClick={() => onToggleAttempts(item)}
+                    >
+                      {expandedId === item.id ? 'Ocultar historial' : 'Ver historial'}
+                    </button>
+                  </td>
+                </tr>
+                {expandedId === item.id ? (
+                  <tr className="verifactu-attempts-row">
+                    <td colSpan={8}>
+                      <VerifactuAttemptsPanel
+                        attempts={attemptsBySubmission[item.id]}
+                        loading={Boolean(attemptsLoading[item.id])}
+                        error={attemptsError[item.id]}
+                      />
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -319,6 +417,10 @@ export function VerifactuSubmissionsPanel() {
   const [environment, setEnvironment] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [attemptsBySubmission, setAttemptsBySubmission] = useState<Record<string, VerifactuSubmissionAttempt[]>>({});
+  const [attemptsLoading, setAttemptsLoading] = useState<Record<string, boolean>>({});
+  const [attemptsError, setAttemptsError] = useState<Record<string, string>>({});
 
   const params = useMemo(() => {
     const query = new URLSearchParams({
@@ -331,6 +433,35 @@ export function VerifactuSubmissionsPanel() {
 
     return query;
   }, [environment, pagination.page, pagination.pageSize, status]);
+
+  async function loadAttempts(submissionId: string) {
+    setAttemptsLoading((current) => ({ ...current, [submissionId]: true }));
+    setAttemptsError((current) => ({ ...current, [submissionId]: '' }));
+
+    try {
+      const response = await fetch(`/api/v1/verifactu/submissions/${submissionId}/attempts`, {
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('No se pudo cargar el historial de intentos VERI*FACTU');
+      }
+
+      const data = await response.json() as VerifactuSubmissionAttemptsResponse;
+
+      setAttemptsBySubmission((current) => ({
+        ...current,
+        [submissionId]: data.items,
+      }));
+    } catch (reason) {
+      setAttemptsError((current) => ({
+        ...current,
+        [submissionId]: reason instanceof Error ? reason.message : 'No se pudo cargar el historial de intentos VERI*FACTU',
+      }));
+    } finally {
+      setAttemptsLoading((current) => ({ ...current, [submissionId]: false }));
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -406,10 +537,12 @@ export function VerifactuSubmissionsPanel() {
         environment={environment}
         onStatusChange={(value) => {
           setStatus(value);
+          setExpandedId(null);
           setPagination((current) => ({ ...current, page: 1 }));
         }}
         onEnvironmentChange={(value) => {
           setEnvironment(value);
+          setExpandedId(null);
           setPagination((current) => ({ ...current, page: 1 }));
         }}
       />
@@ -420,6 +553,18 @@ export function VerifactuSubmissionsPanel() {
         items={items}
         total={pagination.total}
         loading={loading}
+        expandedId={expandedId}
+        attemptsBySubmission={attemptsBySubmission}
+        attemptsLoading={attemptsLoading}
+        attemptsError={attemptsError}
+        onToggleAttempts={(item) => {
+          const nextExpanded = expandedId === item.id ? null : item.id;
+          setExpandedId(nextExpanded);
+
+          if (nextExpanded && !attemptsBySubmission[item.id]) {
+            void loadAttempts(item.id);
+          }
+        }}
       />
     </div>
   );

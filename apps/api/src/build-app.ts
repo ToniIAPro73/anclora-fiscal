@@ -288,6 +288,11 @@ export async function buildApp(options: {
     createVerifactuSubmissionsListHandler({ repository: options.verifactuSubmissionsRepository }),
   );
   app.get(
+    '/api/v1/verifactu/submissions/:submissionId/attempts',
+    { preHandler: requireRole(['documents:read']) },
+    createVerifactuSubmissionAttemptsListHandler({ repository: options.verifactuSubmissionsRepository }),
+  );
+  app.get(
     '/api/v1/dashboard/summary',
     { preHandler: requireRole(['dashboard:read']) },
     createDashboardSummaryHandler({ repository: options.dashboardSummaryRepository }),

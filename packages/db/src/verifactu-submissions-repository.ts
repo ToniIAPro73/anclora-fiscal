@@ -55,6 +55,18 @@ export interface ApplyVerifactuSubmissionOutcomeInput {
   outcome: VerifactuSubmissionAttemptOutcome;
 }
 
+export interface VerifactuSubmissionAttemptItem {
+  id: string;
+  tenantId: string;
+  verifactuSubmissionId: string;
+  attemptNumber: string;
+  status: string;
+  responseRedacted: unknown;
+  attemptedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryResultHKT> {
   constructor(
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
@@ -160,6 +172,37 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
     });
 
     return result.items.find((item) => item.id === updatedId) ?? null;
+  }
+
+  async listAttempts(input: {
+    tenantId: string;
+    submissionId: string;
+  }): Promise<VerifactuSubmissionAttemptItem[]> {
+    const rows = await this.db
+      .select({
+        id: verifactuSubmissionAttempts.id,
+        tenantId: verifactuSubmissionAttempts.tenantId,
+        verifactuSubmissionId: verifactuSubmissionAttempts.verifactuSubmissionId,
+        attemptNumber: verifactuSubmissionAttempts.attemptNumber,
+        status: verifactuSubmissionAttempts.status,
+        responseRedacted: verifactuSubmissionAttempts.responseRedacted,
+        attemptedAt: verifactuSubmissionAttempts.attemptedAt,
+        createdAt: verifactuSubmissionAttempts.createdAt,
+        updatedAt: verifactuSubmissionAttempts.updatedAt,
+      })
+      .from(verifactuSubmissionAttempts)
+      .innerJoin(verifactuSubmissions, eq(verifactuSubmissionAttempts.verifactuSubmissionId, verifactuSubmissions.id))
+      .where(and(
+        eq(verifactuSubmissionAttempts.tenantId, input.tenantId),
+        eq(verifactuSubmissionAttempts.verifactuSubmissionId, input.submissionId),
+        eq(verifactuSubmissions.tenantId, input.tenantId),
+      ))
+      .orderBy(desc(verifactuSubmissionAttempts.attemptedAt), desc(verifactuSubmissionAttempts.createdAt));
+
+    return rows.map((row) => ({
+      ...row,
+      attemptNumber: String(row.attemptNumber),
+    }));
   }
 
   async list(input: ListVerifactuSubmissionsInput): Promise<PaginatedVerifactuSubmissions> {

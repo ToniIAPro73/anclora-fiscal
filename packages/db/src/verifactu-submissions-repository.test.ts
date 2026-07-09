@@ -494,6 +494,71 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
     expect(attempts).toHaveLength(0);
   });
 
+
+describe('DrizzleVerifactuSubmissionsRepository listAttempts', () => {
+  it('lista intentos tenant-scoped de una submission', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-list-attempts',
+      environment: 'test',
+      status: 'PENDING',
+      attemptCount: '0',
+    });
+
+    const other = await seedSubmission(db, {
+      slug: 'tenant-verifactu-list-attempts-other',
+      environment: 'test',
+      status: 'PENDING',
+      attemptCount: '0',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-visible-history',
+          message: 'Aceptado para auditoría visible',
+          submittedAt: '2026-07-09T14:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    const attempts = await repository.listAttempts({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+    });
+
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      tenantId: seeded.tenantId,
+      verifactuSubmissionId: seeded.submissionId,
+      attemptNumber: '1',
+      status: 'ACCEPTED',
+    });
+    expect(attempts[0]?.attemptedAt.toISOString()).toBe('2026-07-09T14:00:00.000Z');
+    expect(attempts[0]?.responseRedacted).toMatchObject({
+      reference: 'aeat-visible-history',
+      message: 'Aceptado para auditoría visible',
+    });
+
+    await expect(repository.listAttempts({
+      tenantId: other.tenantId,
+      submissionId: seeded.submissionId,
+    })).resolves.toHaveLength(0);
+  });
+});
+
 describe('DrizzleVerifactuSubmissionsRepository findPendingById para ejecución interna', () => {
   it('devuelve una submission PENDING del tenant con payload redacted y fiscalDocumentId', async () => {
     const { db, client } = createOfflineDatabase();

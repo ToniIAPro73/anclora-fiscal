@@ -130,6 +130,7 @@ describe('API foundation', () => {
     await app.ready();
     const routes = app.printRoutes();
     expect(routes).toMatch(/verifactu\/submissions/i);
+    expect(routes).toMatch(/verifactu\/submissions\/:submissionId\/attempts/i);
     expect(routes).not.toMatch(/verifactu\/submit/i);
     expect(routes).not.toMatch(/verifactu\/send/i);
   });

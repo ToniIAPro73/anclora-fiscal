@@ -1,5 +1,5 @@
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VerifactuPage from './page';
 
@@ -7,8 +7,9 @@ vi.mock('next/image', () => ({
   default: ({
     src,
     alt,
+    priority: _priority,
     ...props
-  }: ComponentPropsWithoutRef<'img'> & { src: string | { src?: string } }) => {
+  }: ComponentPropsWithoutRef<'img'> & { src: string | { src?: string }; priority?: boolean }) => {
     const resolvedSrc = typeof src === 'string' ? src : src.src ?? '';
 
     return <img src={resolvedSrc} alt={alt ?? ''} {...props} />;
@@ -56,28 +57,60 @@ describe('VerifactuPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renderiza el panel operativo sin acción de envío', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(jsonResponse(runtimeTest))
-      .mockResolvedValueOnce(jsonResponse({
-        items: [
-          {
-            id: 'submission-1',
-            fiscalDocumentNumber: 'FS-1',
-            documentType: 'SIMPLIFICADA',
-            issuedAt: '2026-07-09T10:00:00.000Z',
-            environment: 'test',
-            status: 'PENDING',
-            recordType: 'ALTA',
-            chainHash: 'abcdef1234567890abcdef1234567890',
-            previousHash: null,
-            attemptCount: '0',
-          },
-        ],
-        page: 1,
-        pageSize: 25,
-        total: 1,
-      }));
+  it('renderiza el panel operativo, sin acción de envío y con historial auditable', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url === '/health') {
+        return jsonResponse(runtimeTest);
+      }
+
+      if (url === '/api/v1/verifactu/submissions?page=1&pageSize=25') {
+        return jsonResponse({
+          items: [
+            {
+              id: 'submission-1',
+              fiscalDocumentNumber: 'FS-1',
+              documentType: 'SIMPLIFICADA',
+              issuedAt: '2026-07-09T10:00:00.000Z',
+              environment: 'test',
+              status: 'PENDING',
+              recordType: 'ALTA',
+              chainHash: 'abcdef1234567890abcdef1234567890',
+              previousHash: null,
+              attemptCount: '1',
+            },
+          ],
+          page: 1,
+          pageSize: 25,
+          total: 1,
+        });
+      }
+
+      if (url === '/api/v1/verifactu/submissions/submission-1/attempts') {
+        return jsonResponse({
+          items: [
+            {
+              id: 'attempt-1',
+              verifactuSubmissionId: 'submission-1',
+              attemptNumber: '1',
+              status: 'ACCEPTED',
+              responseRedacted: {
+                schemaVersion: 'anclora-verifactu-response-redacted-v1',
+                environment: 'test',
+                status: 'ACCEPTED',
+                reference: 'aeat-ref-visible',
+                message: 'Aceptado en entorno de pruebas',
+                submittedAt: '2026-07-09T10:05:00.000Z',
+              },
+              attemptedAt: '2026-07-09T10:05:00.000Z',
+            },
+          ],
+        });
+      }
+
+      return jsonResponse({}, false);
+    });
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -91,14 +124,25 @@ describe('VerifactuPage', () => {
     expect(screen.getByText('Preparado')).toBeInTheDocument();
     expect(screen.getByText('Simplificada')).toBeInTheDocument();
     expect(screen.getAllByText('Pendiente').length).toBeGreaterThan(0);
-
     expect(screen.getAllByText('AEAT pruebas').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ver historial de FS-1' }));
+
+    expect(await screen.findByText('Historial de intentos')).toBeInTheDocument();
+    expect(screen.getByText('Intento 1')).toBeInTheDocument();
+    expect(screen.getByText('aeat-ref-visible')).toBeInTheDocument();
+    expect(screen.getByText('Aceptado en entorno de pruebas')).toBeInTheDocument();
+
     expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/submit/i)).not.toBeInTheDocument();
 
     expect(fetchMock).toHaveBeenCalledWith('/health', { credentials: 'include' });
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/verifactu/submissions?page=1&pageSize=25',
+      { credentials: 'include' },
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/verifactu/submissions/submission-1/attempts',
       { credentials: 'include' },
     );
   });
