@@ -318,6 +318,144 @@ export async function createVerifactuSubmissionAttempt(
   }
 }
 
+
+export interface VerifactuSubmissionExecutable {
+  id: string;
+  tenantId: string;
+  fiscalDocumentId: string;
+  environment: VerifactuSubmissionEnvironment;
+  status: 'PENDING';
+  payloadRedacted: VerifactuPayloadRedacted;
+  attemptCount: string;
+}
+
+export interface VerifactuSubmissionExecutionRepositoryPort {
+  findPendingById(input: {
+    tenantId: string;
+    submissionId: string;
+  }): Promise<VerifactuSubmissionExecutable | null>;
+
+  applyAttemptOutcome(input: {
+    tenantId: string;
+    submissionId: string;
+    outcome: VerifactuSubmissionAttemptOutcome;
+  }): Promise<unknown | null>;
+}
+
+export type VerifactuSubmissionExecutionResult =
+  | {
+      ok: true;
+      outcome: VerifactuSubmissionAttemptOutcome;
+    }
+  | {
+      ok: false;
+      reason:
+        | 'SUBMISSION_NOT_FOUND_OR_NOT_PENDING'
+        | 'VERIFACTU_RUNTIME_NOT_SUBMITTABLE'
+        | 'VERIFACTU_SUBMISSION_ENVIRONMENT_MISMATCH'
+        | 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH';
+    };
+
+function expectedRuntimeEnvironment(config: VerifactuRuntimeConfig): VerifactuSubmissionEnvironment {
+  if (config.mode === 'production') return 'production';
+  if (config.mode === 'test') return 'test';
+  return 'mock';
+}
+
+function recordFromExecutableSubmission(submission: VerifactuSubmissionExecutable): IntegrityRecord {
+  const payload = submission.payloadRedacted;
+
+  const rebuilt = createIntegrityRecord(
+    {
+      documentId: submission.fiscalDocumentId,
+      documentNumber: payload.documentNumber,
+      recordType: payload.recordType,
+      issuedAt: payload.issuedAt,
+      totalAmount: payload.totalAmount,
+      taxAmount: payload.taxAmount,
+      ...(payload.previousHash ? { previousHash: payload.previousHash } : {}),
+    },
+    payload.issuedAt,
+  );
+
+  if (
+    rebuilt.hash !== payload.chainHash ||
+    rebuilt.hash !== payload.documentHash ||
+    rebuilt.algorithm !== payload.algorithm
+  ) {
+    throw new Error('VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH');
+  }
+
+  return rebuilt;
+}
+
+export class VerifactuSubmissionExecutionService {
+  constructor(
+    private readonly dependencies: {
+      repository: VerifactuSubmissionExecutionRepositoryPort;
+      adapter: VerifactuPort;
+      runtimeConfig: VerifactuRuntimeConfig;
+      now?: () => string;
+    },
+  ) {}
+
+  async submitPending(input: {
+    tenantId: string;
+    submissionId: string;
+  }): Promise<VerifactuSubmissionExecutionResult> {
+    if (!this.dependencies.runtimeConfig.enabled || !this.dependencies.runtimeConfig.canSubmit) {
+      return { ok: false, reason: 'VERIFACTU_RUNTIME_NOT_SUBMITTABLE' };
+    }
+
+    const submission = await this.dependencies.repository.findPendingById(input);
+
+    if (!submission) {
+      return { ok: false, reason: 'SUBMISSION_NOT_FOUND_OR_NOT_PENDING' };
+    }
+
+    const expectedEnvironment = expectedRuntimeEnvironment(this.dependencies.runtimeConfig);
+
+    if (submission.payloadRedacted.environment !== expectedEnvironment) {
+      return { ok: false, reason: 'VERIFACTU_SUBMISSION_ENVIRONMENT_MISMATCH' };
+    }
+
+    let record: IntegrityRecord;
+    try {
+      record = recordFromExecutableSubmission(submission);
+    } catch {
+      return { ok: false, reason: 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH' };
+    }
+
+    const draft: VerifactuSubmissionDraft = {
+      environment: submission.payloadRedacted.environment,
+      status: 'PENDING',
+      payloadRedacted: submission.payloadRedacted,
+      responseRedacted: null,
+      attemptCount: 0,
+      canSubmit: true,
+    };
+
+    const outcome = await createVerifactuSubmissionAttempt(
+      this.dependencies.adapter,
+      record,
+      draft,
+      this.dependencies.now?.() ?? new Date().toISOString(),
+    );
+
+    const persisted = await this.dependencies.repository.applyAttemptOutcome({
+      tenantId: input.tenantId,
+      submissionId: input.submissionId,
+      outcome,
+    });
+
+    if (!persisted) {
+      return { ok: false, reason: 'SUBMISSION_NOT_FOUND_OR_NOT_PENDING' };
+    }
+
+    return { ok: true, outcome };
+  }
+}
+
 export class AeatVerifactuAdapter implements VerifactuPort {
   constructor(
     private readonly config: VerifactuRuntimeConfig,

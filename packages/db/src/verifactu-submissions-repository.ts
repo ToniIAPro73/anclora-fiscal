@@ -1,5 +1,9 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
-import type { VerifactuSubmissionAttemptOutcome } from '@anclora/core/server';
+import type {
+  VerifactuPayloadRedacted,
+  VerifactuSubmissionAttemptOutcome,
+  VerifactuSubmissionExecutable,
+} from '@anclora/core/server';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
@@ -54,6 +58,48 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
   constructor(
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
+
+  async findPendingById(input: {
+    tenantId: string;
+    submissionId: string;
+  }): Promise<VerifactuSubmissionExecutable | null> {
+    const [row] = await this.db
+      .select({
+        id: verifactuSubmissions.id,
+        tenantId: verifactuSubmissions.tenantId,
+        environment: verifactuSubmissions.environment,
+        status: verifactuSubmissions.status,
+        payloadRedacted: verifactuSubmissions.payloadRedacted,
+        attemptCount: verifactuSubmissions.attemptCount,
+        fiscalDocumentId: integrityChainRecords.fiscalDocumentId,
+      })
+      .from(verifactuSubmissions)
+      .innerJoin(integrityChainRecords, eq(verifactuSubmissions.integrityRecordId, integrityChainRecords.id))
+      .where(and(
+        eq(verifactuSubmissions.tenantId, input.tenantId),
+        eq(verifactuSubmissions.id, input.submissionId),
+        eq(verifactuSubmissions.status, 'PENDING'),
+      ))
+      .limit(1);
+
+    if (!row) return null;
+
+    const environment = row.environment as VerifactuSubmissionExecutable['environment'];
+    const payloadRedacted = row.payloadRedacted as Partial<VerifactuPayloadRedacted>;
+
+    return {
+      id: row.id,
+      tenantId: row.tenantId,
+      fiscalDocumentId: row.fiscalDocumentId,
+      environment,
+      status: 'PENDING',
+      payloadRedacted: {
+        ...payloadRedacted,
+        environment,
+      } as VerifactuPayloadRedacted,
+      attemptCount: String(row.attemptCount),
+    };
+  }
 
   async applyAttemptOutcome(input: ApplyVerifactuSubmissionOutcomeInput): Promise<VerifactuSubmissionListItem | null> {
     const [updated] = await this.db

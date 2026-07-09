@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AeatVerifactuAdapter,
   MockVerifactuAdapter,
+  VerifactuSubmissionExecutionService,
   createIntegrityRecord,
   createVerifactuSubmissionAttempt,
   createVerifactuSubmissionDraft,
@@ -471,5 +472,252 @@ describe('createVerifactuSubmissionAttempt', () => {
     ).rejects.toThrow('VERIFACTU_SUBMISSION_NOT_SUBMITTABLE');
 
     expect(adapter.submit).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('VerifactuSubmissionExecutionService', () => {
+  const record = createIntegrityRecord(
+    {
+      documentId: 'doc-1',
+      documentNumber: 'F-2026-000001',
+      recordType: 'ALTA',
+      issuedAt: '2026-07-09T00:00:00.000Z',
+      totalAmount: 10,
+      taxAmount: 2.1,
+    },
+    '2026-07-09T00:00:00.000Z',
+  );
+
+  const draft = createVerifactuSubmissionDraft(
+    record,
+    resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+  );
+
+  function executableSubmission(overrides: Partial<{
+    fiscalDocumentId: string;
+    payloadRedacted: typeof draft.payloadRedacted;
+    environment: typeof draft.environment;
+  }> = {}) {
+    const payloadRedacted = overrides.payloadRedacted ?? draft.payloadRedacted;
+
+    return {
+      id: 'submission-1',
+      tenantId: 'tenant-1',
+      fiscalDocumentId: overrides.fiscalDocumentId ?? 'doc-1',
+      environment: overrides.environment ?? payloadRedacted.environment,
+      status: 'PENDING' as const,
+      payloadRedacted,
+      attemptCount: '0',
+    };
+  }
+
+  it('executes a pending submission and persists the accepted outcome', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission()),
+      applyAttemptOutcome: vi.fn().mockResolvedValue({ id: 'submission-1' }),
+    };
+
+    const adapter = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        reference: 'aeat-ref-1',
+        message: 'Aceptado en entorno de pruebas',
+      }),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      now: () => '2026-07-09T10:00:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      outcome: {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-ref-1',
+          message: 'Aceptado en entorno de pruebas',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(repository.findPendingById).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      submissionId: 'submission-1',
+    });
+    expect(adapter.submit).toHaveBeenCalledWith(record);
+    expect(repository.applyAttemptOutcome).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      submissionId: 'submission-1',
+      outcome: expect.objectContaining({
+        status: 'ACCEPTED',
+        attemptCountIncrement: 1,
+      }),
+    });
+  });
+
+  it('maps adapter failures to TECHNICAL_ERROR and still persists the outcome', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission()),
+      applyAttemptOutcome: vi.fn().mockResolvedValue({ id: 'submission-1' }),
+    };
+
+    const adapter = {
+      submit: vi.fn().mockRejectedValue(new Error('SOAP_TIMEOUT')),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      now: () => '2026-07-09T10:00:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      outcome: {
+        status: 'TECHNICAL_ERROR',
+        responseRedacted: {
+          environment: 'test',
+          status: 'TECHNICAL_ERROR',
+          reference: null,
+          message: 'SOAP_TIMEOUT',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(repository.applyAttemptOutcome).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      submissionId: 'submission-1',
+      outcome: expect.objectContaining({
+        status: 'TECHNICAL_ERROR',
+        attemptCountIncrement: 1,
+      }),
+    });
+  });
+
+  it('does not execute when runtime is not submittable', async () => {
+    const repository = {
+      findPendingById: vi.fn(),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production' }),
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'VERIFACTU_RUNTIME_NOT_SUBMITTABLE',
+    });
+
+    expect(repository.findPendingById).not.toHaveBeenCalled();
+    expect(adapter.submit).not.toHaveBeenCalled();
+  });
+
+  it('does not execute when the pending submission does not exist', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(null),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'missing' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'SUBMISSION_NOT_FOUND_OR_NOT_PENDING',
+    });
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+    expect(repository.applyAttemptOutcome).not.toHaveBeenCalled();
+  });
+
+  it('does not execute when the submission environment differs from runtime mode', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission()),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'production', nodeEnv: 'production', adapterConfigured: true, productionSubmissionEnabled: true }),
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'VERIFACTU_SUBMISSION_ENVIRONMENT_MISMATCH',
+    });
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+  });
+
+  it('does not execute when the redacted payload no longer matches the chain hash', async () => {
+    const corruptedPayload = {
+      ...draft.payloadRedacted,
+      totalAmount: 999,
+    };
+
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({ payloadRedacted: corruptedPayload })),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH',
+    });
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+    expect(repository.applyAttemptOutcome).not.toHaveBeenCalled();
   });
 });

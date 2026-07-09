@@ -386,3 +386,89 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
     });
   });
 });
+
+
+describe('DrizzleVerifactuSubmissionsRepository findPendingById para ejecución interna', () => {
+  it('devuelve una submission PENDING del tenant con payload redacted y fiscalDocumentId', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-find-pending',
+      environment: 'test',
+      status: 'PENDING',
+      attemptCount: '2',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const pending = await repository.findPendingById({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+    });
+
+    expect(pending).toMatchObject({
+      id: seeded.submissionId,
+      tenantId: seeded.tenantId,
+      status: 'PENDING',
+      environment: 'test',
+      attemptCount: '2',
+    });
+
+    expect(pending?.fiscalDocumentId).toEqual(expect.any(String));
+    expect(pending?.payloadRedacted).toMatchObject({
+      schemaVersion: 'anclora-verifactu-payload-redacted-v1',
+      environment: 'test',
+      documentNumber: seeded.documentNumber,
+    });
+  });
+
+  it('devuelve null para submissions de otro tenant', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-find-cross',
+      environment: 'test',
+      status: 'PENDING',
+    });
+
+    const other = await seedSubmission(db, {
+      slug: 'tenant-verifactu-find-cross-other',
+      environment: 'test',
+      status: 'PENDING',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    await expect(
+      repository.findPendingById({
+        tenantId: other.tenantId,
+        submissionId: seeded.submissionId,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it('devuelve null para submissions que ya no están PENDING', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-find-not-pending',
+      environment: 'test',
+      status: 'ACCEPTED',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    await expect(
+      repository.findPendingById({
+        tenantId: seeded.tenantId,
+        submissionId: seeded.submissionId,
+      }),
+    ).resolves.toBeNull();
+  });
+});
