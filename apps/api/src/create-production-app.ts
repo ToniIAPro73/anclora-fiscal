@@ -130,7 +130,7 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
-    vatDossiersRepository = new DrizzleVatDossiersRepository(database.db) as unknown as VatDossiersRepositoryPort;
+    vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
     verifactuSubmissionsRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
@@ -193,7 +193,7 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
-    vatDossiersRepository = new DrizzleVatDossiersRepository(database.db) as unknown as VatDossiersRepositoryPort;
+    vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
     verifactuSubmissionsRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));

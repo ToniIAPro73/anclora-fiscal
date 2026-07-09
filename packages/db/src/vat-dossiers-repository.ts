@@ -22,11 +22,39 @@ import {
 } from './schema.js';
 import * as schema from './schema.js';
 
-export type VatDossier = typeof vatDossiers.$inferSelect;
+type VatDossierRow = typeof vatDossiers.$inferSelect;
+export type VatDossier = Omit<VatDossierRow, 'manifest'> & {
+  manifest: Record<string, string>;
+};
 
 const SCHEMA_VERSION = 'anclora-vat-dossier-v1';
 const CLOSED_PERIOD_STATUS = 'CLOSED';
 const DOSSIER_STATUS = 'CLOSED';
+
+function asDossierManifest(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('VAT_DOSSIER_MANIFEST_INVALID');
+  }
+
+  const manifest: Record<string, string> = {};
+
+  for (const [key, hash] of Object.entries(value)) {
+    if (typeof hash !== 'string') {
+      throw new Error('VAT_DOSSIER_MANIFEST_INVALID');
+    }
+
+    manifest[key] = hash;
+  }
+
+  return manifest;
+}
+
+function toVatDossier(row: VatDossierRow): VatDossier {
+  return {
+    ...row,
+    manifest: asDossierManifest(row.manifest),
+  };
+}
 
 function asJsonObject(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -88,7 +116,7 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
       .from(vatDossiers)
       .where(and(eq(vatDossiers.tenantId, input.tenantId), eq(vatDossiers.periodCloseId, periodClose.id)))
       .limit(1);
-    if (existing && !input.force) return { ok: true, dossier: existing, alreadyGenerated: true };
+    if (existing && !input.force) return { ok: true, dossier: toVatDossier(existing), alreadyGenerated: true };
 
     const documentRows = await this.db
       .select({
@@ -266,7 +294,7 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
         metadata: { period: input.period, force: Boolean(input.force) },
       });
 
-      return { ok: true, dossier, alreadyGenerated: false };
+      return { ok: true, dossier: toVatDossier(dossier), alreadyGenerated: false };
     });
   }
 
@@ -286,6 +314,6 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
       .limit(1);
     if (!dossier) return { ok: false, reason: 'NOT_FOUND' };
 
-    return { ok: true, dossier };
+    return { ok: true, dossier: toVatDossier(dossier) };
   }
 }

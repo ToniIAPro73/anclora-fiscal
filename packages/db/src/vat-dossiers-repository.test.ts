@@ -328,6 +328,8 @@ describe('DrizzleVatDossiersRepository', () => {
 
       expect(result.alreadyGenerated).toBe(false);
       expect(result.dossier.status).toBe('CLOSED');
+      expect(result.dossier.manifest['estado-verifactu.json']).toEqual(expect.any(String));
+      expect(result.dossier.manifest['manifest.json']).toBeUndefined();
       expect(storage.puts).toHaveLength(1);
 
       const persistedBytes = await storage.get(
