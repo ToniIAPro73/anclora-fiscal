@@ -10,6 +10,7 @@ export * from './tax-identity.js';
 export * from './verifactu.js';
 export * from './verifactu-aeat-xml.js';
 export * from './verifactu-aeat-signing.js';
+export * from './verifactu-aeat-transport.js';
 export * from './dossier.js';
 
 // Re-export the client-safe surface too, so server-side consumers can import
