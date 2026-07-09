@@ -10,7 +10,13 @@ describe('API foundation', () => {
     apps.push(app);
     const response = await app.inject({ method: 'GET', url: '/health' });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ status: 'ok', verifactuEnabled: false });
+    expect(response.json()).toMatchObject({
+      status: 'ok',
+      verifactuEnabled: false,
+      verifactuMode: 'disabled',
+      verifactuCanSubmit: false,
+      verifactuProductionSafe: true,
+    });
   });
 
   // FASE 00: confirms not just the flag default but the actual absence of an

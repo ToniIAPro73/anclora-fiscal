@@ -6,7 +6,7 @@ import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
-import { FilesystemStorage, type StoragePort } from '@anclora/core/server';
+import { FilesystemStorage, type StoragePort , resolveVerifactuRuntimeConfig } from '@anclora/core/server';
 import { resolve } from 'node:path';
 import { createImportPreviewHandler } from './import-controller.js';
 import type { CommercialOrdersDedupPort, FinancialEventsDedupPort, RoyaltyDedupPort } from './import-service.js';
@@ -101,7 +101,40 @@ export async function buildApp(options: {
   await app.register(swagger, { openapi: { info: { title: 'Anclora Fiscal API', version: '0.1.0' }, servers: [{ url: '/api/v1' }] } });
   await app.register(swaggerUi, { routePrefix: '/documentation' });
 
-  app.get('/health', { schema: { response: { 200: { type: 'object', properties: { status: { type: 'string' }, verifactuEnabled: { type: 'boolean' } } } } } }, async () => ({ status: 'ok', verifactuEnabled: process.env.VERIFACTU_ENABLED === 'true' }));
+  app.get(
+    '/health',
+    {
+      schema: {
+        response: {
+          200: {
+            type: 'object',
+            properties: {
+              status: { type: 'string' },
+              verifactuEnabled: { type: 'boolean' },
+              verifactuMode: { type: 'string' },
+              verifactuCanSubmit: { type: 'boolean' },
+              verifactuProductionSafe: { type: 'boolean' },
+            },
+          },
+        },
+      },
+    },
+    async () => {
+      const verifactu = resolveVerifactuRuntimeConfig({
+        mode: process.env.VERIFACTU_MODE,
+        enabled: process.env.VERIFACTU_ENABLED,
+        nodeEnv: process.env.NODE_ENV,
+      });
+
+      return {
+        status: 'ok',
+        verifactuEnabled: verifactu.enabled,
+        verifactuMode: verifactu.mode,
+        verifactuCanSubmit: verifactu.canSubmit,
+        verifactuProductionSafe: verifactu.productionSafe,
+      };
+    },
+  );
   const authService = options.authService ?? new AuthService(
     new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON),
     { record: async () => undefined },

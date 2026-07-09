@@ -22,15 +22,107 @@ export function verifyIntegrityChain(records: IntegrityRecord[]): boolean {
   });
 }
 
-export interface VerifactuSubmissionResult { status: 'ACCEPTED' | 'REJECTED'; reference: string; message: string; }
-export interface VerifactuPort { submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult>; }
+export type VerifactuMode = 'disabled' | 'mock' | 'sandbox' | 'production';
+
+export interface VerifactuRuntimeConfig {
+  mode: VerifactuMode;
+  enabled: boolean;
+  canSubmit: boolean;
+  productionSafe: boolean;
+}
+
+export interface VerifactuSubmissionResult {
+  status: 'ACCEPTED' | 'REJECTED';
+  reference: string;
+  message: string;
+}
+
+export interface VerifactuPort {
+  submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult>;
+}
+
+export function resolveVerifactuRuntimeConfig(input: {
+  mode?: string | undefined;
+  enabled?: string | boolean | undefined;
+  nodeEnv?: string | undefined;
+}): VerifactuRuntimeConfig {
+  const explicitMode = input.mode?.trim().toLowerCase();
+  const legacyEnabled = input.enabled === true || input.enabled === 'true';
+
+  const mode: VerifactuMode =
+    explicitMode === 'mock' || explicitMode === 'sandbox' || explicitMode === 'production' || explicitMode === 'disabled'
+      ? explicitMode
+      : legacyEnabled
+        ? 'mock'
+        : 'disabled';
+
+  const isProductionRuntime = input.nodeEnv === 'production';
+
+  if (mode === 'mock' && isProductionRuntime) {
+    throw new Error('VERIFACTU_MOCK_NOT_ALLOWED_IN_PRODUCTION');
+  }
+
+  if (mode === 'production') {
+    return {
+      mode,
+      enabled: true,
+      canSubmit: false,
+      productionSafe: false,
+    };
+  }
+
+  if (mode === 'sandbox') {
+    return {
+      mode,
+      enabled: true,
+      canSubmit: false,
+      productionSafe: true,
+    };
+  }
+
+  if (mode === 'mock') {
+    return {
+      mode,
+      enabled: true,
+      canSubmit: true,
+      productionSafe: !isProductionRuntime,
+    };
+  }
+
+  return {
+    mode: 'disabled',
+    enabled: false,
+    canSubmit: false,
+    productionSafe: true,
+  };
+}
 
 export class MockVerifactuAdapter implements VerifactuPort {
-  constructor(private readonly enabled: boolean) {}
+  constructor(private readonly config: VerifactuRuntimeConfig) {}
+
   async submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult> {
-    if (!this.enabled) throw new Error('VERIFACTU_NOT_ENABLED');
+    if (!this.config.enabled || !this.config.canSubmit) {
+      throw new Error('VERIFACTU_NOT_ENABLED');
+    }
+
+    if (this.config.mode !== 'mock') {
+      throw new Error('VERIFACTU_MOCK_ADAPTER_REQUIRES_MOCK_MODE');
+    }
+
+    if (!this.config.productionSafe) {
+      throw new Error('VERIFACTU_MOCK_NOT_ALLOWED_IN_PRODUCTION');
+    }
+
     return record.totalAmount < 0
-      ? { status: 'REJECTED', reference: `mock-${record.hash.slice(0, 12)}`, message: 'Rechazo simulado para validar el flujo de revisión' }
-      : { status: 'ACCEPTED', reference: `mock-${record.hash.slice(0, 12)}`, message: 'Aceptación simulada; no se ha contactado con la AEAT' };
+      ? {
+          status: 'REJECTED',
+          reference: `mock-${record.hash.slice(0, 12)}`,
+          message: 'Rechazo simulado para validar el flujo de revisión',
+        }
+      : {
+          status: 'ACCEPTED',
+          reference: `mock-${record.hash.slice(0, 12)}`,
+          message: 'Aceptación simulada; no se ha contactado con la AEAT',
+        };
   }
 }
