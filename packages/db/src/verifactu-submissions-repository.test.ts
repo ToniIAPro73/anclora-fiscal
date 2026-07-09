@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createOfflineDatabase } from './index';
 import { migrateOfflineDatabase } from './migrations';
 import { DrizzleVerifactuSubmissionsRepository } from './verifactu-submissions-repository';
+import { and, eq } from 'drizzle-orm';
 import {
   canonicalOperations,
   fiscalDocuments,
   integrityChainRecords,
   legalEntities,
   tenants,
+  verifactuSubmissionAttempts,
   verifactuSubmissions,
 } from './schema';
 
@@ -387,6 +389,110 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
   });
 });
 
+
+
+  it('registra cada outcome aplicado como intento auditable', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-attempt-audit',
+      environment: 'test',
+      status: 'PENDING',
+      attemptCount: '2',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const updated = await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'TECHNICAL_ERROR',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'TECHNICAL_ERROR',
+          reference: null,
+          message: 'Timeout AEAT pruebas',
+          submittedAt: '2026-07-09T12:30:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(updated).toMatchObject({
+      id: seeded.submissionId,
+      status: 'TECHNICAL_ERROR',
+      attemptCount: '3',
+    });
+
+    const attempts = await db
+      .select()
+      .from(verifactuSubmissionAttempts)
+      .where(and(
+        eq(verifactuSubmissionAttempts.tenantId, seeded.tenantId),
+        eq(verifactuSubmissionAttempts.verifactuSubmissionId, seeded.submissionId),
+      ));
+
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      tenantId: seeded.tenantId,
+      verifactuSubmissionId: seeded.submissionId,
+      attemptNumber: '3',
+      status: 'TECHNICAL_ERROR',
+    });
+    expect(attempts[0]?.attemptedAt.toISOString()).toBe('2026-07-09T12:30:00.000Z');
+    expect(attempts[0]?.responseRedacted).toMatchObject({
+      schemaVersion: 'anclora-verifactu-response-redacted-v1',
+      environment: 'test',
+      status: 'TECHNICAL_ERROR',
+      reference: null,
+      message: 'Timeout AEAT pruebas',
+    });
+  });
+
+  it('no registra intentos cuando el outcome no puede aplicarse por tenant o estado', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-attempt-not-pending',
+      environment: 'test',
+      status: 'ACCEPTED',
+      attemptCount: '1',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const updated = await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'REJECTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'REJECTED',
+          reference: 'aeat-ref-rejected',
+          message: 'Rechazado',
+          submittedAt: '2026-07-09T13:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(updated).toBeNull();
+
+    const attempts = await db
+      .select()
+      .from(verifactuSubmissionAttempts)
+      .where(eq(verifactuSubmissionAttempts.tenantId, seeded.tenantId));
+
+    expect(attempts).toHaveLength(0);
+  });
 
 describe('DrizzleVerifactuSubmissionsRepository findPendingById para ejecución interna', () => {
   it('devuelve una submission PENDING del tenant con payload redacted y fiscalDocumentId', async () => {

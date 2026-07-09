@@ -9,6 +9,7 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
   fiscalDocuments,
   integrityChainRecords,
+  verifactuSubmissionAttempts,
   verifactuSubmissions,
 } from './schema.js';
 import * as schema from './schema.js';
@@ -102,22 +103,55 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
   }
 
   async applyAttemptOutcome(input: ApplyVerifactuSubmissionOutcomeInput): Promise<VerifactuSubmissionListItem | null> {
-    const [updated] = await this.db
-      .update(verifactuSubmissions)
-      .set({
+    const updatedId = await this.db.transaction(async (transaction) => {
+      const [current] = await transaction
+        .select({
+          id: verifactuSubmissions.id,
+          attemptCount: verifactuSubmissions.attemptCount,
+        })
+        .from(verifactuSubmissions)
+        .where(and(
+          eq(verifactuSubmissions.tenantId, input.tenantId),
+          eq(verifactuSubmissions.id, input.submissionId),
+          eq(verifactuSubmissions.status, 'PENDING'),
+        ))
+        .limit(1);
+
+      if (!current) return null;
+
+      const attemptNumber = Number(current.attemptCount) + input.outcome.attemptCountIncrement;
+      const attemptedAt = new Date(input.outcome.responseRedacted.submittedAt);
+
+      const [updated] = await transaction
+        .update(verifactuSubmissions)
+        .set({
+          status: input.outcome.status,
+          responseRedacted: input.outcome.responseRedacted,
+          attemptCount: sql`${verifactuSubmissions.attemptCount} + ${input.outcome.attemptCountIncrement}`,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(verifactuSubmissions.tenantId, input.tenantId),
+          eq(verifactuSubmissions.id, input.submissionId),
+          eq(verifactuSubmissions.status, 'PENDING'),
+        ))
+        .returning({ id: verifactuSubmissions.id });
+
+      if (!updated) return null;
+
+      await transaction.insert(verifactuSubmissionAttempts).values({
+        tenantId: input.tenantId,
+        verifactuSubmissionId: input.submissionId,
+        attemptNumber: String(attemptNumber),
         status: input.outcome.status,
         responseRedacted: input.outcome.responseRedacted,
-        attemptCount: sql`${verifactuSubmissions.attemptCount} + ${input.outcome.attemptCountIncrement}`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(verifactuSubmissions.tenantId, input.tenantId),
-        eq(verifactuSubmissions.id, input.submissionId),
-        eq(verifactuSubmissions.status, 'PENDING'),
-      ))
-      .returning({ id: verifactuSubmissions.id });
+        attemptedAt,
+      });
 
-    if (!updated) return null;
+      return updated.id;
+    });
+
+    if (!updatedId) return null;
 
     const result = await this.list({
       tenantId: input.tenantId,
@@ -125,7 +159,7 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
       pageSize: 1,
     });
 
-    return result.items.find((item) => item.id === updated.id) ?? null;
+    return result.items.find((item) => item.id === updatedId) ?? null;
   }
 
   async list(input: ListVerifactuSubmissionsInput): Promise<PaginatedVerifactuSubmissions> {
