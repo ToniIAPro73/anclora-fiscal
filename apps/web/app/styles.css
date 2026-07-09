@@ -2569,3 +2569,56 @@ body {
     width: 100%;
   }
 }
+
+
+.import-workbench-single {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+}
+
+.import-source-selector {
+  max-width: 960px;
+}
+
+.import-source-selector-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.import-source-selector-fields label {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.import-source-selector-fields select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--surface-muted);
+  color: var(--text);
+  padding: 0.85rem 1rem;
+}
+
+.import-source-selector-fields select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.import-selected-card {
+  max-width: 960px;
+}
+
+.import-card-placeholder {
+  max-width: 960px;
+}
+
+@media (max-width: 760px) {
+  .import-source-selector-fields {
+    grid-template-columns: 1fr;
+  }
+}

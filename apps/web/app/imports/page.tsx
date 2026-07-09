@@ -7,7 +7,7 @@ export default function ImportsPage() {
     <PageHeader
       eyebrow="01 / EVIDENCIA ORIGINAL"
       title="Bandeja de importaciones"
-      description="Analiza cada fuente por separado y confirma sólo después de revisar su evidencia."
+      description="Selecciona la plataforma, el tipo de archivo y confirma sólo después de revisar su vista previa."
       backHref="/"
     />
     <ImportUploader />
