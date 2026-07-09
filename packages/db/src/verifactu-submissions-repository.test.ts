@@ -24,6 +24,7 @@ async function seedSubmission(
     environment?: string;
     status?: string;
     sourceOrderId?: string;
+    attemptCount?: string;
   },
 ) {
   const [tenant] = await db
@@ -109,13 +110,13 @@ async function seedSubmission(
         documentNumber: document.number,
       },
       responseRedacted: null,
-      attemptCount: '0',
+      attemptCount: input.attemptCount ?? '0',
     })
     .returning({ id: verifactuSubmissions.id });
 
   if (!submission) throw new Error('No se pudo crear el submission VERI*FACTU');
 
-  return { tenantId: tenant.id, documentNumber: document.number };
+  return { tenantId: tenant.id, documentNumber: document.number, submissionId: submission.id };
 }
 
 describe('DrizzleVerifactuSubmissionsRepository', () => {
@@ -193,6 +194,195 @@ describe('DrizzleVerifactuSubmissionsRepository', () => {
       tenantId: first.tenantId,
       environment: 'mock',
       status: 'PENDING',
+    });
+  });
+});
+
+
+describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
+  it('aplica un outcome aceptado sólo sobre submissions PENDING del tenant', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-apply-accepted',
+      environment: 'test',
+      status: 'PENDING',
+      attemptCount: '0',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const updated = await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-ref-1',
+          message: 'Aceptado en entorno de pruebas',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(updated).toMatchObject({
+      id: seeded.submissionId,
+      tenantId: seeded.tenantId,
+      environment: 'test',
+      status: 'ACCEPTED',
+      attemptCount: '1',
+      fiscalDocumentNumber: seeded.documentNumber,
+    });
+
+    expect(updated?.responseRedacted).toMatchObject({
+      schemaVersion: 'anclora-verifactu-response-redacted-v1',
+      environment: 'test',
+      status: 'ACCEPTED',
+      reference: 'aeat-ref-1',
+      message: 'Aceptado en entorno de pruebas',
+    });
+  });
+
+  it('incrementa attemptCount conservando el contador previo', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-apply-retry',
+      environment: 'test',
+      status: 'PENDING',
+      attemptCount: '2',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const updated = await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'TECHNICAL_ERROR',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'TECHNICAL_ERROR',
+          reference: null,
+          message: 'SOAP_TIMEOUT',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(updated).toMatchObject({
+      id: seeded.submissionId,
+      status: 'TECHNICAL_ERROR',
+      attemptCount: '3',
+    });
+  });
+
+  it('no actualiza submissions que no pertenecen al tenant', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-apply-cross-tenant',
+      environment: 'test',
+      status: 'PENDING',
+    });
+
+    const other = await seedSubmission(db, {
+      slug: 'tenant-verifactu-apply-cross-tenant-other',
+      environment: 'test',
+      status: 'PENDING',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const updated = await repository.applyAttemptOutcome({
+      tenantId: other.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-ref-cross',
+          message: 'No debería aplicarse',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(updated).toBeNull();
+
+    const original = await repository.list({
+      tenantId: seeded.tenantId,
+      page: 1,
+      pageSize: 25,
+    });
+
+    expect(original.items[0]).toMatchObject({
+      id: seeded.submissionId,
+      status: 'PENDING',
+      attemptCount: '0',
+      responseRedacted: null,
+    });
+  });
+
+  it('no reescribe submissions que ya no están PENDING', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-apply-not-pending',
+      environment: 'test',
+      status: 'ACCEPTED',
+      attemptCount: '1',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const updated = await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'REJECTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'REJECTED',
+          reference: 'aeat-ref-rejected',
+          message: 'No debería sobrescribir',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+    });
+
+    expect(updated).toBeNull();
+
+    const current = await repository.list({
+      tenantId: seeded.tenantId,
+      page: 1,
+      pageSize: 25,
+    });
+
+    expect(current.items[0]).toMatchObject({
+      id: seeded.submissionId,
+      status: 'ACCEPTED',
+      attemptCount: '1',
+      responseRedacted: null,
     });
   });
 });

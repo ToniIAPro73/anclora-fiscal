@@ -1,4 +1,5 @@
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import type { VerifactuSubmissionAttemptOutcome } from '@anclora/core/server';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
@@ -43,10 +44,43 @@ export interface PaginatedVerifactuSubmissions {
   total: number;
 }
 
+export interface ApplyVerifactuSubmissionOutcomeInput {
+  tenantId: string;
+  submissionId: string;
+  outcome: VerifactuSubmissionAttemptOutcome;
+}
+
 export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryResultHKT> {
   constructor(
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
+
+  async applyAttemptOutcome(input: ApplyVerifactuSubmissionOutcomeInput): Promise<VerifactuSubmissionListItem | null> {
+    const [updated] = await this.db
+      .update(verifactuSubmissions)
+      .set({
+        status: input.outcome.status,
+        responseRedacted: input.outcome.responseRedacted,
+        attemptCount: sql`${verifactuSubmissions.attemptCount} + ${input.outcome.attemptCountIncrement}`,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(verifactuSubmissions.tenantId, input.tenantId),
+        eq(verifactuSubmissions.id, input.submissionId),
+        eq(verifactuSubmissions.status, 'PENDING'),
+      ))
+      .returning({ id: verifactuSubmissions.id });
+
+    if (!updated) return null;
+
+    const result = await this.list({
+      tenantId: input.tenantId,
+      page: 1,
+      pageSize: 1,
+    });
+
+    return result.items.find((item) => item.id === updated.id) ?? null;
+  }
 
   async list(input: ListVerifactuSubmissionsInput): Promise<PaginatedVerifactuSubmissions> {
     const conditions: SQL[] = [
