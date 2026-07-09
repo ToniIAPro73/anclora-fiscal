@@ -1,102 +1,143 @@
+import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import VerifactuPage from './page';
 
 vi.mock('next/image', () => ({
-  default: (props: Record<string, unknown>) => {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img alt="" {...props} />;
+  default: ({
+    src,
+    alt,
+    ...props
+  }: ComponentPropsWithoutRef<'img'> & { src: string | { src?: string } }) => {
+    const resolvedSrc = typeof src === 'string' ? src : src.src ?? '';
+
+    return <img src={resolvedSrc} alt={alt ?? ''} {...props} />;
   },
 }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/verifactu' }));
-vi.mock('../components/app-shell', () => ({
-  AppShell: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+
+vi.mock('../app-shell', () => ({
+  AppShell: ({ children }: { children: ReactNode }) => <main>{children}</main>,
 }));
 
-const fetchMock = vi.fn();
+function jsonResponse(body: unknown, ok = true) {
+  return {
+    ok,
+    status: ok ? 200 : 500,
+    json: async () => body,
+  } as Response;
+}
 
-beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal('fetch', fetchMock);
-});
+const runtimeTest = {
+  status: 'ok',
+  verifactuEnabled: true,
+  verifactuMode: 'test',
+  verifactuCanSubmit: true,
+  verifactuProductionSafe: true,
+};
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+const runtimeDisabled = {
+  status: 'ok',
+  verifactuEnabled: false,
+  verifactuMode: 'disabled',
+  verifactuCanSubmit: false,
+  verifactuProductionSafe: true,
+};
+
+const runtimeProductionBlocked = {
+  status: 'ok',
+  verifactuEnabled: true,
+  verifactuMode: 'production',
+  verifactuCanSubmit: false,
+  verifactuProductionSafe: false,
+};
 
 describe('VerifactuPage', () => {
-  it('renders the operational read model with no send action', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renderiza el panel operativo sin acción de envío', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(runtimeTest))
+      .mockResolvedValueOnce(jsonResponse({
         items: [
           {
-            id: 'vs-1',
-            environment: 'mock',
-            status: 'PENDING',
-            attemptCount: '0',
-            payloadRedacted: { documentNumber: 'FS-1' },
-            responseRedacted: null,
-            fiscalDocumentId: 'fd-1',
+            id: 'submission-1',
             fiscalDocumentNumber: 'FS-1',
             documentType: 'SIMPLIFICADA',
-            issuedAt: '2026-07-09T00:00:00.000Z',
+            issuedAt: '2026-07-09T10:00:00.000Z',
+            environment: 'test',
+            status: 'PENDING',
             recordType: 'ALTA',
-            chainHash: '1234567890abcdef123456',
+            chainHash: 'abcdef1234567890abcdef1234567890',
             previousHash: null,
+            attemptCount: '0',
           },
         ],
         page: 1,
         pageSize: 25,
         total: 1,
-      }),
-    });
+      }));
+
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<VerifactuPage />);
 
     expect(screen.getByRole('heading', { level: 1, name: 'VERI*FACTU' })).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(screen.getByText('FS-1')).toBeInTheDocument();
-    });
+    expect(await screen.findByText('FS-1')).toBeInTheDocument();
+    expect(screen.getByText('Preparación VERI*FACTU')).toBeInTheDocument();
+    expect(screen.getByText('Integración preparada')).toBeInTheDocument();
+    expect(screen.getByText('Preparado')).toBeInTheDocument();
+    expect(screen.getByText('Simplificada')).toBeInTheDocument();
+    expect(screen.getAllByText('Pendiente').length).toBeGreaterThan(0);
 
-    expect(screen.getAllByText('Mock local').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('Pendiente').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('ALTA')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /emitir|enviar/i })).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/verifactu/submissions?page=1&pageSize=25', {
-      credentials: 'include',
-    });
+    expect(screen.getAllByText('AEAT pruebas').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/submit/i)).not.toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledWith('/health', { credentials: 'include' });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/verifactu/submissions?page=1&pageSize=25',
+      { credentials: 'include' },
+    );
   });
 
-  it('renders an empty state when there are no prepared records', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({
+  it('renderiza estado vacío cuando no hay registros', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(runtimeDisabled))
+      .mockResolvedValueOnce(jsonResponse({
         items: [],
         page: 1,
         pageSize: 25,
         total: 0,
-      }),
-    });
+      }));
+
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<VerifactuPage />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Sin registros VERI*FACTU')).toBeInTheDocument();
-    });
+    expect(await screen.findByText('Sin registros VERI*FACTU aún')).toBeInTheDocument();
+    expect(screen.getByText('Las facturas emitidas o rectificadas aparecerán aquí con su estado de preparación, entorno y trazabilidad de cadena.')).toBeInTheDocument();
+    expect(screen.getAllByText('Desactivado').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
   });
 
-  it('renders an error state when the API fails', async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      json: async () => ({ code: 'ERROR' }),
-    });
+  it('renderiza error cuando falla el read model', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(runtimeProductionBlocked))
+      .mockResolvedValueOnce(jsonResponse({}, false));
+
+    vi.stubGlobal('fetch', fetchMock);
 
     render(<VerifactuPage />);
 
     await waitFor(() => {
-      expect(screen.getByText('No se pudo consultar el estado VERI*FACTU')).toBeInTheDocument();
+      expect(screen.getByText('No se pudieron cargar los registros VERI*FACTU')).toBeInTheDocument();
     });
+
+    expect(screen.getByText('Producción bloqueada')).toBeInTheDocument();
+    expect(screen.getByText('Revisión necesaria')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
   });
 });

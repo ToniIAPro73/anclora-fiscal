@@ -7,7 +7,7 @@ export default function VerifactuPage() {
     <PageHeader
       eyebrow="05 / INTEGRIDAD"
       title="VERI*FACTU"
-      description="Estado de preparación de los registros VERI*FACTU generados desde la facturación fiscal. La integración de envío AEAT todavía no está activa."
+      description="Control de preparación, trazabilidad e integridad de los registros VERI*FACTU generados desde la facturación fiscal."
       backHref="/"
     />
     <VerifactuSubmissionsPanel />
