@@ -22,6 +22,7 @@ import { createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceR
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
+import { createVerifactuSubmissionsListHandler, type VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
 import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
@@ -80,6 +81,7 @@ export async function buildApp(options: {
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
+  verifactuSubmissionsRepository?: VerifactuSubmissionsRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
   shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort | undefined;
@@ -273,6 +275,11 @@ export async function buildApp(options: {
     '/api/v1/periods/:period/vat-dossier',
     { preHandler: requireRole(['dossier:read']) },
     createVatDossierGetHandler({ repository: options.vatDossiersRepository }),
+  );
+  app.get(
+    '/api/v1/verifactu/submissions',
+    { preHandler: requireRole(['documents:read']) },
+    createVerifactuSubmissionsListHandler({ repository: options.verifactuSubmissionsRepository }),
   );
   app.get(
     '/api/v1/dashboard/summary',

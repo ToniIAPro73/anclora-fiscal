@@ -61,4 +61,19 @@ describe('API foundation', () => {
     expect(response.statusCode).not.toBe(404);
     expect(response.json()).not.toMatchObject({ error: 'Not Found' });
   });
+
+  it('registra la ruta GET /api/v1/verifactu/submissions como read model sin envío', async () => {
+    const app = await buildApp();
+    apps.push(app);
+
+    const response = await app.inject({ method: 'GET', url: '/api/v1/verifactu/submissions' });
+    expect(response.statusCode).not.toBe(404);
+    expect(response.json()).not.toMatchObject({ error: 'Not Found' });
+
+    await app.ready();
+    const routes = app.printRoutes();
+    expect(routes).toMatch(/verifactu\/submissions/i);
+    expect(routes).not.toMatch(/verifactu\/submit/i);
+    expect(routes).not.toMatch(/verifactu\/send/i);
+  });
 });
