@@ -222,189 +222,206 @@ function portalReasonLabel(reason: string): string {
   return labels[reason] ?? reason;
 }
 
-function VerifactuAeatPortalStatusCard({ readiness }: { readiness: AeatPortalReadiness | null }) {
+function executiveTitle(runtime: VerifactuRuntimeStatus | null): string {
+  if (!runtime) return 'Estado VERI*FACTU no disponible';
+  if (!runtime.verifactuProductionSafe) return 'Producción bloqueada';
+  if (!runtime.verifactuEnabled) return 'VERI*FACTU en modo sólo lectura';
+  if (runtime.verifactuCanSubmit) return 'Preparación técnica completada';
+  return 'Preparación local sin envío activo';
+}
+
+function executiveDescription(runtime: VerifactuRuntimeStatus | null): string {
+  if (!runtime) return 'No se ha podido leer el estado operativo del backend.';
+  if (!runtime.verifactuProductionSafe) return 'La aplicación bloquea cualquier activación productiva hasta completar la configuración segura.';
+  if (!runtime.verifactuEnabled) return 'La trazabilidad se mantiene visible, pero no hay flujo de envío habilitado.';
+  if (runtime.verifactuCanSubmit) return 'El sistema tiene los prerrequisitos técnicos preparados, manteniendo la interfaz en modo lectura.';
+  return 'El flujo público sigue protegido: no hay acción manual de envío desde la aplicación.';
+}
+
+function technicalGateLabel(runtime: VerifactuRuntimeStatus | null): string {
+  if (!runtime) return 'Sin lectura';
+  if (!runtime.verifactuProductionSafe) return 'Bloqueado';
+  if (runtime.verifactuCanSubmit) return 'Preparado';
+  return 'Protegido';
+}
+
+function endpointLine(readiness: AeatPortalReadiness | null): string {
+  return readiness?.endpointHost ? `Host configurado: ${readiness.endpointHost}` : 'No hay endpoint AEAT configurado.';
+}
+
+function MetricTile({
+  label,
+  value,
+  badge,
+  tone,
+  note,
+}: {
+  label: string;
+  value: string;
+  badge: string;
+  tone: 'info' | 'warning' | 'high' | 'blocking';
+  note?: string | undefined;
+}) {
+  return (
+    <article className="verifactu-metric">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <StatusBadge tone={tone}>{badge}</StatusBadge>
+      {note ? <p>{note}</p> : null}
+    </article>
+  );
+}
+
+function VerifactuExecutiveOverview({ runtime }: { runtime: VerifactuRuntimeStatus | null }) {
+  const readiness = runtime?.aeatPortalReadiness ?? null;
+  const preflight = runtime?.aeatXmlPreflight ?? null;
+  const transport = runtime?.aeatSoapTransport ?? null;
+
+  return (
+    <section className="verifactu-premium-hero" aria-label="Resumen operativo VERI*FACTU">
+      <article className="verifactu-command-card">
+        <div>
+          <p className="eyebrow">Estado del sistema</p>
+          <h2>Preparación VERI*FACTU</h2>
+          <p>Lectura ejecutiva del modo operativo, seguridad y disponibilidad técnica.</p>
+        </div>
+
+        <div className="verifactu-command-grid">
+          <MetricTile
+            label="Modo operativo"
+            value={runtime ? modeLabel(runtime.verifactuMode) : 'No disponible'}
+            badge={runtime?.verifactuEnabled ? 'Activo' : 'Inactivo'}
+            tone={runtimeTone(runtime)}
+          />
+          <MetricTile
+            label="Preparación de envío"
+            value={preparationLabel(runtime)}
+            badge={runtime?.verifactuCanSubmit ? 'Preparado' : 'No activo'}
+            tone={runtime?.verifactuCanSubmit ? 'info' : 'warning'}
+          />
+          <MetricTile
+            label="Seguridad de producción"
+            value={productionSafetyLabel(runtime)}
+            badge={runtime?.verifactuProductionSafe === false ? 'Revisión necesaria' : 'Seguro'}
+            tone={runtime?.verifactuProductionSafe === false ? 'blocking' : 'info'}
+          />
+        </div>
+      </article>
+
+      <article className="verifactu-executive-card">
+        <p className="eyebrow">Resumen ejecutivo</p>
+        <h2>{executiveTitle(runtime)}</h2>
+        <p>{executiveDescription(runtime)}</p>
+
+        <dl className="verifactu-executive-list">
+          <div>
+            <dt>Portal AEAT</dt>
+            <dd>{portalReadinessLabel(readiness)}</dd>
+          </div>
+          <div>
+            <dt>Certificado</dt>
+            <dd>{certificateLabel(readiness)}</dd>
+          </div>
+          <div>
+            <dt>XML local</dt>
+            <dd>{preflight?.enabled ? 'Validación activa' : 'No disponible'}</dd>
+          </div>
+          <div>
+            <dt>Red</dt>
+            <dd>{transport?.networkEnabled ? 'Red habilitada' : 'Red desactivada'}</dd>
+          </div>
+        </dl>
+
+        <p className="verifactu-readonly-note">
+          Esta pantalla es sólo de lectura. No existe acción de envío manual a la AEAT desde la interfaz.
+        </p>
+      </article>
+    </section>
+  );
+}
+
+function VerifactuTechnicalReadinessCard({ runtime }: { runtime: VerifactuRuntimeStatus | null }) {
+  const readiness = runtime?.aeatPortalReadiness ?? null;
+  const preflight = runtime?.aeatXmlPreflight ?? null;
+  const transport = runtime?.aeatSoapTransport ?? null;
   const blockedReasons = readiness?.blockedReasons ?? [];
   const warnings = readiness?.warnings ?? [];
 
   return (
-    <section className="verifactu-status-card" aria-label="Estado del portal AEAT VERI*FACTU">
-      <div className="verifactu-status-heading">
-        <p className="eyebrow">Portal AEAT</p>
-        <h2>Preparación del entorno de pruebas</h2>
-        <p>
-          Comprueba endpoint, certificado y restricciones de uso antes de activar cualquier integración externa.
-        </p>
+    <section className="verifactu-technical-card" aria-label="Preparación técnica VERI*FACTU">
+      <div className="verifactu-section-heading">
+        <div>
+          <p className="eyebrow">Preparación técnica</p>
+          <h2>Entorno, XML y transporte</h2>
+        </div>
+        <StatusBadge tone={runtime?.verifactuProductionSafe === false ? 'blocking' : 'info'}>
+          {technicalGateLabel(runtime)}
+        </StatusBadge>
       </div>
 
-      <div className="verifactu-status-grid">
-        <article className="verifactu-metric">
-          <span>Estado del portal</span>
-          <strong>{portalReadinessLabel(readiness)}</strong>
-          <StatusBadge tone={readiness?.ready ? 'info' : 'warning'}>
-            {readiness?.ready ? 'Listo' : 'Pendiente'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Certificado</span>
-          <strong>{certificateLabel(readiness)}</strong>
-          <StatusBadge tone={readiness?.certificateConfigured ? 'info' : 'warning'}>
-            {readiness?.certificateConfigured ? 'Configurado' : 'Pendiente'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Política de uso</span>
-          <strong>{portalPolicyLabel(readiness)}</strong>
-          <StatusBadge tone={readiness?.allowAutomatedLoadTests ? 'blocking' : 'info'}>
-            {readiness?.allowAutomatedLoadTests ? 'Bloqueado' : 'Controlado'}
-          </StatusBadge>
-        </article>
+      <div className="verifactu-technical-grid">
+        <MetricTile
+          label="Portal AEAT"
+          value={portalReadinessLabel(readiness)}
+          badge={readiness?.ready ? 'Listo' : 'Pendiente'}
+          tone={readiness?.ready ? 'info' : 'warning'}
+          note={endpointLine(readiness)}
+        />
+        <MetricTile
+          label="Certificado"
+          value={certificateLabel(readiness)}
+          badge={readiness?.certificateConfigured ? 'Configurado' : 'Pendiente'}
+          tone={readiness?.certificateConfigured ? 'info' : 'warning'}
+          note={readiness?.certificateFingerprint ? 'Huella configurada' : 'Falta huella del certificado'}
+        />
+        <MetricTile
+          label="Preflight XML"
+          value={preflight?.enabled ? 'Validación activa' : 'No disponible'}
+          badge={preflight?.blocksInvalidXmlBeforeAdapter ? 'Bloqueante' : 'Informativo'}
+          tone={preflight?.enabled ? 'info' : 'warning'}
+          note={preflight?.schemaProfile ?? 'Sin perfil local'}
+        />
+        <MetricTile
+          label="Transporte SOAP"
+          value={transport?.implemented ? 'Transporte SOAP preparado' : 'No disponible'}
+          badge={transport?.networkEnabled ? 'Revisar' : 'Seguro'}
+          tone={transport?.networkEnabled ? 'blocking' : 'info'}
+          note={transport?.operation ?? 'RegFactuSistemaFacturacion'}
+        />
       </div>
 
-      <p className="verifactu-readonly-note">
-        {readiness?.endpointHost ? `Host configurado: ${readiness.endpointHost}` : 'No hay endpoint AEAT configurado.'}
-      </p>
-
-      {blockedReasons.length > 0 ? (
-        <p className="verifactu-readonly-note">
-          Pendiente: {portalReasonLabel(blockedReasons[0] ?? '')}
-        </p>
-      ) : null}
-
-      {warnings.length > 0 ? (
-        <p className="verifactu-readonly-note">
-          Aviso: {portalReasonLabel(warnings[0] ?? '')}
-        </p>
-      ) : null}
-    </section>
-  );
-}
-
-function VerifactuAeatXmlPreflightCard({ preflight }: { preflight: AeatXmlPreflightStatus | null }) {
-  return (
-    <section className="verifactu-status-card" aria-label="Validación local AEAT VERI*FACTU">
-      <div className="verifactu-status-heading">
-        <p className="eyebrow">Preflight XML</p>
-        <h2>Validación local antes del adaptador</h2>
-        <p>
-          Comprueba la estructura AEAT del XML antes de cualquier intento técnico de integración.
-        </p>
-      </div>
-
-      <div className="verifactu-status-grid">
-        <article className="verifactu-metric">
-          <span>Estado</span>
-          <strong>{preflight?.enabled ? 'Validación activa' : 'No disponible'}</strong>
-          <StatusBadge tone={preflight?.enabled ? 'info' : 'warning'}>
-            {preflight?.enabled ? 'Activo' : 'Pendiente'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Perfil</span>
-          <strong>{preflight?.schemaProfile ?? 'No disponible'}</strong>
-          <StatusBadge tone="info">Local</StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Límite por envío</span>
-          <strong>{preflight?.maxRegistroFacturaPerEnvelope ?? 0} registros</strong>
-          <StatusBadge tone={preflight?.blocksInvalidXmlBeforeAdapter ? 'info' : 'warning'}>
-            {preflight?.blocksInvalidXmlBeforeAdapter ? 'Bloqueante' : 'Informativo'}
-          </StatusBadge>
-        </article>
-      </div>
-
-      <p className="verifactu-readonly-note">
-        Este control no envía datos a AEAT. Sólo bloquea XML inválido antes del adaptador interno.
-      </p>
-    </section>
-  );
-}
-
-function VerifactuAeatSoapTransportCard({ transport }: { transport: AeatSoapTransportStatus | null }) {
-  return (
-    <section className="verifactu-status-card" aria-label="Transporte SOAP AEAT VERI*FACTU">
-      <div className="verifactu-status-heading">
-        <p className="eyebrow">Transporte SOAP</p>
-        <h2>Cliente AEAT preparado, red desactivada</h2>
-        <p>
-          La app conoce la operación SOAP oficial, pero no ejecuta envío real desde la interfaz ni desde endpoints públicos.
-        </p>
-      </div>
-
-      <div className="verifactu-status-grid">
-        <article className="verifactu-metric">
-          <span>Implementación</span>
-          <strong>{transport?.implemented ? 'Transporte SOAP preparado' : 'No disponible'}</strong>
-          <StatusBadge tone={transport?.implemented ? 'info' : 'warning'}>
-            {transport?.implemented ? 'Preparado' : 'Pendiente'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Red</span>
-          <strong>{transport?.networkEnabled ? 'Red habilitada' : 'Red desactivada'}</strong>
-          <StatusBadge tone={transport?.networkEnabled ? 'blocking' : 'info'}>
-            {transport?.networkEnabled ? 'Revisar' : 'Seguro'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Operación</span>
-          <strong>{transport?.operation ?? 'No disponible'}</strong>
-          <StatusBadge tone="info">SOAP</StatusBadge>
-        </article>
-      </div>
-
-      <p className="verifactu-readonly-note">
-        Estado interno: {transport?.wiredIntoSubmissionFlow ? 'cableado al flujo interno' : 'no cableado al flujo de envío'}.
-      </p>
-    </section>
-  );
-}
-
-function VerifactuSystemStatusCard({ runtime }: { runtime: VerifactuRuntimeStatus | null }) {
-  return (
-    <section className="verifactu-status-card" aria-label="Estado del sistema VERI*FACTU">
-      <div className="verifactu-status-heading">
-        <p className="eyebrow">Estado del sistema</p>
-        <h2>Preparación VERI*FACTU</h2>
-        <p>
-          Consulta el modo operativo actual, la preparación de la integración y el estado de seguridad antes de cualquier activación de envío.
-        </p>
-      </div>
-
-      <div className="verifactu-status-grid">
-        <article className="verifactu-metric">
-          <span>Modo operativo</span>
-          <strong>{runtime ? modeLabel(runtime.verifactuMode) : 'No disponible'}</strong>
-          <StatusBadge tone={runtimeTone(runtime)}>
-            {runtime?.verifactuEnabled ? 'Activo' : 'Inactivo'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Preparación de envío</span>
-          <strong>{preparationLabel(runtime)}</strong>
-          <StatusBadge tone={runtime?.verifactuCanSubmit ? 'info' : 'warning'}>
-            {runtime?.verifactuCanSubmit ? 'Preparado' : 'No activo'}
-          </StatusBadge>
-        </article>
-
-        <article className="verifactu-metric">
-          <span>Seguridad de producción</span>
-          <strong>{productionSafetyLabel(runtime)}</strong>
-          <StatusBadge tone={runtime?.verifactuProductionSafe === false ? 'blocking' : 'info'}>
-            {runtime?.verifactuProductionSafe === false ? 'Revisión necesaria' : 'Seguro'}
-          </StatusBadge>
-        </article>
-      </div>
-
-      <p className="verifactu-readonly-note">
-        Esta pantalla es sólo de lectura. No existe acción de envío manual a la AEAT desde la interfaz.
-      </p>
+      <details className="verifactu-technical-detail">
+        <summary>Ver detalle técnico</summary>
+        <dl>
+          <div>
+            <dt>Política de uso</dt>
+            <dd>{portalPolicyLabel(readiness)}</dd>
+          </div>
+          <div>
+            <dt>Perfil XML</dt>
+            <dd>{preflight?.schemaProfile ?? 'No disponible'}</dd>
+          </div>
+          <div>
+            <dt>Límite por envío</dt>
+            <dd>{preflight?.maxRegistroFacturaPerEnvelope ?? 0} registros</dd>
+          </div>
+          <div>
+            <dt>Operación SOAP</dt>
+            <dd>{transport?.operation ?? 'RegFactuSistemaFacturacion'}</dd>
+          </div>
+          <div>
+            <dt>Cableado interno</dt>
+            <dd>{transport?.wiredIntoSubmissionFlow ? 'cableado al flujo interno' : 'no cableado al flujo de envío'}</dd>
+          </div>
+          <div>
+            <dt>Diagnóstico</dt>
+            <dd>
+              {blockedReasons.length > 0 ? `Pendiente: ${portalReasonLabel(blockedReasons[0] ?? '')}` : 'Sin bloqueos principales'}
+              {warnings.length > 0 ? ` · Aviso: ${portalReasonLabel(warnings[0] ?? '')}` : ''}
+            </dd>
+          </div>
+        </dl>
+      </details>
     </section>
   );
 }
@@ -412,11 +429,13 @@ function VerifactuSystemStatusCard({ runtime }: { runtime: VerifactuRuntimeStatu
 function VerifactuFiltersCard({
   status,
   environment,
+  total,
   onStatusChange,
   onEnvironmentChange,
 }: {
   status: string;
   environment: string;
+  total: number;
   onStatusChange: (value: string) => void;
   onEnvironmentChange: (value: string) => void;
 }) {
@@ -424,8 +443,7 @@ function VerifactuFiltersCard({
     <section className="verifactu-filters-card" aria-label="Filtros de registros VERI*FACTU">
       <div>
         <p className="eyebrow">Filtros</p>
-        <h2>Filtrar registros</h2>
-        <p>Acota la vista por estado o entorno de preparación.</p>
+        <h2>Registros</h2>
       </div>
 
       <div className="verifactu-filters-grid">
@@ -447,6 +465,8 @@ function VerifactuFiltersCard({
           </select>
         </div>
       </div>
+
+      <span className="verifactu-count">{total} registro{total === 1 ? '' : 's'}</span>
     </section>
   );
 }
@@ -741,14 +761,13 @@ export function VerifactuSubmissionsPanel() {
 
   return (
     <div className="verifactu-layout">
-      <VerifactuSystemStatusCard runtime={runtime} />
-      <VerifactuAeatPortalStatusCard readiness={runtime?.aeatPortalReadiness ?? null} />
-      <VerifactuAeatXmlPreflightCard preflight={runtime?.aeatXmlPreflight ?? null} />
-      <VerifactuAeatSoapTransportCard transport={runtime?.aeatSoapTransport ?? null} />
+      <VerifactuExecutiveOverview runtime={runtime} />
+      <VerifactuTechnicalReadinessCard runtime={runtime} />
 
       <VerifactuFiltersCard
         status={status}
         environment={environment}
+        total={pagination.total}
         onStatusChange={(value) => {
           setStatus(value);
           setExpandedId(null);

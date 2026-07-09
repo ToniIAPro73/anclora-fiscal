@@ -174,13 +174,13 @@ describe('VerifactuPage', () => {
     expect(await screen.findByText('FS-1')).toBeInTheDocument();
     expect(screen.getByText('Preparación VERI*FACTU')).toBeInTheDocument();
     expect(screen.getByText('Integración preparada')).toBeInTheDocument();
-    expect(screen.getByText('Portal de pruebas preparado')).toBeInTheDocument();
+    expect(screen.getAllByText('Portal de pruebas preparado').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Host configurado: prewww10.aeat.es')).toBeInTheDocument();
-    expect(screen.getByText('Validación activa')).toBeInTheDocument();
-    expect(screen.getByText('aeat-suministro-lr-local-preflight-v1')).toBeInTheDocument();
-    expect(screen.getByText('Transporte SOAP preparado')).toBeInTheDocument();
-    expect(screen.getByText('Red desactivada')).toBeInTheDocument();
-    expect(screen.getByText('RegFactuSistemaFacturacion')).toBeInTheDocument();
+    expect(screen.getAllByText('Validación activa').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('aeat-suministro-lr-local-preflight-v1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Transporte SOAP preparado').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Red desactivada').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('RegFactuSistemaFacturacion').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Preparado').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Simplificada')).toBeInTheDocument();
     expect(screen.getAllByText('Pendiente').length).toBeGreaterThan(0);
@@ -240,7 +240,7 @@ describe('VerifactuPage', () => {
       expect(screen.getByText('No se pudieron cargar los registros VERI*FACTU')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Producción bloqueada')).toBeInTheDocument();
+    expect(screen.getAllByText('Producción bloqueada').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Revisión necesaria')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
   });
