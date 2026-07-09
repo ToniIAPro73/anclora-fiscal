@@ -83,6 +83,18 @@ describe('API foundation', () => {
             certificateConfigured: true,
             usagePolicy: 'manual-preproduction-tests-only',
           },
+          aeatXmlPreflight: {
+            enabled: true,
+            schemaProfile: 'aeat-suministro-lr-local-preflight-v1',
+            blocksInvalidXmlBeforeAdapter: true,
+            maxRegistroFacturaPerEnvelope: 1000,
+          },
+          aeatSoapTransport: {
+            implemented: true,
+            wiredIntoSubmissionFlow: false,
+            networkEnabled: false,
+            operation: 'RegFactuSistemaFacturacion',
+          },
         });
 
         await app.close();

@@ -18,6 +18,22 @@ interface AeatPortalReadiness {
   usagePolicy: string;
 }
 
+interface AeatXmlPreflightStatus {
+  enabled: boolean;
+  schemaProfile: string;
+  blocksInvalidXmlBeforeAdapter: boolean;
+  maxRegistroFacturaPerEnvelope: number;
+}
+
+interface AeatSoapTransportStatus {
+  implemented: boolean;
+  wiredIntoSubmissionFlow: boolean;
+  networkEnabled: boolean;
+  operation: string;
+  soapAction: string;
+  safety: string;
+}
+
 interface VerifactuRuntimeStatus {
   status: string;
   verifactuEnabled: boolean;
@@ -25,6 +41,8 @@ interface VerifactuRuntimeStatus {
   verifactuCanSubmit: boolean;
   verifactuProductionSafe: boolean;
   aeatPortalReadiness?: AeatPortalReadiness | undefined;
+  aeatXmlPreflight?: AeatXmlPreflightStatus | undefined;
+  aeatSoapTransport?: AeatSoapTransportStatus | undefined;
 }
 
 interface VerifactuSubmission {
@@ -259,6 +277,90 @@ function VerifactuAeatPortalStatusCard({ readiness }: { readiness: AeatPortalRea
           Aviso: {portalReasonLabel(warnings[0] ?? '')}
         </p>
       ) : null}
+    </section>
+  );
+}
+
+function VerifactuAeatXmlPreflightCard({ preflight }: { preflight: AeatXmlPreflightStatus | null }) {
+  return (
+    <section className="verifactu-status-card" aria-label="Validación local AEAT VERI*FACTU">
+      <div className="verifactu-status-heading">
+        <p className="eyebrow">Preflight XML</p>
+        <h2>Validación local antes del adaptador</h2>
+        <p>
+          Comprueba la estructura AEAT del XML antes de cualquier intento técnico de integración.
+        </p>
+      </div>
+
+      <div className="verifactu-status-grid">
+        <article className="verifactu-metric">
+          <span>Estado</span>
+          <strong>{preflight?.enabled ? 'Validación activa' : 'No disponible'}</strong>
+          <StatusBadge tone={preflight?.enabled ? 'info' : 'warning'}>
+            {preflight?.enabled ? 'Activo' : 'Pendiente'}
+          </StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Perfil</span>
+          <strong>{preflight?.schemaProfile ?? 'No disponible'}</strong>
+          <StatusBadge tone="info">Local</StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Límite por envío</span>
+          <strong>{preflight?.maxRegistroFacturaPerEnvelope ?? 0} registros</strong>
+          <StatusBadge tone={preflight?.blocksInvalidXmlBeforeAdapter ? 'info' : 'warning'}>
+            {preflight?.blocksInvalidXmlBeforeAdapter ? 'Bloqueante' : 'Informativo'}
+          </StatusBadge>
+        </article>
+      </div>
+
+      <p className="verifactu-readonly-note">
+        Este control no envía datos a AEAT. Sólo bloquea XML inválido antes del adaptador interno.
+      </p>
+    </section>
+  );
+}
+
+function VerifactuAeatSoapTransportCard({ transport }: { transport: AeatSoapTransportStatus | null }) {
+  return (
+    <section className="verifactu-status-card" aria-label="Transporte SOAP AEAT VERI*FACTU">
+      <div className="verifactu-status-heading">
+        <p className="eyebrow">Transporte SOAP</p>
+        <h2>Cliente AEAT preparado, red desactivada</h2>
+        <p>
+          La app conoce la operación SOAP oficial, pero no ejecuta envío real desde la interfaz ni desde endpoints públicos.
+        </p>
+      </div>
+
+      <div className="verifactu-status-grid">
+        <article className="verifactu-metric">
+          <span>Implementación</span>
+          <strong>{transport?.implemented ? 'Transporte SOAP preparado' : 'No disponible'}</strong>
+          <StatusBadge tone={transport?.implemented ? 'info' : 'warning'}>
+            {transport?.implemented ? 'Preparado' : 'Pendiente'}
+          </StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Red</span>
+          <strong>{transport?.networkEnabled ? 'Red habilitada' : 'Red desactivada'}</strong>
+          <StatusBadge tone={transport?.networkEnabled ? 'blocking' : 'info'}>
+            {transport?.networkEnabled ? 'Revisar' : 'Seguro'}
+          </StatusBadge>
+        </article>
+
+        <article className="verifactu-metric">
+          <span>Operación</span>
+          <strong>{transport?.operation ?? 'No disponible'}</strong>
+          <StatusBadge tone="info">SOAP</StatusBadge>
+        </article>
+      </div>
+
+      <p className="verifactu-readonly-note">
+        Estado interno: {transport?.wiredIntoSubmissionFlow ? 'cableado al flujo interno' : 'no cableado al flujo de envío'}.
+      </p>
     </section>
   );
 }
@@ -641,6 +743,8 @@ export function VerifactuSubmissionsPanel() {
     <div className="verifactu-layout">
       <VerifactuSystemStatusCard runtime={runtime} />
       <VerifactuAeatPortalStatusCard readiness={runtime?.aeatPortalReadiness ?? null} />
+      <VerifactuAeatXmlPreflightCard preflight={runtime?.aeatXmlPreflight ?? null} />
+      <VerifactuAeatSoapTransportCard transport={runtime?.aeatSoapTransport ?? null} />
 
       <VerifactuFiltersCard
         status={status}

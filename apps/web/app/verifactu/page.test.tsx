@@ -24,6 +24,22 @@ function jsonResponse(body: unknown, ok = true) {
   } as Response;
 }
 
+const aeatSoapTransport = {
+  implemented: true,
+  wiredIntoSubmissionFlow: false,
+  networkEnabled: false,
+  operation: 'RegFactuSistemaFacturacion',
+  soapAction: '',
+  safety: 'disabled-by-default',
+};
+
+const aeatXmlPreflight = {
+  enabled: true,
+  schemaProfile: 'aeat-suministro-lr-local-preflight-v1',
+  blocksInvalidXmlBeforeAdapter: true,
+  maxRegistroFacturaPerEnvelope: 1000,
+};
+
 const aeatPortalReady = {
   environment: 'test',
   endpointUrl: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
@@ -61,6 +77,8 @@ const runtimeTest = {
   verifactuCanSubmit: true,
   verifactuProductionSafe: true,
   aeatPortalReadiness: aeatPortalReady,
+  aeatXmlPreflight,
+  aeatSoapTransport,
 };
 
 const runtimeDisabled = {
@@ -70,6 +88,8 @@ const runtimeDisabled = {
   verifactuCanSubmit: false,
   verifactuProductionSafe: true,
   aeatPortalReadiness: aeatPortalPending,
+  aeatXmlPreflight,
+  aeatSoapTransport,
 };
 
 const runtimeProductionBlocked = {
@@ -156,7 +176,12 @@ describe('VerifactuPage', () => {
     expect(screen.getByText('Integración preparada')).toBeInTheDocument();
     expect(screen.getByText('Portal de pruebas preparado')).toBeInTheDocument();
     expect(screen.getByText('Host configurado: prewww10.aeat.es')).toBeInTheDocument();
-    expect(screen.getByText('Preparado')).toBeInTheDocument();
+    expect(screen.getByText('Validación activa')).toBeInTheDocument();
+    expect(screen.getByText('aeat-suministro-lr-local-preflight-v1')).toBeInTheDocument();
+    expect(screen.getByText('Transporte SOAP preparado')).toBeInTheDocument();
+    expect(screen.getByText('Red desactivada')).toBeInTheDocument();
+    expect(screen.getByText('RegFactuSistemaFacturacion')).toBeInTheDocument();
+    expect(screen.getAllByText('Preparado').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Simplificada')).toBeInTheDocument();
     expect(screen.getAllByText('Pendiente').length).toBeGreaterThan(0);
     expect(screen.getAllByText('AEAT pruebas').length).toBeGreaterThan(0);

@@ -130,6 +130,8 @@ export async function buildApp(options: {
               verifactuCanSubmit: { type: 'boolean' },
               verifactuProductionSafe: { type: 'boolean' },
               aeatPortalReadiness: { type: 'object', additionalProperties: true },
+              aeatXmlPreflight: { type: 'object', additionalProperties: true },
+              aeatSoapTransport: { type: 'object', additionalProperties: true },
             },
           },
         },
@@ -145,6 +147,8 @@ export async function buildApp(options: {
         verifactuCanSubmit: verifactu.canSubmit,
         verifactuProductionSafe: verifactu.productionSafe,
         aeatPortalReadiness: verifactuRuntimeStatus.aeatPortalReadiness,
+        aeatXmlPreflight: verifactuRuntimeStatus.aeatXmlPreflight,
+        aeatSoapTransport: verifactuRuntimeStatus.aeatSoapTransport,
       };
     },
   );
