@@ -22,7 +22,17 @@ export function verifyIntegrityChain(records: IntegrityRecord[]): boolean {
   });
 }
 
-export type VerifactuMode = 'disabled' | 'mock' | 'sandbox' | 'production';
+/**
+ * Runtime modes:
+ * - disabled: no VERI*FACTU flow.
+ * - mock: local simulator only; never allowed in production.
+ * - test: real AEAT external testing environment once an AEAT adapter exists.
+ * - production: real AEAT production environment once a production adapter exists.
+ *
+ * Legacy alias:
+ * - sandbox is accepted as an alias for test to avoid breaking existing env values.
+ */
+export type VerifactuMode = 'disabled' | 'mock' | 'test' | 'production';
 
 export interface VerifactuRuntimeConfig {
   mode: VerifactuMode;
@@ -41,21 +51,24 @@ export interface VerifactuPort {
   submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult>;
 }
 
+function normalizeVerifactuMode(rawMode: string | undefined, legacyEnabled: boolean): VerifactuMode {
+  const explicitMode = rawMode?.trim().toLowerCase();
+
+  if (explicitMode === 'disabled') return 'disabled';
+  if (explicitMode === 'mock') return 'mock';
+  if (explicitMode === 'test' || explicitMode === 'sandbox') return 'test';
+  if (explicitMode === 'production') return 'production';
+
+  return legacyEnabled ? 'mock' : 'disabled';
+}
+
 export function resolveVerifactuRuntimeConfig(input: {
   mode?: string | undefined;
   enabled?: string | boolean | undefined;
   nodeEnv?: string | undefined;
 }): VerifactuRuntimeConfig {
-  const explicitMode = input.mode?.trim().toLowerCase();
   const legacyEnabled = input.enabled === true || input.enabled === 'true';
-
-  const mode: VerifactuMode =
-    explicitMode === 'mock' || explicitMode === 'sandbox' || explicitMode === 'production' || explicitMode === 'disabled'
-      ? explicitMode
-      : legacyEnabled
-        ? 'mock'
-        : 'disabled';
-
+  const mode = normalizeVerifactuMode(input.mode, legacyEnabled);
   const isProductionRuntime = input.nodeEnv === 'production';
 
   if (mode === 'mock' && isProductionRuntime) {
@@ -71,7 +84,7 @@ export function resolveVerifactuRuntimeConfig(input: {
     };
   }
 
-  if (mode === 'sandbox') {
+  if (mode === 'test') {
     return {
       mode,
       enabled: true,

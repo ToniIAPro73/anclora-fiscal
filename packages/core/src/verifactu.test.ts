@@ -30,6 +30,24 @@ describe('resolveVerifactuRuntimeConfig', () => {
     );
   });
 
+  it('models AEAT external testing as test mode', () => {
+    expect(resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production' })).toEqual({
+      mode: 'test',
+      enabled: true,
+      canSubmit: false,
+      productionSafe: true,
+    });
+  });
+
+  it('maps sandbox to test as a legacy alias', () => {
+    expect(resolveVerifactuRuntimeConfig({ mode: 'sandbox', nodeEnv: 'test' })).toEqual({
+      mode: 'test',
+      enabled: true,
+      canSubmit: false,
+      productionSafe: true,
+    });
+  });
+
   it('does not allow production submissions without a real adapter', () => {
     expect(resolveVerifactuRuntimeConfig({ mode: 'production', nodeEnv: 'production' })).toMatchObject({
       mode: 'production',
@@ -62,7 +80,13 @@ describe('MockVerifactuAdapter', () => {
     });
   });
 
-  it('rejects sandbox mode because it is not a real adapter', async () => {
+  it('rejects test mode because MockVerifactuAdapter is not an AEAT adapter', async () => {
+    const adapter = new MockVerifactuAdapter(resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'test' }));
+
+    await expect(adapter.submit(record)).rejects.toThrow('VERIFACTU_NOT_ENABLED');
+  });
+
+  it('rejects sandbox alias because it resolves to test mode, not mock mode', async () => {
     const adapter = new MockVerifactuAdapter(resolveVerifactuRuntimeConfig({ mode: 'sandbox', nodeEnv: 'test' }));
 
     await expect(adapter.submit(record)).rejects.toThrow('VERIFACTU_NOT_ENABLED');
