@@ -16,7 +16,7 @@ const fileDescriptions: Record<string, string> = {
   'facturas.csv': 'Listado de facturas del periodo (CSV)',
   'facturas.xlsx': 'Listado de facturas del periodo (Excel)',
   'resumen-iva.pdf': 'Resumen ejecutivo de IVA (PDF)',
-  'estado-verifactu.json': 'Estado de los envíos VERI*FACTU (JSON)',
+  'estado-verifactu.json': 'Detalle verificable de registros VERI*FACTU (JSON)',
 };
 
 export function VatDossierPanel() {

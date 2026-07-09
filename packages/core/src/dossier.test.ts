@@ -1,0 +1,113 @@
+import { createHash } from 'node:crypto';
+import { unzipSync } from 'fflate';
+import { describe, expect, it } from 'vitest';
+import { createVatDossier, verifyVatDossier, type VatDossierInput } from './dossier';
+
+function readJsonFile(zipBytes: Uint8Array, filename: string) {
+  const files = unzipSync(zipBytes);
+  const file = files[filename];
+
+  if (!file) {
+    throw new Error(`Missing ${filename}`);
+  }
+
+  return JSON.parse(new TextDecoder().decode(file)) as unknown;
+}
+
+const baseInput: VatDossierInput = {
+  period: '2026-07',
+  invoices: [
+    {
+      number: 'FS-2026-000001',
+      issuedAt: '2026-07-09T10:00:00.000Z',
+      type: 'FULL_INVOICE',
+      country: 'ES',
+      channel: 'shopify',
+      taxBase: 10,
+      taxRate: 0.21,
+      taxAmount: 2.1,
+      totalAmount: 12.1,
+      currency: 'EUR',
+      evidenceHash: 'invoice-render-sha',
+    },
+  ],
+  issues: [],
+  verifactuStatuses: { PENDING: 1 },
+  verifactuRecords: [
+    {
+      invoiceNumber: 'FS-2026-000001',
+      documentType: 'FULL_INVOICE',
+      issuedAt: '2026-07-09T10:00:00.000Z',
+      environment: 'test',
+      status: 'PENDING',
+      recordType: 'ALTA',
+      attemptCount: 0,
+      chainHash: 'chain-hash-1',
+      previousHash: null,
+      responseReference: null,
+      responseStatus: null,
+      submittedAt: null,
+    },
+  ],
+};
+
+describe('createVatDossier', () => {
+  it('incluye un estado-verifactu.json detallado y verificable por manifest', async () => {
+    const result = await createVatDossier(baseInput);
+
+    expect(verifyVatDossier(result.zipBytes)).toBe(true);
+
+    const verifactuState = readJsonFile(result.zipBytes, 'estado-verifactu.json');
+
+    expect(verifactuState).toEqual({
+      schemaVersion: 'anclora-verifactu-state-v1',
+      period: '2026-07',
+      summary: { PENDING: 1 },
+      records: [
+        {
+          invoiceNumber: 'FS-2026-000001',
+          documentType: 'FULL_INVOICE',
+          issuedAt: '2026-07-09T10:00:00.000Z',
+          environment: 'test',
+          status: 'PENDING',
+          recordType: 'ALTA',
+          attemptCount: 0,
+          chainHash: 'chain-hash-1',
+          previousHash: null,
+          responseReference: null,
+          responseStatus: null,
+          submittedAt: null,
+        },
+      ],
+    });
+
+    const files = unzipSync(result.zipBytes);
+    const verifactuBytes = files['estado-verifactu.json'];
+
+    if (!verifactuBytes) {
+      throw new Error('Missing estado-verifactu.json');
+    }
+
+    expect(result.manifest['estado-verifactu.json']).toBe(
+      createHash('sha256').update(verifactuBytes).digest('hex'),
+    );
+  });
+
+  it('mantiene compatibilidad cuando sólo hay contadores VERI*FACTU', async () => {
+    const { verifactuRecords: _verifactuRecords, ...inputWithoutRecords } = baseInput;
+
+    const result = await createVatDossier({
+      ...inputWithoutRecords,
+      verifactuStatuses: { BLOCKED: 1 },
+    });
+
+    const verifactuState = readJsonFile(result.zipBytes, 'estado-verifactu.json');
+
+    expect(verifactuState).toMatchObject({
+      schemaVersion: 'anclora-verifactu-state-v1',
+      period: '2026-07',
+      summary: { BLOCKED: 1 },
+      records: [],
+    });
+  });
+});
