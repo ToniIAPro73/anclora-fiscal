@@ -30,3 +30,6 @@ apps/api/api/_handler.mjs.map
 
 # Local VERI*FACTU AEAT manual preproduction reports
 artifacts/
+# Local runtime state stores
+data/state_store.db/
+data/state_store.db/*
