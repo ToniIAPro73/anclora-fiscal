@@ -24,9 +24,16 @@ export interface AeatVerifactuManualPreproductionDryRunInput {
   certificatePasswordConfigured?: boolean | undefined;
   certificateFingerprint?: string | undefined;
   issuer: AeatVerifactuPartyIdentity;
+  recipient?: AeatVerifactuPartyIdentity | undefined;
   software: AeatVerifactuSoftwareIdentity;
   sample: AeatVerifactuManualPreproductionSample;
   generatedAt: string;
+  previousRecord?: {
+    issuerTaxId?: string | undefined;
+    documentNumber: string;
+    issuedAt: string;
+    huella: string;
+  } | undefined;
   operationDescription?: string | undefined;
   userAgent?: string | undefined;
 }
@@ -83,8 +90,10 @@ export function buildAeatVerifactuManualPreproductionDryRun(
     environment: 'test',
     record,
     issuer: input.issuer,
+    recipient: input.recipient ?? input.issuer,
     software: input.software,
     generatedAt: input.generatedAt,
+    previousRecord: input.previousRecord,
     operationDescription: input.operationDescription ?? 'Prueba manual controlada de preproducción VERI*FACTU',
     externalReference: input.sample.documentId,
   });

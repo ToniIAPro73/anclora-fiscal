@@ -20,6 +20,10 @@ const report = buildAeatVerifactuManualPreproductionDryRun({
     taxId: requiredEnv('VERIFACTU_ISSUER_NIF', 'B12345678'),
     name: requiredEnv('VERIFACTU_ISSUER_NAME', 'Anclora Fiscal Test'),
   },
+  recipient: {
+    taxId: requiredEnv('VERIFACTU_RECIPIENT_NIF', requiredEnv('VERIFACTU_ISSUER_NIF', 'B12345678')),
+    name: requiredEnv('VERIFACTU_RECIPIENT_NAME', requiredEnv('VERIFACTU_ISSUER_NAME', 'Cliente Prueba VERIFACTU')),
+  },
   software: {
     name: requiredEnv('VERIFACTU_SOFTWARE_NAME', 'Anclora Fiscal'),
     id: requiredEnv('VERIFACTU_SOFTWARE_ID', 'AF'),
@@ -40,6 +44,14 @@ const report = buildAeatVerifactuManualPreproductionDryRun({
     taxAmount: Number(requiredEnv('VERIFACTU_TEST_TAX_AMOUNT', '0.27')),
   },
   generatedAt: requiredEnv('VERIFACTU_TEST_GENERATED_AT', new Date().toISOString()),
+  previousRecord: requiredEnv('VERIFACTU_PREVIOUS_DOCUMENT_NUMBER')
+    ? {
+        issuerTaxId: requiredEnv('VERIFACTU_PREVIOUS_ISSUER_NIF', requiredEnv('VERIFACTU_ISSUER_NIF')),
+        documentNumber: requiredEnv('VERIFACTU_PREVIOUS_DOCUMENT_NUMBER'),
+        issuedAt: requiredEnv('VERIFACTU_PREVIOUS_ISSUED_AT'),
+        huella: requiredEnv('VERIFACTU_PREVIOUS_HUELLA'),
+      }
+    : undefined,
   userAgent: requiredEnv('VERIFACTU_AEAT_USER_AGENT', 'Anclora-Fiscal-Verifactu-Manual-DryRun/0.1'),
 });
 

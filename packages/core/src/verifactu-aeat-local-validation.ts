@@ -210,6 +210,15 @@ function validateAlta(
     'NombreRazonEmisor',
     'TipoFactura',
     'DescripcionOperacion',
+    'Destinatarios',
+    'IDDestinatario',
+    'Desglose',
+    'DetalleDesglose',
+    'ClaveRegimen',
+    'CalificacionOperacion',
+    'TipoImpositivo',
+    'BaseImponibleOimporteNoSujeto',
+    'CuotaRepercutida',
     'CuotaTotal',
     'ImporteTotal',
   ]) {
@@ -217,6 +226,8 @@ function validateAlta(
   }
 
   validateDateField(xml, 'FechaExpedicionFactura', blockingIssues);
+  validateAmountField(xml, 'BaseImponibleOimporteNoSujeto', blockingIssues, warnings);
+  validateAmountField(xml, 'CuotaRepercutida', blockingIssues, warnings);
   validateAmountField(xml, 'CuotaTotal', blockingIssues, warnings);
   validateAmountField(xml, 'ImporteTotal', blockingIssues, warnings);
 }

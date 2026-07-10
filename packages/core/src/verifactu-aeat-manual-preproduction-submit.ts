@@ -141,8 +141,10 @@ function buildManualPreproductionUnsignedPayload(
     environment: 'test',
     record,
     issuer: input.issuer,
+    recipient: input.recipient ?? input.issuer,
     software: input.software,
     generatedAt: input.generatedAt,
+    previousRecord: input.previousRecord,
     operationDescription: input.operationDescription
       ?? 'Prueba manual controlada de preproducción VERI*FACTU',
     externalReference: input.sample.documentId,

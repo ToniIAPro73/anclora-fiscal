@@ -51,6 +51,10 @@ async function main() {
       taxId: env('VERIFACTU_ISSUER_NIF', 'B12345678'),
       name: env('VERIFACTU_ISSUER_NAME', 'Anclora Fiscal Test'),
     },
+    recipient: {
+      taxId: env('VERIFACTU_RECIPIENT_NIF', env('VERIFACTU_ISSUER_NIF', 'B12345678')),
+      name: env('VERIFACTU_RECIPIENT_NAME', env('VERIFACTU_ISSUER_NAME', 'Cliente Prueba VERIFACTU')),
+    },
     software: {
       name: env('VERIFACTU_SOFTWARE_NAME', 'Anclora Fiscal'),
       id: env('VERIFACTU_SOFTWARE_ID', 'AF'),
@@ -71,6 +75,14 @@ async function main() {
       taxAmount: numericEnv('VERIFACTU_TEST_TAX_AMOUNT', '0.27'),
     },
     generatedAt: env('VERIFACTU_TEST_GENERATED_AT', new Date().toISOString()),
+    previousRecord: env('VERIFACTU_PREVIOUS_DOCUMENT_NUMBER')
+      ? {
+          issuerTaxId: env('VERIFACTU_PREVIOUS_ISSUER_NIF', env('VERIFACTU_ISSUER_NIF')),
+          documentNumber: env('VERIFACTU_PREVIOUS_DOCUMENT_NUMBER'),
+          issuedAt: env('VERIFACTU_PREVIOUS_ISSUED_AT'),
+          huella: env('VERIFACTU_PREVIOUS_HUELLA'),
+        }
+      : undefined,
     operationDescription: env(
       'VERIFACTU_TEST_OPERATION_DESCRIPTION',
       'Prueba manual controlada de preproducción VERI*FACTU',

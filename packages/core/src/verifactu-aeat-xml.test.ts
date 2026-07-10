@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createIntegrityRecord } from './verifactu';
 import {
@@ -13,7 +14,7 @@ function baseInput(overrides: Partial<AeatVerifactuUnsignedXmlInput> = {}): Aeat
     documentNumber: 'FS-2026-0001',
     recordType: 'ALTA',
     issuedAt: '2026-07-09T10:00:00.000Z',
-    totalAmount: 6.99,
+    totalAmount: 7.02,
     taxAmount: 0.27,
   }, '2026-07-09T10:00:00.000Z');
 
@@ -23,6 +24,10 @@ function baseInput(overrides: Partial<AeatVerifactuUnsignedXmlInput> = {}): Aeat
     issuer: {
       taxId: 'b12345678',
       name: 'Anclora & Fiscal <Test>',
+    },
+    recipient: {
+      taxId: 'b11223344',
+      name: 'Cliente Prueba VERIFACTU',
     },
     software: {
       name: 'Anclora Fiscal',
@@ -73,11 +78,28 @@ describe('buildAeatVerifactuUnsignedXml', () => {
     expect(payload.xml).toContain('<sum1:RegistroAlta>');
     expect(payload.xml).toContain('<sum1:NumSerieFactura>FS-2026-0001</sum1:NumSerieFactura>');
     expect(payload.xml).toContain('<sum1:FechaExpedicionFactura>09-07-2026</sum1:FechaExpedicionFactura>');
+    expect(payload.xml).toContain('<sum1:Destinatarios><sum1:IDDestinatario>');
+    expect(payload.xml).toContain('<sum1:NombreRazon>Cliente Prueba VERIFACTU</sum1:NombreRazon>');
+    expect(payload.xml).toContain('<sum1:NIF>B11223344</sum1:NIF>');
+    expect(payload.xml).toContain('<sum1:Desglose><sum1:DetalleDesglose>');
+    expect(payload.xml).toContain('<sum1:ClaveRegimen>01</sum1:ClaveRegimen>');
+    expect(payload.xml).toContain('<sum1:CalificacionOperacion>S1</sum1:CalificacionOperacion>');
+    expect(payload.xml).toContain('<sum1:TipoImpositivo>4</sum1:TipoImpositivo>');
+    expect(payload.xml).toContain('<sum1:BaseImponibleOimporteNoSujeto>6.75</sum1:BaseImponibleOimporteNoSujeto>');
+    expect(payload.xml).toContain('<sum1:CuotaRepercutida>0.27</sum1:CuotaRepercutida>');
     expect(payload.xml).toContain('<sum1:CuotaTotal>0.27</sum1:CuotaTotal>');
-    expect(payload.xml).toContain('<sum1:ImporteTotal>6.99</sum1:ImporteTotal>');
+    expect(payload.xml).toContain('<sum1:ImporteTotal>7.02</sum1:ImporteTotal>');
     expect(payload.xml).toContain('<sum1:PrimerRegistro>S</sum1:PrimerRegistro>');
     expect(payload.xml).toContain('<sum1:NombreSistemaInformatico>Anclora Fiscal</sum1:NombreSistemaInformatico>');
     expect(payload.xml).toContain('Anclora &amp; Fiscal &lt;Test&gt;');
+    const expectedAeatHuella = createHash('sha256')
+      .update(
+        'IDEmisorFactura=B12345678&NumSerieFactura=FS-2026-0001&FechaExpedicionFactura=09-07-2026&TipoFactura=F1&CuotaTotal=0.27&ImporteTotal=7.02&Huella=&FechaHoraHusoGenRegistro=2026-07-09T10:05:00.000Z',
+        'utf8',
+      )
+      .digest('hex')
+      .toUpperCase();
+    expect(payload.chainHash).toBe(expectedAeatHuella);
     expect(payload.xml).toContain(`<sum1:Huella>${payload.chainHash}</sum1:Huella>`);
     expect(payload.xml).not.toMatch(/<script/i);
   });
