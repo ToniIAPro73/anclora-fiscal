@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las diecinueve migraciones en orden y puede repetirse', async () => {
+  it('aplica las veintiuna migraciones en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -43,10 +43,42 @@ describe('migrateOfflineDatabase', () => {
       '0018_fiscal_document_idempotency.sql',
       '0019_verifactu_submission_idempotency.sql',
       '0020_verifactu_submission_attempts.sql',
+      '0021_verifactu_chain_metadata.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
       expect.arrayContaining(['tenants', 'import_jobs', 'canonical_operations', 'vat_dossiers', 'royalty_statements', 'royalty_lines', 'order_lines', 'product_tax_profiles', 'channel_fiscal_policies', 'fiscal_counterparties', 'tax_periods', 'payouts', 'shopify_order_payment_events', 'shopify_payments_ledger_entries', 'shopify_evidence_links', 'verifactu_submission_attempts']),
+    );
+  });
+
+  it('la migración 0021 añade columnas de metadatos de encadenamiento AEAT en integrity_chain_records', async () => {
+    const { client } = createOfflineDatabase();
+    clients.push(client);
+
+    await migrateOfflineDatabase(client);
+
+    const columns = await client.query<{ column_name: string }>(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'integrity_chain_records'
+    `);
+    const columnNames = columns.rows.map((row) => row.column_name);
+
+    expect(columnNames).toEqual(
+      expect.arrayContaining([
+        'legal_entity_id',
+        'software_installation_number',
+        'aeat_id_emisor_factura',
+        'aeat_num_serie_factura',
+        'aeat_fecha_expedicion_factura',
+        'aeat_tipo_factura',
+        'aeat_huella',
+        'aeat_huella_generated_at',
+        'aeat_previous_huella',
+        'previous_fiscal_document_id',
+        'chain_status',
+        'aeat_csv',
+      ]),
     );
   });
 });
