@@ -178,11 +178,26 @@ describe('AeatVerifactuXmlSubmissionAdapter', () => {
   });
 
   it('propaga un rechazo normalizado del transporte AEAT test', async () => {
-    const result = await adapter().submit(record(-1));
+    const transport = {
+      submit: vi.fn(async () => ({
+        statusCode: 200,
+        receivedAt: '2026-07-09T10:07:00.000Z',
+        body: [
+          '<RespuestaLinea>',
+          '<EstadoRegistro>Incorrecto</EstadoRegistro>',
+          '<CSV>CSV-REJECTED-TEST</CSV>',
+          '<DescripcionErrorRegistro>Rechazo simulado por transporte AEAT</DescripcionErrorRegistro>',
+          '</RespuestaLinea>',
+        ].join(''),
+      })),
+    };
+
+    const result = await adapter({ transport }).submit(record());
 
     expect(result.status).toBe('REJECTED');
-    expect(result.reference).toMatch(/^aeat-test-[a-f0-9]{16}$/);
-    expect(result.message).toBe('Rechazo simulado por importe negativo');
+    expect(result.reference).toBe('CSV-REJECTED-TEST');
+    expect(result.message).toBe('Rechazo simulado por transporte AEAT');
+    expect(transport.submit).toHaveBeenCalledOnce();
   });
 
   it('respeta los bloqueos de runtime, entorno y endpoint', async () => {
