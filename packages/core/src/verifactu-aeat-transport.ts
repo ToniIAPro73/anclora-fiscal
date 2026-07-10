@@ -128,6 +128,49 @@ export class DeterministicAeatVerifactuSoapTransport implements AeatVerifactuSoa
   }
 }
 
+
+function summarizeUnrecognizedAeatSoapResponse(response: AeatVerifactuSoapTransportResponse): string {
+  const rawBody = response.body ?? '';
+  const normalizedBody = rawBody.replace(/\s+/g, ' ').trim();
+  const preview = normalizedBody.slice(0, 500);
+  const bodySha256 = createHash('sha256').update(rawBody).digest('hex');
+
+  const readXmlValue = (tagName: string): string | null => {
+    const pattern = new RegExp(
+      `<(?:[A-Za-z0-9_]+:)?${tagName}[^>]*>([^<]*)</(?:[A-Za-z0-9_]+:)?${tagName}>`,
+      'i',
+    );
+    const value = rawBody.match(pattern)?.[1]?.trim();
+
+    return value && value.length > 0 ? value : null;
+  };
+
+  const containsHtml = /<html[\s>]/i.test(rawBody) || /<!doctype html/i.test(rawBody);
+  const containsSoapFault = /<(?:[A-Za-z0-9_]+:)?Fault[\s>]/i.test(rawBody);
+
+  const faultString =
+    readXmlValue('faultstring')
+    ?? readXmlValue('FaultString')
+    ?? readXmlValue('faultcode')
+    ?? readXmlValue('FaultCode');
+
+  const aeatError =
+    readXmlValue('DescripcionError')
+    ?? readXmlValue('DescripcionErrorRegistro')
+    ?? readXmlValue('DetalleError')
+    ?? readXmlValue('faultstring');
+
+  return JSON.stringify({
+    statusCode: response.statusCode,
+    bodySha256,
+    containsHtml,
+    containsSoapFault,
+    faultString,
+    aeatError,
+    preview,
+  });
+}
+
 export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransportResponse): VerifactuSubmissionResult {
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error(`AEAT_VERIFACTU_HTTP_${response.statusCode}`);
@@ -164,7 +207,7 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
     };
   }
 
-  throw new Error('AEAT_VERIFACTU_UNRECOGNIZED_SOAP_RESPONSE');
+  throw new Error(`AEAT_VERIFACTU_UNRECOGNIZED_SOAP_RESPONSE:${summarizeUnrecognizedAeatSoapResponse(response)}`);
 }
 
 function isRejectedStatus(value: string): boolean {
