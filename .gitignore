@@ -27,3 +27,6 @@ apps/api/api/_handler.mjs.map
 .evidence/Pedidos_shopify.csv
 .evidence/Transacciones_pedidos_shopify.csv
 .evidence/Transacciones_pagos_shopify.csv
+
+# Local VERI*FACTU AEAT manual preproduction reports
+artifacts/

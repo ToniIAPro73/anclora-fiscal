@@ -14,6 +14,7 @@ export * from './verifactu-aeat-local-validation.js';
 export * from './verifactu-aeat-diagnostics.js';
 export * from './verifactu-aeat-real-soap-transport.js';
 export * from './verifactu-aeat-manual-preproduction.js';
+export * from './verifactu-aeat-manual-preproduction-submit.js';
 export * from './verifactu-aeat-xml.js';
 export * from './verifactu-aeat-signing.js';
 export * from './verifactu-aeat-transport.js';
