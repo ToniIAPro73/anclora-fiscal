@@ -162,6 +162,69 @@ describe('buildAeatVerifactuUnsignedXml', () => {
     }))).toThrow('AEAT_VERIFACTU_CHAIN_HASH_INVALID');
   });
 
+  it('encadena con RegistroAnterior cuando existe un registro previo y omite PrimerRegistro=S', () => {
+    const payload = buildAeatVerifactuUnsignedXml(baseInput({
+      previousRecord: {
+        issuerTaxId: 'b12345678',
+        documentNumber: 'FS-2026-0000',
+        issuedAt: '2026-07-08T10:00:00.000Z',
+        huella: 'f'.repeat(64),
+      },
+    }));
+
+    expect(payload.xml).toContain('<sum1:RegistroAnterior>');
+    expect(payload.xml).toContain('<sum1:NumSerieFactura>FS-2026-0000</sum1:NumSerieFactura>');
+    expect(payload.xml).toContain(`<sum1:Huella>${'F'.repeat(64)}</sum1:Huella>`);
+    expect(payload.xml).not.toContain('<sum1:PrimerRegistro>S</sum1:PrimerRegistro>');
+
+    const expectedAeatHuella = createHash('sha256')
+      .update(
+        'IDEmisorFactura=B12345678&NumSerieFactura=FS-2026-0001&FechaExpedicionFactura=09-07-2026&TipoFactura=F1&CuotaTotal=0.27&ImporteTotal=7.02&Huella=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF&FechaHoraHusoGenRegistro=2026-07-09T10:05:00.000Z',
+        'utf8',
+      )
+      .digest('hex')
+      .toUpperCase();
+    expect(payload.chainHash).toBe(expectedAeatHuella);
+  });
+
+  it('mantiene la huella oficial AEAT independiente del hash interno Anclora (record.hash)', () => {
+    const payload = buildAeatVerifactuUnsignedXml(baseInput());
+    const { record } = baseInput();
+
+    expect(payload.chainHash).toMatch(/^[A-F0-9]{64}$/);
+    expect(record.hash).toMatch(/^[a-f0-9]{64}$/);
+    // La huella AEAT (chainHash) se calcula sobre IDEmisorFactura/NumSerieFactura/... y NUNCA
+    // coincide con record.hash (SHA-256 canónico interno de Anclora sobre el payload JSON).
+    expect(payload.chainHash.toLowerCase()).not.toBe(record.hash.toLowerCase());
+  });
+
+  it('rechaza un previousHash inválido en el registro antes de firmar', () => {
+    const invalidPreviousHash = createIntegrityRecord({
+      documentId: 'document-invalid-previous',
+      documentNumber: 'FS-INVALID-PREVIOUS',
+      recordType: 'ALTA',
+      issuedAt: '2026-07-09T10:00:00.000Z',
+      totalAmount: 6.99,
+      taxAmount: 0.27,
+      previousHash: 'not-a-valid-hash',
+    }, '2026-07-09T10:00:00.000Z');
+
+    expect(() => buildAeatVerifactuUnsignedXml(baseInput({ record: invalidPreviousHash }))).toThrow(
+      'AEAT_VERIFACTU_PREVIOUS_HASH_INVALID',
+    );
+  });
+
+  it('rechaza un previousRecord.huella inválido antes de generar el encadenamiento', () => {
+    expect(() => buildAeatVerifactuUnsignedXml(baseInput({
+      previousRecord: {
+        issuerTaxId: 'B12345678',
+        documentNumber: 'FS-2026-0000',
+        issuedAt: '2026-07-08T10:00:00.000Z',
+        huella: 'not-a-valid-hash',
+      },
+    }))).toThrow('AEAT_VERIFACTU_PREVIOUS_HASH_INVALID');
+  });
+
   it('rechaza identidades incompletas', () => {
     expect(() => buildAeatVerifactuUnsignedXml(baseInput({
       issuer: {

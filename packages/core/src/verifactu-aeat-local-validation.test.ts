@@ -139,6 +139,36 @@ describe('validateAeatVerifactuUnsignedXml', () => {
     );
   });
 
+  it('valida el encadenamiento con RegistroAnterior cuando existe un registro previo', () => {
+    const payload = buildAeatVerifactuUnsignedXml(baseInput({
+      previousRecord: {
+        issuerTaxId: 'B12345678',
+        documentNumber: 'FS-2026-0000',
+        issuedAt: '2026-07-08T10:00:00.000Z',
+        huella: 'f'.repeat(64),
+      },
+    }));
+    const report = validateAeatVerifactuUnsignedXml(payload);
+
+    expect(report.valid).toBe(true);
+    expect(report.blockingIssues).toEqual([]);
+    expect(payload.xml).toContain('<sum1:RegistroAnterior>');
+    expect(payload.xml).not.toContain('<sum1:PrimerRegistro>S</sum1:PrimerRegistro>');
+  });
+
+  it('bloquea una Huella AEAT con formato no hexadecimal SHA-256', () => {
+    const payload = buildAeatVerifactuUnsignedXml(baseInput());
+    const xml = payload.xml.replace(
+      `<sum1:Huella>${payload.chainHash}</sum1:Huella>`,
+      '<sum1:Huella>not-a-valid-huella</sum1:Huella>',
+    );
+
+    const report = validateAeatVerifactuXml(xml);
+
+    expect(report.valid).toBe(false);
+    expect(report.blockingIssues.map((item) => item.code)).toContain('AEAT_VERIFACTU_HUELLA_INVALID');
+  });
+
   it('detecta manipulación del hash del payload', () => {
     const payload = buildAeatVerifactuUnsignedXml(baseInput());
     const report = validateAeatVerifactuUnsignedXml({

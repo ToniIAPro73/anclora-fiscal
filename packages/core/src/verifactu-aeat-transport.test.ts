@@ -177,6 +177,24 @@ describe('AeatVerifactuXmlSubmissionAdapter', () => {
     expect(transport.submit.mock.calls[0]?.[0].signedPayload.signedXml).toContain('<sum1:NumSerieFactura>FS-2026-0001</sum1:NumSerieFactura>');
   });
 
+  it('firma y transmite la huella oficial AEAT, distinta e independiente del hash interno Anclora', async () => {
+    const deterministicTransport = new DeterministicAeatVerifactuSoapTransport(() => '2026-07-09T10:07:00.000Z');
+    const transport = {
+      submit: vi.fn((request) => deterministicTransport.submit(request)),
+    };
+
+    const integrityRecord = record();
+    await adapter({ transport }).submit(integrityRecord);
+
+    const signedXml = transport.submit.mock.calls[0]?.[0].signedPayload.signedXml as string;
+    const aeatHuellaMatch = signedXml.match(/<sum1:Huella>([A-F0-9]{64})<\/sum1:Huella>/);
+
+    expect(aeatHuellaMatch).not.toBeNull();
+    const aeatHuella = aeatHuellaMatch?.[1] ?? '';
+    expect(aeatHuella.toLowerCase()).not.toBe(integrityRecord.hash.toLowerCase());
+    expect(integrityRecord.hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
   it('propaga un rechazo normalizado del transporte AEAT test', async () => {
     const transport = {
       submit: vi.fn(async () => ({
