@@ -12,6 +12,7 @@ import * as schema from './schema.js';
  * `previousRecord` without renaming.
  */
 export interface PreviousOfficialBillingRecord {
+  fiscalDocumentId: string;
   idEmisorFactura: string;
   numSerieFactura: string;
   /**
@@ -56,6 +57,7 @@ export class DrizzleVerifactuChainResolutionService<TQueryResult extends PgQuery
   ): Promise<PreviousOfficialBillingRecord | undefined> {
     const [row] = await this.db
       .select({
+        fiscalDocumentId: integrityChainRecords.fiscalDocumentId,
         idEmisorFactura: integrityChainRecords.aeatIdEmisorFactura,
         numSerieFactura: integrityChainRecords.aeatNumSerieFactura,
         fechaExpedicionFactura: integrityChainRecords.aeatFechaExpedicionFactura,
@@ -77,6 +79,7 @@ export class DrizzleVerifactuChainResolutionService<TQueryResult extends PgQuery
     }
 
     return {
+      fiscalDocumentId: row.fiscalDocumentId,
       idEmisorFactura: row.idEmisorFactura,
       numSerieFactura: row.numSerieFactura,
       fechaExpedicionFactura: row.fechaExpedicionFactura,

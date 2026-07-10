@@ -344,6 +344,16 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(chainRecords).toHaveLength(1);
       expect(chainRecords[0]?.previousHash).toBeNull();
       expect(chainRecords[0]?.fiscalDocumentId).toBe(result.document.id);
+      expect(chainRecords[0]?.legalEntityId).toBeTruthy();
+      expect(chainRecords[0]?.softwareInstallationNumber).toBe('LOCAL-TEST-001');
+      expect(chainRecords[0]?.aeatIdEmisorFactura).toBe('12345678Z');
+      expect(chainRecords[0]?.aeatNumSerieFactura).toBe('FS-00001');
+      expect(chainRecords[0]?.aeatFechaExpedicionFactura).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(chainRecords[0]?.aeatTipoFactura).toBe('F1');
+      expect(chainRecords[0]?.aeatHuella).toMatch(/^[A-F0-9]{64}$/);
+      expect(chainRecords[0]?.aeatPreviousHuella).toBeNull();
+      expect(chainRecords[0]?.previousFiscalDocumentId).toBeNull();
+      expect(chainRecords[0]?.chainStatus).toBe('FIRST_RECORD');
     });
 
     it('devuelve OPERATION_NOT_FOUND para una operación de otro tenant', async () => {
@@ -524,6 +534,62 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(await getTenantFiscalDocuments(db, tenantId)).toHaveLength(1);
       expect(await getTenantIntegrityRecords(db, tenantId)).toHaveLength(1);
       expect(await getSeriesNextNumber(db, tenantId, 'SIMPLIFICADA')).toBe(2);
+    });
+
+    it('persiste encadenamiento oficial AEAT al emitir dos facturas secuenciales', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const seeded = await seedOperationWithDecision(db, 'tenant-aeat-chain');
+      const secondOperationId = await seedAdditionalOperationWithDecision(db, {
+        tenantId: seeded.tenantId,
+        legalEntityId: seeded.legalEntityId,
+        sourceOrderId: 'ORDER-2',
+        suffix: 'tenant-aeat-chain-2',
+      });
+
+      const repository = new DrizzleFiscalDocumentsRepository(db);
+      const storage = new InMemoryStorage();
+
+      const first = await repository.issue({
+        tenantId: seeded.tenantId,
+        actorId: seeded.actorId,
+        canonicalOperationId: seeded.operationId,
+        storage,
+      });
+
+      const second = await repository.issue({
+        tenantId: seeded.tenantId,
+        actorId: seeded.actorId,
+        canonicalOperationId: secondOperationId,
+        storage,
+      });
+
+      expect(first.ok).toBe(true);
+      expect(second.ok).toBe(true);
+      if (!first.ok || !second.ok) throw new Error('expected ok results');
+
+      const chainRecords = await db
+        .select()
+        .from(integrityChainRecords)
+        .where(eq(integrityChainRecords.tenantId, seeded.tenantId));
+
+      expect(chainRecords).toHaveLength(2);
+
+      const firstRecord = chainRecords.find((record) => record.fiscalDocumentId === first.document.id);
+      const secondRecord = chainRecords.find((record) => record.fiscalDocumentId === second.document.id);
+
+      expect(firstRecord?.chainStatus).toBe('FIRST_RECORD');
+      expect(firstRecord?.aeatPreviousHuella).toBeNull();
+      expect(firstRecord?.previousFiscalDocumentId).toBeNull();
+      expect(firstRecord?.aeatHuella).toMatch(/^[A-F0-9]{64}$/);
+
+      expect(secondRecord?.chainStatus).toBe('CHAINED');
+      expect(secondRecord?.previousFiscalDocumentId).toBe(first.document.id);
+      expect(secondRecord?.aeatPreviousHuella).toBe(firstRecord?.aeatHuella);
+      expect(secondRecord?.aeatHuella).toMatch(/^[A-F0-9]{64}$/);
+      expect(secondRecord?.aeatHuella).not.toBe(firstRecord?.aeatHuella);
     });
 
     it('asigna números únicos y secuenciales a operaciones distintas', async () => {

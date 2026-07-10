@@ -138,7 +138,7 @@ describe('DrizzleVerifactuChainResolutionService.getPreviousOfficialBillingRecor
       softwareInstallationNumber: 'INSTALL-1',
     });
 
-    expect(previous).toEqual({
+    expect(previous).toMatchObject({
       idEmisorFactura: '12345678Z',
       numSerieFactura: 'F-00002',
       fechaExpedicionFactura: '2026-02-01',
@@ -232,7 +232,7 @@ describe('DrizzleVerifactuChainResolutionService.getPreviousOfficialBillingRecor
       softwareInstallationNumber: 'INSTALL-1',
     });
 
-    expect(previousForTenantA).toEqual({
+    expect(previousForTenantA).toMatchObject({
       idEmisorFactura: '12345678Z',
       numSerieFactura: 'A-00001',
       fechaExpedicionFactura: '2026-01-01',

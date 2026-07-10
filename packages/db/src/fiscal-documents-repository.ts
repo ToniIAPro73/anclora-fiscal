@@ -2,11 +2,14 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
+  buildAeatVerifactuUnsignedXml,
   createIntegrityRecord,
   createVerifactuSubmissionDraft,
   decryptTaxIdentity,
   InvoiceSequence,
   issueInvoice,
+  type AeatVerifactuPreviousRecordReference,
+  type AeatVerifactuSoftwareIdentity,
   rectifyInvoice,
   resolveVerifactuRuntimeConfig,
   type StoragePort,
@@ -25,6 +28,7 @@ import {
   verifactuSubmissions,
 } from './schema.js';
 import * as schema from './schema.js';
+import { DrizzleVerifactuChainResolutionService } from './verifactu-chain-resolution-service.js';
 
 export type FiscalDocument = typeof fiscalDocuments.$inferSelect;
 
@@ -41,6 +45,7 @@ export interface IssueInvoiceInput {
   canonicalOperationId: string;
   storage: StoragePort;
   verifactuConfig?: VerifactuRuntimeConfig;
+  verifactuSoftwareInstallationNumber?: string | undefined;
 }
 
 export type IssueInvoiceResult =
@@ -79,6 +84,8 @@ const FULL_DOCUMENT_TYPE = 'COMPLETA';
 const RECTIFYING_DOCUMENT_TYPE = 'RECTIFICATIVA';
 const LEGACY_FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
 const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
+const DEFAULT_VERIFACTU_SOFTWARE_INSTALLATION_NUMBER = 'LOCAL-TEST-001';
+const CURRENT_AEAT_TIPO_FACTURA_SIMPLIFICADA = 'F1';
 
 type InvoiceNumberAllocator<TQueryResult extends PgQueryResultHKT> = Pick<
   PgDatabase<TQueryResult, typeof schema>,
@@ -98,6 +105,39 @@ function documentTypeSeriesCandidates(documentType: string): string[] {
 
 function originalDocumentCanBeRectified(documentType: string) {
   return [SIMPLIFIED_DOCUMENT_TYPE, FULL_DOCUMENT_TYPE, LEGACY_FULL_INVOICE_DOCUMENT_TYPE].includes(documentType);
+}
+
+function buildAeatSoftwareIdentityForIssuer(input: {
+  issuerTaxIdentity: string;
+  issuerName: string;
+  installationNumber: string;
+}): AeatVerifactuSoftwareIdentity {
+  return {
+    name: 'Anclora Fiscal',
+    id: 'AF',
+    version: '0.1.0',
+    installationNumber: input.installationNumber,
+    producer: {
+      taxId: input.issuerTaxIdentity,
+      name: input.issuerName,
+    },
+    onlyVerifactu: true,
+    multiTenant: false,
+  };
+}
+
+function toAeatPreviousRecordReference(input: {
+  idEmisorFactura: string;
+  numSerieFactura: string;
+  fechaExpedicionFactura: string;
+  huella: string;
+}): AeatVerifactuPreviousRecordReference {
+  return {
+    issuerTaxId: input.idEmisorFactura,
+    documentNumber: input.numSerieFactura,
+    issuedAt: input.fechaExpedicionFactura,
+    huella: input.huella,
+  };
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -401,6 +441,19 @@ try {
         .orderBy(desc(integrityChainRecords.createdAt))
         .limit(1);
 
+      const softwareInstallationNumber =
+        input.verifactuSoftwareInstallationNumber
+          ?? DEFAULT_VERIFACTU_SOFTWARE_INSTALLATION_NUMBER;
+
+      const previousOfficialRecord =
+        await new DrizzleVerifactuChainResolutionService(
+          transaction as PgDatabase<TQueryResult, typeof schema>,
+        ).getPreviousOfficialBillingRecord({
+          tenantId: input.tenantId,
+          legalEntityId: operation.legalEntityId,
+          softwareInstallationNumber,
+        });
+
       const integrityRecord = createIntegrityRecord(
         {
           documentId: document.id,
@@ -414,6 +467,38 @@ try {
         issuedAt.toISOString(),
       );
 
+      const recordForAeatHuella = previousOfficialRecord
+        ? integrityRecord
+        : (() => {
+            const recordWithoutPreviousHash = { ...integrityRecord };
+            delete recordWithoutPreviousHash.previousHash;
+            return recordWithoutPreviousHash;
+          })();
+
+      const aeatPayload = buildAeatVerifactuUnsignedXml({
+        environment: 'test',
+        record: recordForAeatHuella,
+        issuer: {
+          taxId: issuerTaxIdentity,
+          name: issuer.legalName,
+        },
+        recipient: {
+          taxId: issuerTaxIdentity,
+          name: issuer.legalName,
+        },
+        previousRecord: previousOfficialRecord
+          ? toAeatPreviousRecordReference(previousOfficialRecord)
+          : undefined,
+        software: buildAeatSoftwareIdentityForIssuer({
+          issuerTaxIdentity,
+          issuerName: issuer.legalName,
+          installationNumber: softwareInstallationNumber,
+        }),
+        generatedAt: issuedAt.toISOString(),
+        operationDescription: productProfile.invoiceDescription,
+        externalReference: document.id,
+      });
+
       const [storedIntegrityRecord] = await transaction.insert(integrityChainRecords).values({
         tenantId: input.tenantId,
         fiscalDocumentId: document.id,
@@ -422,6 +507,17 @@ try {
         previousHash: integrityRecord.previousHash ?? null,
         hash: integrityRecord.hash,
         algorithm: integrityRecord.algorithm,
+        legalEntityId: operation.legalEntityId,
+        softwareInstallationNumber,
+        aeatIdEmisorFactura: issuerTaxIdentity.toUpperCase(),
+        aeatNumSerieFactura: invoice.number,
+        aeatFechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
+        aeatTipoFactura: CURRENT_AEAT_TIPO_FACTURA_SIMPLIFICADA,
+        aeatHuella: aeatPayload.chainHash,
+        aeatHuellaGeneratedAt: issuedAt,
+        aeatPreviousHuella: previousOfficialRecord?.huella ?? null,
+        previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+        chainStatus: previousOfficialRecord ? 'CHAINED' : 'FIRST_RECORD',
       }).returning({ id: integrityChainRecords.id });
 
       if (!storedIntegrityRecord) throw new Error('No se pudo crear el registro de integridad fiscal');
