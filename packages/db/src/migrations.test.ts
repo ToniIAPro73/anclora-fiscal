@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las veintiuna migraciones en orden y puede repetirse', async () => {
+  it('aplica las veintidós migraciones en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -44,6 +44,7 @@ describe('migrateOfflineDatabase', () => {
       '0019_verifactu_submission_idempotency.sql',
       '0020_verifactu_submission_attempts.sql',
       '0021_verifactu_chain_metadata.sql',
+      '0022_verifactu_submission_retry_scheduling.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
@@ -79,6 +80,24 @@ describe('migrateOfflineDatabase', () => {
         'chain_status',
         'aeat_csv',
       ]),
+    );
+  });
+
+  it('la migración 0022 añade next_attempt_at y last_error en verifactu_submissions', async () => {
+    const { client } = createOfflineDatabase();
+    clients.push(client);
+
+    await migrateOfflineDatabase(client);
+
+    const columns = await client.query<{ column_name: string }>(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'verifactu_submissions'
+    `);
+    const columnNames = columns.rows.map((row) => row.column_name);
+
+    expect(columnNames).toEqual(
+      expect.arrayContaining(['next_attempt_at', 'last_error']),
     );
   });
 });

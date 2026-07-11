@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AeatVerifactuAdapter,
   MockVerifactuAdapter,
+  VERIFACTU_MIN_RETRY_INTERVAL_MS,
   VerifactuSubmissionExecutionService,
   createIntegrityRecord,
   createVerifactuSubmissionAttempt,
   createVerifactuSubmissionDraft,
+  decideVerifactuRetryEligibility,
+  resolveVerifactuPersistedOutcome,
   resolveVerifactuRuntimeConfig,
 } from './verifactu.js';
 
@@ -509,9 +512,12 @@ describe('VerifactuSubmissionExecutionService', () => {
   };
 
   function executableSubmission(overrides: Partial<{
+    id: string;
     fiscalDocumentId: string;
     payloadRedacted: typeof draft.payloadRedacted;
     environment: typeof draft.environment;
+    status: 'PENDING' | 'RETRY_SCHEDULED';
+    nextAttemptAt: string | null;
   }> = {}) {
     const payloadRedacted = overrides.payloadRedacted ?? {
       ...draft.payloadRedacted,
@@ -519,13 +525,15 @@ describe('VerifactuSubmissionExecutionService', () => {
     };
 
     return {
-      id: 'submission-1',
+      id: overrides.id ?? 'submission-1',
       tenantId: 'tenant-1',
       fiscalDocumentId: overrides.fiscalDocumentId ?? 'doc-1',
       environment: overrides.environment ?? payloadRedacted.environment,
-      status: 'PENDING' as const,
+      status: overrides.status ?? ('PENDING' as const),
       payloadRedacted,
       attemptCount: '0',
+      nextAttemptAt: overrides.nextAttemptAt ?? null,
+      lastError: null,
     };
   }
 
@@ -605,7 +613,7 @@ describe('VerifactuSubmissionExecutionService', () => {
     ).resolves.toMatchObject({
       ok: true,
       outcome: {
-        status: 'TECHNICAL_ERROR',
+        status: 'RETRY_SCHEDULED',
         responseRedacted: {
           environment: 'test',
           status: 'TECHNICAL_ERROR',
@@ -613,6 +621,8 @@ describe('VerifactuSubmissionExecutionService', () => {
           message: 'SOAP_TIMEOUT',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: '2026-07-09T11:00:00.000Z',
+        lastError: 'SOAP_TIMEOUT',
       },
     });
 
@@ -620,8 +630,10 @@ describe('VerifactuSubmissionExecutionService', () => {
       tenantId: 'tenant-1',
       submissionId: 'submission-1',
       outcome: expect.objectContaining({
-        status: 'TECHNICAL_ERROR',
+        status: 'RETRY_SCHEDULED',
         attemptCountIncrement: 1,
+        nextAttemptAt: '2026-07-09T11:00:00.000Z',
+        lastError: 'SOAP_TIMEOUT',
       }),
     });
   });
@@ -819,5 +831,275 @@ describe('VerifactuSubmissionExecutionService', () => {
 
     expect(adapter.submit).not.toHaveBeenCalled();
     expect(repository.applyAttemptOutcome).not.toHaveBeenCalled();
+  });
+
+  it('does not send the second record in a chain while the first is still pending', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({ id: 'submission-2' })),
+      findChainMembers: vi.fn().mockResolvedValue([
+        { id: 'submission-1', issuedAt: '2026-07-08T00:00:00.000Z', status: 'PENDING' },
+      ]),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = { submit: vi.fn() };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      now: () => '2026-07-09T10:00:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-2' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'VERIFACTU_EARLIER_CHAIN_RECORD_PENDING',
+    });
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+    expect(repository.applyAttemptOutcome).not.toHaveBeenCalled();
+  });
+
+  it('allows submission once the earlier chain record is ACCEPTED', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({ id: 'submission-2' })),
+      findChainMembers: vi.fn().mockResolvedValue([
+        { id: 'submission-1', issuedAt: '2026-07-08T00:00:00.000Z', status: 'ACCEPTED' },
+      ]),
+      applyAttemptOutcome: vi.fn().mockResolvedValue({ id: 'submission-2' }),
+    };
+
+    const adapter = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        reference: 'aeat-ref-2',
+        message: 'Aceptado en entorno de pruebas',
+      }),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      now: () => '2026-07-09T10:00:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-2' }),
+    ).resolves.toMatchObject({ ok: true, outcome: { status: 'ACCEPTED' } });
+
+    expect(adapter.submit).toHaveBeenCalled();
+  });
+
+  it('does not retry a RETRY_SCHEDULED submission before its nextAttemptAt', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({
+        status: 'RETRY_SCHEDULED',
+        nextAttemptAt: '2026-07-09T11:00:00.000Z',
+      })),
+      findChainMembers: vi.fn().mockResolvedValue([]),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = { submit: vi.fn() };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      now: () => '2026-07-09T10:30:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'VERIFACTU_RETRY_NOT_DUE',
+    });
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+  });
+
+  it('retries a RETRY_SCHEDULED submission once its nextAttemptAt has passed', async () => {
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({
+        status: 'RETRY_SCHEDULED',
+        nextAttemptAt: '2026-07-09T11:00:00.000Z',
+      })),
+      findChainMembers: vi.fn().mockResolvedValue([]),
+      applyAttemptOutcome: vi.fn().mockResolvedValue({ id: 'submission-1' }),
+    };
+
+    const adapter = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        reference: 'aeat-ref-retry',
+        message: 'Aceptado tras reintento',
+      }),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
+      now: () => '2026-07-09T11:00:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toMatchObject({ ok: true, outcome: { status: 'ACCEPTED' } });
+
+    expect(adapter.submit).toHaveBeenCalled();
+  });
+});
+
+describe('decideVerifactuRetryEligibility', () => {
+  it('blocks a later record while an earlier chain record is still pending', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'b', issuedAt: '2026-07-09T00:00:00.000Z', status: 'PENDING', nextAttemptAt: null },
+      chain: [
+        { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'PENDING' },
+      ],
+      now: '2026-07-09T10:00:00.000Z',
+    })).toEqual({ canSubmit: false, reason: 'EARLIER_CHAIN_RECORD_PENDING' });
+  });
+
+  it('blocks a later record while an earlier chain record is REJECTED (final, not auto-resolved)', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'b', issuedAt: '2026-07-09T00:00:00.000Z', status: 'PENDING', nextAttemptAt: null },
+      chain: [
+        { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'REJECTED' },
+      ],
+      now: '2026-07-09T10:00:00.000Z',
+    })).toEqual({ canSubmit: false, reason: 'EARLIER_CHAIN_RECORD_PENDING' });
+  });
+
+  it('unblocks a later record once the earlier one is ACCEPTED', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'b', issuedAt: '2026-07-09T00:00:00.000Z', status: 'PENDING', nextAttemptAt: null },
+      chain: [
+        { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'ACCEPTED' },
+      ],
+      now: '2026-07-09T10:00:00.000Z',
+    })).toEqual({ canSubmit: true });
+  });
+
+  it('unblocks a later record once the earlier one is ACCEPTED_WITH_ERRORS', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'b', issuedAt: '2026-07-09T00:00:00.000Z', status: 'PENDING', nextAttemptAt: null },
+      chain: [
+        { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'ACCEPTED_WITH_ERRORS' },
+      ],
+      now: '2026-07-09T10:00:00.000Z',
+    })).toEqual({ canSubmit: true });
+  });
+
+  it('ignores later chain members when deciding order', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'PENDING', nextAttemptAt: null },
+      chain: [
+        { id: 'b', issuedAt: '2026-07-09T00:00:00.000Z', status: 'PENDING' },
+      ],
+      now: '2026-07-09T10:00:00.000Z',
+    })).toEqual({ canSubmit: true });
+  });
+
+  it('blocks a RETRY_SCHEDULED record before its nextAttemptAt', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'RETRY_SCHEDULED', nextAttemptAt: '2026-07-09T11:00:00.000Z' },
+      chain: [],
+      now: '2026-07-09T10:30:00.000Z',
+    })).toEqual({ canSubmit: false, reason: 'RETRY_NOT_DUE' });
+  });
+
+  it('allows a RETRY_SCHEDULED record once its nextAttemptAt has passed', () => {
+    expect(decideVerifactuRetryEligibility({
+      target: { id: 'a', issuedAt: '2026-07-08T00:00:00.000Z', status: 'RETRY_SCHEDULED', nextAttemptAt: '2026-07-09T11:00:00.000Z' },
+      chain: [],
+      now: '2026-07-09T11:00:00.000Z',
+    })).toEqual({ canSubmit: true });
+  });
+});
+
+describe('resolveVerifactuPersistedOutcome', () => {
+  it('schedules a retry exactly one hour after a technical error by default', () => {
+    const outcome = resolveVerifactuPersistedOutcome(
+      {
+        status: 'TECHNICAL_ERROR',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'TECHNICAL_ERROR',
+          reference: null,
+          message: 'SOAP_TIMEOUT',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+      '2026-07-09T10:00:00.000Z',
+    );
+
+    expect(outcome).toEqual({
+      status: 'RETRY_SCHEDULED',
+      responseRedacted: expect.objectContaining({ status: 'TECHNICAL_ERROR' }),
+      attemptCountIncrement: 1,
+      nextAttemptAt: '2026-07-09T11:00:00.000Z',
+      lastError: 'SOAP_TIMEOUT',
+    });
+    expect(VERIFACTU_MIN_RETRY_INTERVAL_MS).toBe(60 * 60 * 1000);
+  });
+
+  it('does not auto-retry a REJECTED outcome -- it stays final', () => {
+    const outcome = resolveVerifactuPersistedOutcome(
+      {
+        status: 'REJECTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'REJECTED',
+          reference: 'aeat-ref-1',
+          message: 'Factura rechazada por la AEAT',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+      '2026-07-09T10:00:00.000Z',
+    );
+
+    expect(outcome).toEqual({
+      status: 'REJECTED',
+      responseRedacted: expect.objectContaining({ status: 'REJECTED' }),
+      attemptCountIncrement: 1,
+      nextAttemptAt: null,
+      lastError: 'Factura rechazada por la AEAT',
+    });
+  });
+
+  it('persists ACCEPTED outcomes unchanged with no retry scheduling', () => {
+    const outcome = resolveVerifactuPersistedOutcome(
+      {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-ref-1',
+          message: 'Aceptado',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+      },
+      '2026-07-09T10:00:00.000Z',
+    );
+
+    expect(outcome).toEqual({
+      status: 'ACCEPTED',
+      responseRedacted: expect.objectContaining({ status: 'ACCEPTED' }),
+      attemptCountIncrement: 1,
+      nextAttemptAt: null,
+      lastError: null,
+    });
   });
 });

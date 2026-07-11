@@ -230,6 +230,8 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
           submittedAt: '2026-07-09T10:00:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -279,6 +281,8 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
           submittedAt: '2026-07-09T10:00:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -322,6 +326,8 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
           submittedAt: '2026-07-09T10:00:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -369,6 +375,8 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
           submittedAt: '2026-07-09T10:00:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -419,6 +427,8 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
           submittedAt: '2026-07-09T12:30:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -481,6 +491,8 @@ describe('DrizzleVerifactuSubmissionsRepository applyAttemptOutcome', () => {
           submittedAt: '2026-07-09T13:00:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -531,6 +543,8 @@ describe('DrizzleVerifactuSubmissionsRepository listAttempts', () => {
           submittedAt: '2026-07-09T14:00:00.000Z',
         },
         attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
       },
     });
 
@@ -641,5 +655,223 @@ describe('DrizzleVerifactuSubmissionsRepository findPendingById para ejecución 
         submissionId: seeded.submissionId,
       }),
     ).resolves.toBeNull();
+  });
+
+  it('devuelve submissions RETRY_SCHEDULED con nextAttemptAt y lastError (FASE 5)', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-find-retry-scheduled',
+      environment: 'test',
+      status: 'PENDING',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    await repository.applyAttemptOutcome({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+      outcome: {
+        status: 'RETRY_SCHEDULED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'TECHNICAL_ERROR',
+          reference: null,
+          message: 'SOAP_TIMEOUT',
+          submittedAt: '2026-07-09T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+        nextAttemptAt: '2026-07-09T11:00:00.000Z',
+        lastError: 'SOAP_TIMEOUT',
+      },
+    });
+
+    const pending = await repository.findPendingById({
+      tenantId: seeded.tenantId,
+      submissionId: seeded.submissionId,
+    });
+
+    expect(pending).toMatchObject({
+      id: seeded.submissionId,
+      status: 'RETRY_SCHEDULED',
+      attemptCount: '1',
+      nextAttemptAt: '2026-07-09T11:00:00.000Z',
+      lastError: 'SOAP_TIMEOUT',
+    });
+  });
+});
+
+describe('DrizzleVerifactuSubmissionsRepository findChainMembers', () => {
+  async function seedChainSubmission(
+    db: ReturnType<typeof createOfflineDatabase>['db'],
+    input: {
+      tenantId: string;
+      legalEntityId: string;
+      softwareInstallationNumber: string;
+      slug: string;
+      issuedAt: string;
+      status?: string;
+    },
+  ) {
+    const [operation] = await db
+      .insert(canonicalOperations)
+      .values({
+        tenantId: input.tenantId,
+        legalEntityId: input.legalEntityId,
+        sourceChannel: 'shopify',
+        sourceOrderId: `${input.slug}-ORDER`,
+        operationType: 'SALE',
+        operationStatus: 'READY_FOR_INVOICING',
+        reviewStatus: 'REVIEWED',
+        reconciliationStatus: 'MATCHED',
+        verifactuStatus: 'PENDING',
+      })
+      .returning({ id: canonicalOperations.id });
+
+    if (!operation) throw new Error('No se pudo crear la operación');
+
+    const [document] = await db
+      .insert(fiscalDocuments)
+      .values({
+        tenantId: input.tenantId,
+        canonicalOperationId: operation.id,
+        number: `${input.slug}-FS-1`,
+        documentType: 'SIMPLIFICADA',
+        status: 'ISSUED',
+        issuedAt: new Date(input.issuedAt),
+        taxBase: '6.72',
+        taxAmount: '0.27',
+        totalAmount: '6.99',
+        currency: 'EUR',
+        renderStorageKey: `${input.slug}/invoice.pdf`,
+        renderSha256: `${input.slug}-render-sha`,
+      })
+      .returning({ id: fiscalDocuments.id });
+
+    if (!document) throw new Error('No se pudo crear el documento fiscal');
+
+    const [integrityRecord] = await db
+      .insert(integrityChainRecords)
+      .values({
+        tenantId: input.tenantId,
+        fiscalDocumentId: document.id,
+        recordType: 'ALTA',
+        canonicalPayload: '{}',
+        hash: `${input.slug}-chain-hash`,
+        algorithm: 'SHA-256',
+        legalEntityId: input.legalEntityId,
+        softwareInstallationNumber: input.softwareInstallationNumber,
+      })
+      .returning({ id: integrityChainRecords.id });
+
+    if (!integrityRecord) throw new Error('No se pudo crear el registro de integridad');
+
+    const [submission] = await db
+      .insert(verifactuSubmissions)
+      .values({
+        tenantId: input.tenantId,
+        integrityRecordId: integrityRecord.id,
+        environment: 'test',
+        status: input.status ?? 'PENDING',
+        payloadRedacted: {
+          schemaVersion: 'anclora-verifactu-payload-redacted-v1',
+          documentNumber: `${input.slug}-FS-1`,
+        },
+        responseRedacted: null,
+        attemptCount: '0',
+      })
+      .returning({ id: verifactuSubmissions.id });
+
+    if (!submission) throw new Error('No se pudo crear el submission VERI*FACTU');
+
+    return submission.id;
+  }
+
+  it('devuelve los demás miembros de la misma cadena AEAT excluyendo la submission actual', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const [tenant] = await db
+      .insert(tenants)
+      .values({ name: 'tenant-verifactu-chain', slug: 'tenant-verifactu-chain' })
+      .returning({ id: tenants.id });
+    if (!tenant) throw new Error('No se pudo crear el tenant');
+
+    const [legalEntity] = await db
+      .insert(legalEntities)
+      .values({
+        tenantId: tenant.id,
+        legalName: 'Chain legal entity',
+        countryCode: 'ES',
+        address: 'Calle Fiscal 1',
+        configurationStatus: 'READY',
+      })
+      .returning({ id: legalEntities.id });
+    if (!legalEntity) throw new Error('No se pudo crear la entidad legal');
+
+    const earlierId = await seedChainSubmission(db, {
+      tenantId: tenant.id,
+      legalEntityId: legalEntity.id,
+      softwareInstallationNumber: 'LOCAL-TEST-001',
+      slug: 'tenant-verifactu-chain-earlier',
+      issuedAt: '2026-07-08T00:00:00.000Z',
+      status: 'PENDING',
+    });
+
+    const laterId = await seedChainSubmission(db, {
+      tenantId: tenant.id,
+      legalEntityId: legalEntity.id,
+      softwareInstallationNumber: 'LOCAL-TEST-001',
+      slug: 'tenant-verifactu-chain-later',
+      issuedAt: '2026-07-09T00:00:00.000Z',
+      status: 'PENDING',
+    });
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const chainForLater = await repository.findChainMembers({
+      tenantId: tenant.id,
+      legalEntityId: legalEntity.id,
+      softwareInstallationNumber: 'LOCAL-TEST-001',
+      excludeSubmissionId: laterId,
+    });
+
+    expect(chainForLater).toEqual([
+      { id: earlierId, status: 'PENDING', issuedAt: '2026-07-08T00:00:00.000Z' },
+    ]);
+
+    await repository.applyAttemptOutcome({
+      tenantId: tenant.id,
+      submissionId: earlierId,
+      outcome: {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          schemaVersion: 'anclora-verifactu-response-redacted-v1',
+          environment: 'test',
+          status: 'ACCEPTED',
+          reference: 'aeat-ref-earlier',
+          message: 'Aceptado',
+          submittedAt: '2026-07-08T10:00:00.000Z',
+        },
+        attemptCountIncrement: 1,
+        nextAttemptAt: null,
+        lastError: null,
+      },
+    });
+
+    const chainForLaterAfterAccepted = await repository.findChainMembers({
+      tenantId: tenant.id,
+      legalEntityId: legalEntity.id,
+      softwareInstallationNumber: 'LOCAL-TEST-001',
+      excludeSubmissionId: laterId,
+    });
+
+    expect(chainForLaterAfterAccepted).toEqual([
+      { id: earlierId, status: 'ACCEPTED', issuedAt: '2026-07-08T00:00:00.000Z' },
+    ]);
   });
 });

@@ -65,8 +65,10 @@ export type VerifactuSubmissionStatus =
   | 'PENDING'
   | 'SENT'
   | 'ACCEPTED'
+  | 'ACCEPTED_WITH_ERRORS'
   | 'REJECTED'
   | 'TECHNICAL_ERROR'
+  | 'RETRY_SCHEDULED'
   | 'BLOCKED';
 
 export interface OfficialAeatBillingRecordRedacted {
@@ -347,14 +349,145 @@ export async function createVerifactuSubmissionAttempt(
 }
 
 
+/**
+ * Minimum time that must elapse between AEAT submission attempts for the
+ * same record after a technical error (FASE 5: ordered retries + minimum
+ * cadence). Callers may override this via `resolveVerifactuPersistedOutcome`'s
+ * `minRetryIntervalMs` parameter for tests; production code always uses the
+ * default.
+ */
+export const VERIFACTU_MIN_RETRY_INTERVAL_MS = 60 * 60 * 1000;
+
+/**
+ * A minimal view of one record in an AEAT chaining scope (tenant + legal
+ * entity + software installation), used only to decide retry/ordering
+ * eligibility for another record in the same scope -- not the full
+ * submission.
+ */
+export interface VerifactuChainMember {
+  id: string;
+  /** ISO 8601 issuance timestamp -- the real AEAT chain order (see
+   * verifactu-chain-resolution-service.ts), not row insertion order. */
+  issuedAt: string;
+  status: VerifactuSubmissionStatus;
+}
+
+const CHAIN_RESOLVED_STATUSES: ReadonlySet<VerifactuSubmissionStatus> = new Set([
+  'ACCEPTED',
+  'ACCEPTED_WITH_ERRORS',
+]);
+
+export type VerifactuRetryBlockReason =
+  | 'EARLIER_CHAIN_RECORD_PENDING'
+  | 'RETRY_NOT_DUE';
+
+export type VerifactuRetryEligibility =
+  | { canSubmit: true }
+  | { canSubmit: false; reason: VerifactuRetryBlockReason };
+
+export interface VerifactuRetryEligibilityInput {
+  target: VerifactuChainMember & { nextAttemptAt: string | null };
+  /** Every other member of the same AEAT chain scope. The caller (repository
+   * query) is responsible for excluding `target.id`. */
+  chain: VerifactuChainMember[];
+  now: string;
+}
+
+/**
+ * Decides whether a PENDING or RETRY_SCHEDULED submission may be attempted
+ * right now, enforcing both FASE 5 rules:
+ *
+ *  1. Temporal order -- a later record in the same AEAT chain scope cannot
+ *     be sent while an earlier record is still unresolved. A record counts
+ *     as resolved only once it is ACCEPTED or ACCEPTED_WITH_ERRORS; a
+ *     REJECTED earlier record still blocks later records because it stays
+ *     final until a human/process intervenes (it never unblocks the chain
+ *     on its own).
+ *  2. Minimum cadence -- a RETRY_SCHEDULED record cannot be reattempted
+ *     before its `nextAttemptAt`.
+ */
+export function decideVerifactuRetryEligibility(
+  input: VerifactuRetryEligibilityInput,
+): VerifactuRetryEligibility {
+  const { target, chain, now } = input;
+
+  const nowMs = new Date(now).getTime();
+  const targetIssuedAtMs = new Date(target.issuedAt).getTime();
+
+  const earlierUnresolvedExists = chain.some((member) => {
+    if (member.id === target.id) return false;
+    if (new Date(member.issuedAt).getTime() >= targetIssuedAtMs) return false;
+    return !CHAIN_RESOLVED_STATUSES.has(member.status);
+  });
+
+  if (earlierUnresolvedExists) {
+    return { canSubmit: false, reason: 'EARLIER_CHAIN_RECORD_PENDING' };
+  }
+
+  if (target.status === 'RETRY_SCHEDULED') {
+    if (!target.nextAttemptAt || new Date(target.nextAttemptAt).getTime() > nowMs) {
+      return { canSubmit: false, reason: 'RETRY_NOT_DUE' };
+    }
+  }
+
+  return { canSubmit: true };
+}
+
+export interface VerifactuPersistedSubmissionOutcome {
+  status: VerifactuSubmissionStatus;
+  responseRedacted: VerifactuResponseRedacted;
+  attemptCountIncrement: 1;
+  nextAttemptAt: string | null;
+  lastError: string | null;
+}
+
+/**
+ * Turns a raw attempt outcome into the status/scheduling fields the
+ * repository should persist on the submission row.
+ *
+ * A TECHNICAL_ERROR result is never persisted as-is: it becomes
+ * RETRY_SCHEDULED with `nextAttemptAt` set at least `minRetryIntervalMs` in
+ * the future (default: one hour, see VERIFACTU_MIN_RETRY_INTERVAL_MS) and
+ * `lastError` recorded from the technical-error message.
+ *
+ * ACCEPTED, ACCEPTED_WITH_ERRORS and REJECTED are terminal outcomes and are
+ * persisted unchanged. REJECTED intentionally does NOT auto-retry: it stays
+ * final until a human/process intervenes.
+ */
+export function resolveVerifactuPersistedOutcome(
+  outcome: VerifactuSubmissionAttemptOutcome,
+  now: string,
+  minRetryIntervalMs: number = VERIFACTU_MIN_RETRY_INTERVAL_MS,
+): VerifactuPersistedSubmissionOutcome {
+  if (outcome.status === 'TECHNICAL_ERROR') {
+    return {
+      status: 'RETRY_SCHEDULED',
+      responseRedacted: outcome.responseRedacted,
+      attemptCountIncrement: outcome.attemptCountIncrement,
+      nextAttemptAt: new Date(new Date(now).getTime() + minRetryIntervalMs).toISOString(),
+      lastError: outcome.responseRedacted.message,
+    };
+  }
+
+  return {
+    status: outcome.status,
+    responseRedacted: outcome.responseRedacted,
+    attemptCountIncrement: outcome.attemptCountIncrement,
+    nextAttemptAt: null,
+    lastError: outcome.status === 'REJECTED' ? outcome.responseRedacted.message : null,
+  };
+}
+
 export interface VerifactuSubmissionExecutable {
   id: string;
   tenantId: string;
   fiscalDocumentId: string;
   environment: VerifactuSubmissionEnvironment;
-  status: 'PENDING';
+  status: 'PENDING' | 'RETRY_SCHEDULED';
   payloadRedacted: VerifactuPayloadRedacted;
   attemptCount: string;
+  nextAttemptAt: string | null;
+  lastError: string | null;
 }
 
 export interface VerifactuSubmissionExecutionRepositoryPort {
@@ -363,17 +496,33 @@ export interface VerifactuSubmissionExecutionRepositoryPort {
     submissionId: string;
   }): Promise<VerifactuSubmissionExecutable | null>;
 
+  /**
+   * Returns every other record in the same AEAT chain scope (tenant + legal
+   * entity + software installation), for ordering enforcement. Optional so
+   * that mock repositories used in unit tests that don't exercise chain
+   * ordering don't need to implement it -- the real
+   * DrizzleVerifactuSubmissionsRepository always provides it, and
+   * VerifactuSubmissionExecutionService skips the ordering guard when it is
+   * absent.
+   */
+  findChainMembers?(input: {
+    tenantId: string;
+    legalEntityId: string;
+    softwareInstallationNumber: string;
+    excludeSubmissionId: string;
+  }): Promise<VerifactuChainMember[]>;
+
   applyAttemptOutcome(input: {
     tenantId: string;
     submissionId: string;
-    outcome: VerifactuSubmissionAttemptOutcome;
+    outcome: VerifactuPersistedSubmissionOutcome;
   }): Promise<unknown | null>;
 }
 
 export type VerifactuSubmissionExecutionResult =
   | {
       ok: true;
-      outcome: VerifactuSubmissionAttemptOutcome;
+      outcome: VerifactuPersistedSubmissionOutcome;
     }
   | {
       ok: false;
@@ -382,7 +531,9 @@ export type VerifactuSubmissionExecutionResult =
         | 'VERIFACTU_RUNTIME_NOT_SUBMITTABLE'
         | 'VERIFACTU_SUBMISSION_ENVIRONMENT_MISMATCH'
         | 'VERIFACTU_OFFICIAL_AEAT_METADATA_MISSING'
-        | 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH';
+        | 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH'
+        | 'VERIFACTU_EARLIER_CHAIN_RECORD_PENDING'
+        | 'VERIFACTU_RETRY_NOT_DUE';
     };
 
 function expectedRuntimeEnvironment(config: VerifactuRuntimeConfig): VerifactuSubmissionEnvironment {
@@ -491,6 +642,39 @@ export class VerifactuSubmissionExecutionService {
       return { ok: false, reason: 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH' };
     }
 
+    const now = this.dependencies.now?.() ?? new Date().toISOString();
+
+    if (this.dependencies.repository.findChainMembers && submission.payloadRedacted.officialAeat) {
+      const { legalEntityId, softwareInstallationNumber } = submission.payloadRedacted.officialAeat;
+
+      const chain = await this.dependencies.repository.findChainMembers({
+        tenantId: input.tenantId,
+        legalEntityId,
+        softwareInstallationNumber,
+        excludeSubmissionId: submission.id,
+      });
+
+      const eligibility = decideVerifactuRetryEligibility({
+        target: {
+          id: submission.id,
+          issuedAt: submission.payloadRedacted.issuedAt,
+          status: submission.status,
+          nextAttemptAt: submission.nextAttemptAt,
+        },
+        chain,
+        now,
+      });
+
+      if (!eligibility.canSubmit) {
+        return {
+          ok: false,
+          reason: eligibility.reason === 'EARLIER_CHAIN_RECORD_PENDING'
+            ? 'VERIFACTU_EARLIER_CHAIN_RECORD_PENDING'
+            : 'VERIFACTU_RETRY_NOT_DUE',
+        };
+      }
+    }
+
     const draft: VerifactuSubmissionDraft = {
       environment: submission.payloadRedacted.environment,
       status: 'PENDING',
@@ -508,21 +692,23 @@ export class VerifactuSubmissionExecutionService {
       this.dependencies.adapter,
       record,
       draft,
-      this.dependencies.now?.() ?? new Date().toISOString(),
+      now,
       executionContext,
     );
+
+    const persistedOutcome = resolveVerifactuPersistedOutcome(outcome, now);
 
     const persisted = await this.dependencies.repository.applyAttemptOutcome({
       tenantId: input.tenantId,
       submissionId: input.submissionId,
-      outcome,
+      outcome: persistedOutcome,
     });
 
     if (!persisted) {
       return { ok: false, reason: 'SUBMISSION_NOT_FOUND_OR_NOT_PENDING' };
     }
 
-    return { ok: true, outcome };
+    return { ok: true, outcome: persistedOutcome };
   }
 }
 

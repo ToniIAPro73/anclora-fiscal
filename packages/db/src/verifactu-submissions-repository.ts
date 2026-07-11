@@ -1,7 +1,8 @@
-import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm';
 import type {
+  VerifactuChainMember,
   VerifactuPayloadRedacted,
-  VerifactuSubmissionAttemptOutcome,
+  VerifactuPersistedSubmissionOutcome,
   VerifactuSubmissionExecutable,
 } from '@anclora/core/server';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
@@ -52,8 +53,10 @@ export interface PaginatedVerifactuSubmissions {
 export interface ApplyVerifactuSubmissionOutcomeInput {
   tenantId: string;
   submissionId: string;
-  outcome: VerifactuSubmissionAttemptOutcome;
+  outcome: VerifactuPersistedSubmissionOutcome;
 }
+
+const EXECUTABLE_SUBMISSION_STATUSES = ['PENDING', 'RETRY_SCHEDULED'] as const;
 
 export interface VerifactuSubmissionAttemptItem {
   id: string;
@@ -84,6 +87,8 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
         status: verifactuSubmissions.status,
         payloadRedacted: verifactuSubmissions.payloadRedacted,
         attemptCount: verifactuSubmissions.attemptCount,
+        nextAttemptAt: verifactuSubmissions.nextAttemptAt,
+        lastError: verifactuSubmissions.lastError,
         fiscalDocumentId: integrityChainRecords.fiscalDocumentId,
       })
       .from(verifactuSubmissions)
@@ -91,7 +96,7 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
       .where(and(
         eq(verifactuSubmissions.tenantId, input.tenantId),
         eq(verifactuSubmissions.id, input.submissionId),
-        eq(verifactuSubmissions.status, 'PENDING'),
+        inArray(verifactuSubmissions.status, EXECUTABLE_SUBMISSION_STATUSES),
       ))
       .limit(1);
 
@@ -105,13 +110,51 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
       tenantId: row.tenantId,
       fiscalDocumentId: row.fiscalDocumentId,
       environment,
-      status: 'PENDING',
+      status: row.status as VerifactuSubmissionExecutable['status'],
       payloadRedacted: {
         ...payloadRedacted,
         environment,
       } as VerifactuPayloadRedacted,
       attemptCount: String(row.attemptCount),
+      nextAttemptAt: row.nextAttemptAt ? row.nextAttemptAt.toISOString() : null,
+      lastError: row.lastError,
     };
+  }
+
+  /**
+   * Returns every other submission in the same AEAT chain scope (tenant +
+   * legal entity + software installation), ordered by the real issuance
+   * timestamp -- the AEAT chain order, not row insertion order. Used by
+   * VerifactuSubmissionExecutionService to enforce that a later record is
+   * never sent while an earlier one is still unresolved (FASE 5).
+   */
+  async findChainMembers(input: {
+    tenantId: string;
+    legalEntityId: string;
+    softwareInstallationNumber: string;
+    excludeSubmissionId: string;
+  }): Promise<VerifactuChainMember[]> {
+    const rows = await this.db
+      .select({
+        id: verifactuSubmissions.id,
+        status: verifactuSubmissions.status,
+        issuedAt: fiscalDocuments.issuedAt,
+      })
+      .from(verifactuSubmissions)
+      .innerJoin(integrityChainRecords, eq(verifactuSubmissions.integrityRecordId, integrityChainRecords.id))
+      .innerJoin(fiscalDocuments, eq(integrityChainRecords.fiscalDocumentId, fiscalDocuments.id))
+      .where(and(
+        eq(verifactuSubmissions.tenantId, input.tenantId),
+        eq(integrityChainRecords.legalEntityId, input.legalEntityId),
+        eq(integrityChainRecords.softwareInstallationNumber, input.softwareInstallationNumber),
+        ne(verifactuSubmissions.id, input.excludeSubmissionId),
+      ));
+
+    return rows.map((row) => ({
+      id: row.id,
+      status: row.status as VerifactuChainMember['status'],
+      issuedAt: row.issuedAt.toISOString(),
+    }));
   }
 
   async applyAttemptOutcome(input: ApplyVerifactuSubmissionOutcomeInput): Promise<VerifactuSubmissionListItem | null> {
@@ -125,7 +168,7 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
         .where(and(
           eq(verifactuSubmissions.tenantId, input.tenantId),
           eq(verifactuSubmissions.id, input.submissionId),
-          eq(verifactuSubmissions.status, 'PENDING'),
+          inArray(verifactuSubmissions.status, EXECUTABLE_SUBMISSION_STATUSES),
         ))
         .limit(1);
 
@@ -140,12 +183,14 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
           status: input.outcome.status,
           responseRedacted: input.outcome.responseRedacted,
           attemptCount: sql`${verifactuSubmissions.attemptCount} + ${input.outcome.attemptCountIncrement}`,
+          nextAttemptAt: input.outcome.nextAttemptAt ? new Date(input.outcome.nextAttemptAt) : null,
+          lastError: input.outcome.lastError,
           updatedAt: new Date(),
         })
         .where(and(
           eq(verifactuSubmissions.tenantId, input.tenantId),
           eq(verifactuSubmissions.id, input.submissionId),
-          eq(verifactuSubmissions.status, 'PENDING'),
+          inArray(verifactuSubmissions.status, EXECUTABLE_SUBMISSION_STATUSES),
         ))
         .returning({ id: verifactuSubmissions.id });
 
