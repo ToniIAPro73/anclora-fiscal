@@ -1,4 +1,7 @@
 import {
+  AeatVerifactuXmlSubmissionAdapter,
+  DeterministicAeatVerifactuSoapTransport,
+  DeterministicAeatVerifactuXmlSigner,
   VerifactuSubmissionExecutionService,
   resolveAeatVerifactuPortalReadiness,
   resolveVerifactuRuntimeConfig,
@@ -23,6 +26,14 @@ export interface ApiVerifactuEnvironment {
   VERIFACTU_AEAT_PRODUCTION_ENDPOINT_URL?: string | undefined;
   VERIFACTU_AEAT_ALLOW_LOAD_TESTS?: string | undefined;
   VERIFACTU_AEAT_REAL_SOAP_TRANSPORT_ENABLED?: string | undefined;
+  VERIFACTU_AEAT_ISSUER_NIF?: string | undefined;
+  VERIFACTU_AEAT_ISSUER_NAME?: string | undefined;
+  VERIFACTU_AEAT_SOFTWARE_NAME?: string | undefined;
+  VERIFACTU_AEAT_SOFTWARE_ID?: string | undefined;
+  VERIFACTU_AEAT_SOFTWARE_VERSION?: string | undefined;
+  VERIFACTU_AEAT_SOFTWARE_INSTALLATION_NUMBER?: string | undefined;
+  VERIFACTU_AEAT_SOFTWARE_PRODUCER_NIF?: string | undefined;
+  VERIFACTU_AEAT_SOFTWARE_PRODUCER_NAME?: string | undefined;
   VERIFACTU_PRODUCTION_SUBMISSION_ENABLED?: string | undefined;
 }
 
@@ -97,6 +108,76 @@ function certificatePasswordConfigured(env: ApiVerifactuEnvironment): boolean {
     || flag(env.VERIFACTU_AEAT_CERTIFICATE_PASSWORD_CONFIGURED);
 }
 
+function hasInternalDeterministicAeatXmlAdapterConfiguration(
+  env: ApiVerifactuEnvironment,
+): boolean {
+  return normalizedMode(env) === 'test'
+    && !flag(env.VERIFACTU_AEAT_REAL_SOAP_TRANSPORT_ENABLED)
+    && hasText(env.VERIFACTU_AEAT_ISSUER_NIF)
+    && hasText(env.VERIFACTU_AEAT_ISSUER_NAME)
+    && hasText(env.VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT)
+    && hasText(endpointForMode(env));
+}
+
+function createInternalDeterministicAeatXmlAdapter(input: {
+  env: ApiVerifactuEnvironment;
+  runtimeConfig: VerifactuRuntimeConfig;
+  now?: (() => string) | undefined;
+}): VerifactuPort | null {
+  if (!hasInternalDeterministicAeatXmlAdapterConfiguration(input.env)) {
+    return null;
+  }
+
+  if (input.runtimeConfig.mode !== 'test') {
+    return null;
+  }
+
+  const endpointUrl = endpointForMode(input.env);
+  const issuerTaxId = input.env.VERIFACTU_AEAT_ISSUER_NIF?.trim();
+  const issuerName = input.env.VERIFACTU_AEAT_ISSUER_NAME?.trim();
+  const certificateFingerprint = input.env.VERIFACTU_AEAT_CERTIFICATE_FINGERPRINT?.trim();
+
+  if (!endpointUrl || !issuerTaxId || !issuerName || !certificateFingerprint) {
+    return null;
+  }
+
+  return new AeatVerifactuXmlSubmissionAdapter(
+    input.runtimeConfig,
+    {
+      environment: 'test',
+      endpointUrl,
+      issuer: {
+        taxId: issuerTaxId,
+        name: issuerName,
+      },
+      software: {
+        name: input.env.VERIFACTU_AEAT_SOFTWARE_NAME?.trim() || 'Anclora Fiscal',
+        id: input.env.VERIFACTU_AEAT_SOFTWARE_ID?.trim() || 'AF',
+        version: input.env.VERIFACTU_AEAT_SOFTWARE_VERSION?.trim() || '0.1.0',
+        installationNumber:
+          input.env.VERIFACTU_AEAT_SOFTWARE_INSTALLATION_NUMBER?.trim()
+          || 'LOCAL-TEST-001',
+        producer: {
+          taxId:
+            input.env.VERIFACTU_AEAT_SOFTWARE_PRODUCER_NIF?.trim()
+            || issuerTaxId,
+          name:
+            input.env.VERIFACTU_AEAT_SOFTWARE_PRODUCER_NAME?.trim()
+            || issuerName,
+        },
+        onlyVerifactu: true,
+        multiTenant: false,
+      },
+      certificateFingerprint,
+      signer: new DeterministicAeatVerifactuXmlSigner(),
+      transport: new DeterministicAeatVerifactuSoapTransport(
+        input.now ?? (() => new Date().toISOString()),
+      ),
+      ...(input.now ? { now: input.now } : {}),
+    },
+  );
+}
+
 export function resolveApiAeatVerifactuPortalReadiness(
   env: ApiVerifactuEnvironment = process.env,
 ): AeatVerifactuPortalReadiness {
@@ -144,7 +225,7 @@ export function resolveApiAeatVerifactuSoapTransportStatus(
 ): ApiAeatVerifactuSoapTransportStatus {
   return {
     implemented: true,
-    wiredIntoSubmissionFlow: false,
+    wiredIntoSubmissionFlow: hasInternalDeterministicAeatXmlAdapterConfiguration(env),
     networkEnabled: flag(env.VERIFACTU_AEAT_REAL_SOAP_TRANSPORT_ENABLED),
     operation: 'RegFactuSistemaFacturacion',
     soapAction: '',
@@ -181,7 +262,15 @@ export function createInternalVerifactuSubmissionExecutionService(input: {
     };
   }
 
-  if (!input.adapter) {
+  const env = input.env ?? process.env;
+  const adapter = input.adapter
+    ?? createInternalDeterministicAeatXmlAdapter({
+      env,
+      runtimeConfig,
+      ...(input.now ? { now: input.now } : {}),
+    });
+
+  if (!adapter) {
     return {
       service: null,
       runtimeConfig,
@@ -192,7 +281,7 @@ export function createInternalVerifactuSubmissionExecutionService(input: {
   return {
     service: new VerifactuSubmissionExecutionService({
       repository: input.repository,
-      adapter: input.adapter,
+      adapter,
       runtimeConfig,
       ...(input.now ? { now: input.now } : {}),
     }),

@@ -20,6 +20,19 @@ const testAdapterEnv: ApiVerifactuEnvironment = {
   VERIFACTU_AEAT_TEST_ENDPOINT_URL: 'https://prewww10.aeat.es/wlpl/TIKE-CONT/ws/SistemaFacturacion',
 };
 
+const testAdapterIdentityEnv: ApiVerifactuEnvironment = {
+  ...testAdapterEnv,
+  VERIFACTU_AEAT_REAL_SOAP_TRANSPORT_ENABLED: 'false',
+  VERIFACTU_AEAT_ISSUER_NIF: 'B12345678',
+  VERIFACTU_AEAT_ISSUER_NAME: 'Anclora Fiscal',
+  VERIFACTU_AEAT_SOFTWARE_NAME: 'Anclora Fiscal',
+  VERIFACTU_AEAT_SOFTWARE_ID: 'AF',
+  VERIFACTU_AEAT_SOFTWARE_VERSION: '0.1.0',
+  VERIFACTU_AEAT_SOFTWARE_INSTALLATION_NUMBER: 'LOCAL-TEST-001',
+  VERIFACTU_AEAT_SOFTWARE_PRODUCER_NIF: 'B12345678',
+  VERIFACTU_AEAT_SOFTWARE_PRODUCER_NAME: 'Anclora Fiscal',
+};
+
 const repository = {
   findPendingById: vi.fn(),
   applyAttemptOutcome: vi.fn(),
@@ -46,6 +59,20 @@ describe('resolveApiAeatVerifactuPortalReadiness', () => {
     })).toMatchObject({
       ready: false,
       certificateConfigured: false,
+    });
+  });
+
+  it('marca el transporte SOAP como cableado sólo para el adapter XML determinista interno', () => {
+    expect(resolveApiVerifactuRuntimeStatus(testAdapterEnv).aeatSoapTransport).toMatchObject({
+      wiredIntoSubmissionFlow: false,
+      networkEnabled: false,
+      safety: 'disabled-by-default',
+    });
+
+    expect(resolveApiVerifactuRuntimeStatus(testAdapterIdentityEnv).aeatSoapTransport).toMatchObject({
+      wiredIntoSubmissionFlow: true,
+      networkEnabled: false,
+      safety: 'disabled-by-default',
     });
   });
 });
@@ -176,6 +203,22 @@ describe('createInternalVerifactuSubmissionExecutionService', () => {
         mode: 'test',
         canSubmit: true,
       },
+    });
+  });
+
+  it('construye el adapter XML interno determinista cuando runtime test e identidad AEAT están configurados', () => {
+    const result = createInternalVerifactuSubmissionExecutionService({
+      repository,
+      env: testAdapterIdentityEnv,
+      now: () => '2026-07-09T10:00:00.000Z',
+    });
+
+    expect(result.service).toBeInstanceOf(VerifactuSubmissionExecutionService);
+    expect(result.runtimeConfig).toMatchObject({
+      mode: 'test',
+      enabled: true,
+      canSubmit: true,
+      productionSafe: true,
     });
   });
 
