@@ -3,11 +3,13 @@ import type {
   IntegrityRecord,
   VerifactuPort,
   VerifactuRuntimeConfig,
+  VerifactuSubmissionExecutionContext,
   VerifactuSubmissionResult,
 } from './verifactu.js';
 import {
   buildAeatVerifactuUnsignedXml,
   type AeatVerifactuPartyIdentity,
+  type AeatVerifactuPreviousRecordReference,
   type AeatVerifactuSoftwareIdentity,
   type AeatVerifactuXmlEnvironment,
 } from './verifactu-aeat-xml.js';
@@ -51,7 +53,10 @@ export class AeatVerifactuXmlSubmissionAdapter implements VerifactuPort {
     private readonly options: AeatVerifactuXmlSubmissionAdapterOptions,
   ) {}
 
-  async submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult> {
+  async submit(
+    record: IntegrityRecord,
+    context?: VerifactuSubmissionExecutionContext,
+  ): Promise<VerifactuSubmissionResult> {
     assertRuntime(this.config, this.options.environment);
 
     const endpointUrl = this.options.endpointUrl.trim();
@@ -60,16 +65,35 @@ export class AeatVerifactuXmlSubmissionAdapter implements VerifactuPort {
     }
 
     const now = this.options.now?.() ?? new Date().toISOString();
+    const officialAeat = context?.officialAeat;
+    const generatedAt = officialAeat?.huellaGeneratedAt ?? now;
+    const previousRecord = officialAeat
+      ? previousRecordFromOfficialAeat(officialAeat)
+      : undefined;
+
+    assertOfficialAeatRecordCompatibility(
+      record,
+      officialAeat,
+      this.options.issuer,
+    );
 
     const unsignedPayload = buildAeatVerifactuUnsignedXml({
       environment: this.options.environment,
       record,
       issuer: this.options.issuer,
       software: this.options.software,
-      generatedAt: now,
+      generatedAt,
       operationDescription: this.options.operationDescription,
       externalReference: record.documentId,
+      ...(previousRecord ? { previousRecord } : {}),
     });
+
+    if (
+      officialAeat
+      && unsignedPayload.chainHash !== officialAeat.huella.trim().toUpperCase()
+    ) {
+      throw new Error('AEAT_VERIFACTU_OFFICIAL_HUELLA_MISMATCH');
+    }
 
     const validationReport = validateAeatVerifactuUnsignedXml(unsignedPayload);
 
@@ -93,6 +117,70 @@ export class AeatVerifactuXmlSubmissionAdapter implements VerifactuPort {
 
     return parseAeatVerifactuSoapResponse(response);
   }
+}
+
+
+function normalizeOfficialTaxId(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+function formatIsoDateOnly(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error('AEAT_VERIFACTU_INVALID_DATE');
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function assertOfficialAeatRecordCompatibility(
+  record: IntegrityRecord,
+  officialAeat: VerifactuSubmissionExecutionContext['officialAeat'],
+  issuer: AeatVerifactuPartyIdentity,
+): void {
+  if (!officialAeat) return;
+
+  if (
+    normalizeOfficialTaxId(officialAeat.idEmisorFactura)
+    !== normalizeOfficialTaxId(issuer.taxId)
+  ) {
+    throw new Error('AEAT_VERIFACTU_OFFICIAL_ISSUER_MISMATCH');
+  }
+
+  if (officialAeat.numSerieFactura.trim() !== record.documentNumber) {
+    throw new Error('AEAT_VERIFACTU_OFFICIAL_DOCUMENT_NUMBER_MISMATCH');
+  }
+
+  if (officialAeat.fechaExpedicionFactura !== formatIsoDateOnly(record.issuedAt)) {
+    throw new Error('AEAT_VERIFACTU_OFFICIAL_ISSUED_DATE_MISMATCH');
+  }
+
+  if (record.recordType === 'ALTA' && officialAeat.tipoFactura !== 'F1') {
+    throw new Error('AEAT_VERIFACTU_OFFICIAL_TIPO_FACTURA_UNSUPPORTED');
+  }
+}
+
+function previousRecordFromOfficialAeat(
+  officialAeat: NonNullable<VerifactuSubmissionExecutionContext['officialAeat']>,
+): AeatVerifactuPreviousRecordReference | undefined {
+  if (!officialAeat.previousHuella) {
+    return undefined;
+  }
+
+  if (
+    !officialAeat.previousIdEmisorFactura
+    || !officialAeat.previousNumSerieFactura
+    || !officialAeat.previousFechaExpedicionFactura
+  ) {
+    throw new Error('AEAT_VERIFACTU_PREVIOUS_RECORD_METADATA_MISSING');
+  }
+
+  return {
+    issuerTaxId: officialAeat.previousIdEmisorFactura,
+    documentNumber: officialAeat.previousNumSerieFactura,
+    issuedAt: officialAeat.previousFechaExpedicionFactura,
+    huella: officialAeat.previousHuella,
+  };
 }
 
 export class DeterministicAeatVerifactuSoapTransport implements AeatVerifactuSoapTransportPort {

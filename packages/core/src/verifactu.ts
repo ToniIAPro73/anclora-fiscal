@@ -81,6 +81,9 @@ export interface OfficialAeatBillingRecordRedacted {
   huellaGeneratedAt: string;
   previousHuella: string | null;
   previousFiscalDocumentId: string | null;
+  previousIdEmisorFactura?: string | null | undefined;
+  previousNumSerieFactura?: string | null | undefined;
+  previousFechaExpedicionFactura?: string | null | undefined;
 }
 
 export interface VerifactuPayloadRedacted {
@@ -405,7 +408,15 @@ function hasOfficialAeatMetadata(payload: VerifactuPayloadRedacted): boolean {
       && official.fechaExpedicionFactura.trim()
       && official.tipoFactura.trim()
       && /^[A-F0-9]{64}$/.test(official.huella.trim().toUpperCase())
-      && official.huellaGeneratedAt.trim(),
+      && official.huellaGeneratedAt.trim()
+      && (
+        !official.previousHuella
+        || (
+          official.previousIdEmisorFactura?.trim()
+          && official.previousNumSerieFactura?.trim()
+          && official.previousFechaExpedicionFactura?.trim()
+        )
+      ),
   );
 }
 

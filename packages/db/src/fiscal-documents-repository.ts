@@ -108,6 +108,9 @@ interface OfficialAeatSubmissionPayloadRedactedInput {
   huellaGeneratedAt: string;
   previousHuella: string | null;
   previousFiscalDocumentId: string | null;
+  previousIdEmisorFactura: string | null;
+  previousNumSerieFactura: string | null;
+  previousFechaExpedicionFactura: string | null;
 }
 
 function documentTypeSeriesCandidates(documentType: string): string[] {
@@ -191,6 +194,9 @@ async function insertVerifactuSubmissionDraft<TQueryResult extends PgQueryResult
           huellaGeneratedAt: input.officialAeat.huellaGeneratedAt,
           previousHuella: input.officialAeat.previousHuella,
           previousFiscalDocumentId: input.officialAeat.previousFiscalDocumentId,
+          previousIdEmisorFactura: input.officialAeat.previousIdEmisorFactura,
+          previousNumSerieFactura: input.officialAeat.previousNumSerieFactura,
+          previousFechaExpedicionFactura: input.officialAeat.previousFechaExpedicionFactura,
         },
       }
     : draft.payloadRedacted;
@@ -571,6 +577,9 @@ try {
           huellaGeneratedAt: issuedAt.toISOString(),
           previousHuella: previousOfficialRecord?.huella ?? null,
           previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+          previousIdEmisorFactura: previousOfficialRecord?.idEmisorFactura ?? null,
+          previousNumSerieFactura: previousOfficialRecord?.numSerieFactura ?? null,
+          previousFechaExpedicionFactura: previousOfficialRecord?.fechaExpedicionFactura ?? null,
         },
       });
 

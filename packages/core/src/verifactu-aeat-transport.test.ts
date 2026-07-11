@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createIntegrityRecord, resolveVerifactuRuntimeConfig } from './verifactu';
 import { DeterministicAeatVerifactuXmlSigner } from './verifactu-aeat-signing';
+import { buildAeatVerifactuUnsignedXml } from './verifactu-aeat-xml';
 import {
   AeatVerifactuXmlSubmissionAdapter,
   DeterministicAeatVerifactuSoapTransport,
@@ -193,6 +194,103 @@ describe('AeatVerifactuXmlSubmissionAdapter', () => {
     const aeatHuella = aeatHuellaMatch?.[1] ?? '';
     expect(aeatHuella.toLowerCase()).not.toBe(integrityRecord.hash.toLowerCase());
     expect(integrityRecord.hash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it('usa la metadata oficial AEAT para reproducir huella y RegistroAnterior', async () => {
+    const deterministicTransport = new DeterministicAeatVerifactuSoapTransport(() => '2026-07-09T10:07:00.000Z');
+    const transport = {
+      submit: vi.fn((request) => deterministicTransport.submit(request)),
+    };
+
+    const previousHuella = 'B'.repeat(64);
+    const integrityRecord = createIntegrityRecord({
+      documentId: 'document-2',
+      documentNumber: 'FS-2026-0002',
+      recordType: 'ALTA',
+      issuedAt: '2026-07-09T10:00:00.000Z',
+      totalAmount: 6.99,
+      taxAmount: 0.27,
+      previousHash: 'c'.repeat(64),
+    }, '2026-07-09T10:00:00.000Z');
+
+    const unsigned = buildAeatVerifactuUnsignedXml({
+      environment: 'test',
+      record: integrityRecord,
+      issuer: {
+        taxId: 'B12345678',
+        name: 'Anclora Fiscal',
+      },
+      previousRecord: {
+        issuerTaxId: 'B12345678',
+        documentNumber: 'FS-2026-0001',
+        issuedAt: '2026-07-08',
+        huella: previousHuella,
+      },
+      software: {
+        name: 'Anclora Fiscal',
+        id: 'AF',
+        version: '0.1.0',
+        installationNumber: 'LOCAL-TEST-001',
+        producer: {
+          taxId: 'B87654321',
+          name: 'Anclora Labs',
+        },
+      },
+      generatedAt: '2026-07-09T10:06:00.000Z',
+      externalReference: integrityRecord.documentId,
+    });
+
+    const result = await adapter({ transport }).submit(integrityRecord, {
+      officialAeat: {
+        schemaVersion: 'anclora-aeat-official-billing-record-redacted-v1',
+        legalEntityId: 'legal-entity-1',
+        softwareInstallationNumber: 'LOCAL-TEST-001',
+        idEmisorFactura: 'B12345678',
+        numSerieFactura: 'FS-2026-0002',
+        fechaExpedicionFactura: '2026-07-09',
+        tipoFactura: 'F1',
+        huella: unsigned.chainHash,
+        huellaGeneratedAt: '2026-07-09T10:06:00.000Z',
+        previousHuella,
+        previousFiscalDocumentId: 'document-1',
+        previousIdEmisorFactura: 'B12345678',
+        previousNumSerieFactura: 'FS-2026-0001',
+        previousFechaExpedicionFactura: '2026-07-08',
+      },
+    });
+
+    expect(result.status).toBe('ACCEPTED');
+
+    const signedXml = transport.submit.mock.calls[0]?.[0].signedPayload.signedXml as string;
+    expect(signedXml).toContain('<sum1:RegistroAnterior>');
+    expect(signedXml).toContain('<sum1:NumSerieFactura>FS-2026-0001</sum1:NumSerieFactura>');
+    expect(signedXml).toContain(`<sum1:Huella>${previousHuella}</sum1:Huella>`);
+    expect(signedXml).toContain(`<sum1:Huella>${unsigned.chainHash}</sum1:Huella>`);
+    expect(signedXml).not.toContain('REGISTRO-ANTERIOR');
+  });
+
+  it('rechaza metadata oficial AEAT inconsistente antes de firmar o transportar', async () => {
+    const transport = {
+      submit: vi.fn(),
+    };
+
+    await expect(adapter({ transport }).submit(record(), {
+      officialAeat: {
+        schemaVersion: 'anclora-aeat-official-billing-record-redacted-v1',
+        legalEntityId: 'legal-entity-1',
+        softwareInstallationNumber: 'LOCAL-TEST-001',
+        idEmisorFactura: 'B12345678',
+        numSerieFactura: 'FS-2026-0001',
+        fechaExpedicionFactura: '2026-07-09',
+        tipoFactura: 'F1',
+        huella: 'A'.repeat(64),
+        huellaGeneratedAt: '2026-07-09T10:06:00.000Z',
+        previousHuella: 'B'.repeat(64),
+        previousFiscalDocumentId: 'document-previous',
+      },
+    })).rejects.toThrow('AEAT_VERIFACTU_PREVIOUS_RECORD_METADATA_MISSING');
+
+    expect(transport.submit).not.toHaveBeenCalled();
   });
 
   it('propaga un rechazo normalizado del transporte AEAT test', async () => {
