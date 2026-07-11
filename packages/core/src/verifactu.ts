@@ -62,6 +62,20 @@ export type VerifactuSubmissionStatus =
   | 'TECHNICAL_ERROR'
   | 'BLOCKED';
 
+export interface OfficialAeatBillingRecordRedacted {
+  schemaVersion: 'anclora-aeat-official-billing-record-redacted-v1';
+  legalEntityId: string;
+  softwareInstallationNumber: string;
+  idEmisorFactura: string;
+  numSerieFactura: string;
+  fechaExpedicionFactura: string;
+  tipoFactura: string;
+  huella: string;
+  huellaGeneratedAt: string;
+  previousHuella: string | null;
+  previousFiscalDocumentId: string | null;
+}
+
 export interface VerifactuPayloadRedacted {
   schemaVersion: 'anclora-verifactu-payload-redacted-v1';
   environment: VerifactuSubmissionEnvironment;
@@ -74,6 +88,7 @@ export interface VerifactuPayloadRedacted {
   totalAmount: number;
   taxAmount: number;
   algorithm: IntegrityRecord['algorithm'];
+  officialAeat?: OfficialAeatBillingRecordRedacted | undefined;
 }
 
 export interface VerifactuSubmissionDraft {
@@ -353,6 +368,7 @@ export type VerifactuSubmissionExecutionResult =
         | 'SUBMISSION_NOT_FOUND_OR_NOT_PENDING'
         | 'VERIFACTU_RUNTIME_NOT_SUBMITTABLE'
         | 'VERIFACTU_SUBMISSION_ENVIRONMENT_MISMATCH'
+        | 'VERIFACTU_OFFICIAL_AEAT_METADATA_MISSING'
         | 'VERIFACTU_PAYLOAD_INTEGRITY_MISMATCH';
     };
 
@@ -360,6 +376,27 @@ function expectedRuntimeEnvironment(config: VerifactuRuntimeConfig): VerifactuSu
   if (config.mode === 'production') return 'production';
   if (config.mode === 'test') return 'test';
   return 'mock';
+}
+
+function requiresOfficialAeatMetadata(config: VerifactuRuntimeConfig): boolean {
+  return config.mode === 'test' || config.mode === 'production';
+}
+
+function hasOfficialAeatMetadata(payload: VerifactuPayloadRedacted): boolean {
+  const official = payload.officialAeat;
+
+  return Boolean(
+    official
+      && official.schemaVersion === 'anclora-aeat-official-billing-record-redacted-v1'
+      && official.legalEntityId.trim()
+      && official.softwareInstallationNumber.trim()
+      && official.idEmisorFactura.trim()
+      && official.numSerieFactura.trim()
+      && official.fechaExpedicionFactura.trim()
+      && official.tipoFactura.trim()
+      && /^[A-F0-9]{64}$/.test(official.huella.trim().toUpperCase())
+      && official.huellaGeneratedAt.trim(),
+  );
 }
 
 function recordFromExecutableSubmission(submission: VerifactuSubmissionExecutable): IntegrityRecord {
@@ -417,6 +454,13 @@ export class VerifactuSubmissionExecutionService {
 
     if (submission.payloadRedacted.environment !== expectedEnvironment) {
       return { ok: false, reason: 'VERIFACTU_SUBMISSION_ENVIRONMENT_MISMATCH' };
+    }
+
+    if (
+      requiresOfficialAeatMetadata(this.dependencies.runtimeConfig)
+      && !hasOfficialAeatMetadata(submission.payloadRedacted)
+    ) {
+      return { ok: false, reason: 'VERIFACTU_OFFICIAL_AEAT_METADATA_MISSING' };
     }
 
     let record: IntegrityRecord;

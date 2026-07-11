@@ -494,12 +494,29 @@ describe('VerifactuSubmissionExecutionService', () => {
     resolveVerifactuRuntimeConfig({ mode: 'test', nodeEnv: 'production', adapterConfigured: true }),
   );
 
+  const officialAeat = {
+    schemaVersion: 'anclora-aeat-official-billing-record-redacted-v1' as const,
+    legalEntityId: 'legal-entity-1',
+    softwareInstallationNumber: 'LOCAL-TEST-001',
+    idEmisorFactura: '12345678Z',
+    numSerieFactura: record.documentNumber,
+    fechaExpedicionFactura: '2026-07-09',
+    tipoFactura: 'F1',
+    huella: 'A'.repeat(64),
+    huellaGeneratedAt: '2026-07-09T00:00:00.000Z',
+    previousHuella: null,
+    previousFiscalDocumentId: null,
+  };
+
   function executableSubmission(overrides: Partial<{
     fiscalDocumentId: string;
     payloadRedacted: typeof draft.payloadRedacted;
     environment: typeof draft.environment;
   }> = {}) {
-    const payloadRedacted = overrides.payloadRedacted ?? draft.payloadRedacted;
+    const payloadRedacted = overrides.payloadRedacted ?? {
+      ...draft.payloadRedacted,
+      officialAeat,
+    };
 
     return {
       id: 'submission-1',
@@ -689,9 +706,45 @@ describe('VerifactuSubmissionExecutionService', () => {
     expect(adapter.submit).not.toHaveBeenCalled();
   });
 
+  it('does not execute in AEAT mode when official AEAT metadata is missing', async () => {
+    const payloadWithoutOfficialAeat = { ...draft.payloadRedacted };
+
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({
+        payloadRedacted: payloadWithoutOfficialAeat,
+      })),
+      applyAttemptOutcome: vi.fn(),
+    };
+
+    const adapter = {
+      submit: vi.fn(),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({
+        mode: 'test',
+        nodeEnv: 'production',
+        adapterConfigured: true,
+      }),
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toEqual({
+      ok: false,
+      reason: 'VERIFACTU_OFFICIAL_AEAT_METADATA_MISSING',
+    });
+
+    expect(adapter.submit).not.toHaveBeenCalled();
+    expect(repository.applyAttemptOutcome).not.toHaveBeenCalled();
+  });
+
   it('does not execute when the redacted payload no longer matches the chain hash', async () => {
     const corruptedPayload = {
       ...draft.payloadRedacted,
+      officialAeat,
       totalAmount: 999,
     };
 
