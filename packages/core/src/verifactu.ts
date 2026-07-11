@@ -47,8 +47,15 @@ export interface VerifactuSubmissionResult {
   message: string;
 }
 
+export interface VerifactuSubmissionExecutionContext {
+  officialAeat?: OfficialAeatBillingRecordRedacted | undefined;
+}
+
 export interface VerifactuPort {
-  submit(record: IntegrityRecord): Promise<VerifactuSubmissionResult>;
+  submit(
+    record: IntegrityRecord,
+    context?: VerifactuSubmissionExecutionContext,
+  ): Promise<VerifactuSubmissionResult>;
 }
 
 
@@ -293,6 +300,7 @@ export async function createVerifactuSubmissionAttempt(
   record: IntegrityRecord,
   draft: VerifactuSubmissionDraft,
   submittedAt: string,
+  context?: VerifactuSubmissionExecutionContext | undefined,
 ): Promise<VerifactuSubmissionAttemptOutcome> {
   if (draft.status !== 'PENDING') {
     throw new Error('VERIFACTU_SUBMISSION_NOT_PENDING');
@@ -303,7 +311,9 @@ export async function createVerifactuSubmissionAttempt(
   }
 
   try {
-    const result = await adapter.submit(record);
+    const result = context
+      ? await adapter.submit(record, context)
+      : await adapter.submit(record);
 
     return {
       status: result.status,
@@ -479,11 +489,16 @@ export class VerifactuSubmissionExecutionService {
       canSubmit: true,
     };
 
+    const executionContext = submission.payloadRedacted.officialAeat
+      ? { officialAeat: submission.payloadRedacted.officialAeat }
+      : undefined;
+
     const outcome = await createVerifactuSubmissionAttempt(
       this.dependencies.adapter,
       record,
       draft,
       this.dependencies.now?.() ?? new Date().toISOString(),
+      executionContext,
     );
 
     const persisted = await this.dependencies.repository.applyAttemptOutcome({

@@ -572,7 +572,7 @@ describe('VerifactuSubmissionExecutionService', () => {
       tenantId: 'tenant-1',
       submissionId: 'submission-1',
     });
-    expect(adapter.submit).toHaveBeenCalledWith(record);
+    expect(adapter.submit).toHaveBeenCalledWith(record, { officialAeat });
     expect(repository.applyAttemptOutcome).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
       submissionId: 'submission-1',
@@ -624,6 +624,53 @@ describe('VerifactuSubmissionExecutionService', () => {
         attemptCountIncrement: 1,
       }),
     });
+  });
+
+  it('executes mock-mode pending submissions without official AEAT metadata', async () => {
+    const mockDraft = createVerifactuSubmissionDraft(
+      record,
+      resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    );
+
+    const repository = {
+      findPendingById: vi.fn().mockResolvedValue(executableSubmission({
+        payloadRedacted: mockDraft.payloadRedacted,
+        environment: 'mock',
+      })),
+      applyAttemptOutcome: vi.fn().mockResolvedValue({ id: 'submission-1' }),
+    };
+
+    const adapter = {
+      submit: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        reference: 'mock-ref-1',
+        message: 'Aceptación simulada',
+      }),
+    };
+
+    const service = new VerifactuSubmissionExecutionService({
+      repository,
+      adapter,
+      runtimeConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+      now: () => '2026-07-09T10:00:00.000Z',
+    });
+
+    await expect(
+      service.submitPending({ tenantId: 'tenant-1', submissionId: 'submission-1' }),
+    ).resolves.toMatchObject({
+      ok: true,
+      outcome: {
+        status: 'ACCEPTED',
+        responseRedacted: {
+          environment: 'mock',
+          status: 'ACCEPTED',
+          reference: 'mock-ref-1',
+          message: 'Aceptación simulada',
+        },
+      },
+    });
+
+    expect(adapter.submit).toHaveBeenCalledWith(record);
   });
 
   it('does not execute when runtime is not submittable', async () => {
