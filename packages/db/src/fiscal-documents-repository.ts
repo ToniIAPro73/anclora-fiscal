@@ -97,6 +97,19 @@ type VerifactuSubmissionDraftInserter<TQueryResult extends PgQueryResultHKT> = P
   'insert'
 >;
 
+interface OfficialAeatSubmissionPayloadRedactedInput {
+  legalEntityId: string;
+  softwareInstallationNumber: string;
+  idEmisorFactura: string;
+  numSerieFactura: string;
+  fechaExpedicionFactura: string;
+  tipoFactura: string;
+  huella: string;
+  huellaGeneratedAt: string;
+  previousHuella: string | null;
+  previousFiscalDocumentId: string | null;
+}
+
 function documentTypeSeriesCandidates(documentType: string): string[] {
   if (documentType === SIMPLIFIED_DOCUMENT_TYPE) return [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE'];
   if (documentType === RECTIFYING_DOCUMENT_TYPE) return [RECTIFYING_DOCUMENT_TYPE, LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE];
@@ -155,6 +168,7 @@ async function insertVerifactuSubmissionDraft<TQueryResult extends PgQueryResult
     integrityRecordId: string;
     integrityRecord: ReturnType<typeof createIntegrityRecord>;
     config?: VerifactuRuntimeConfig | undefined;
+    officialAeat?: OfficialAeatSubmissionPayloadRedactedInput | undefined;
   },
 ): Promise<void> {
   const draft = createVerifactuSubmissionDraft(
@@ -162,12 +176,31 @@ async function insertVerifactuSubmissionDraft<TQueryResult extends PgQueryResult
     input.config ?? resolveVerifactuRuntimeConfig({}),
   );
 
+  const payloadRedacted = input.officialAeat
+    ? {
+        ...draft.payloadRedacted,
+        officialAeat: {
+          schemaVersion: 'anclora-aeat-official-billing-record-redacted-v1',
+          legalEntityId: input.officialAeat.legalEntityId,
+          softwareInstallationNumber: input.officialAeat.softwareInstallationNumber,
+          idEmisorFactura: input.officialAeat.idEmisorFactura,
+          numSerieFactura: input.officialAeat.numSerieFactura,
+          fechaExpedicionFactura: input.officialAeat.fechaExpedicionFactura,
+          tipoFactura: input.officialAeat.tipoFactura,
+          huella: input.officialAeat.huella,
+          huellaGeneratedAt: input.officialAeat.huellaGeneratedAt,
+          previousHuella: input.officialAeat.previousHuella,
+          previousFiscalDocumentId: input.officialAeat.previousFiscalDocumentId,
+        },
+      }
+    : draft.payloadRedacted;
+
   await transaction.insert(verifactuSubmissions).values({
     tenantId: input.tenantId,
     integrityRecordId: input.integrityRecordId,
     environment: draft.environment,
     status: draft.status,
-    payloadRedacted: draft.payloadRedacted,
+    payloadRedacted,
     responseRedacted: draft.responseRedacted,
     attemptCount: String(draft.attemptCount),
   });
@@ -527,6 +560,18 @@ try {
         integrityRecordId: storedIntegrityRecord.id,
         integrityRecord,
         config: input.verifactuConfig,
+        officialAeat: {
+          legalEntityId: operation.legalEntityId,
+          softwareInstallationNumber,
+          idEmisorFactura: issuerTaxIdentity.toUpperCase(),
+          numSerieFactura: invoice.number,
+          fechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
+          tipoFactura: CURRENT_AEAT_TIPO_FACTURA_SIMPLIFICADA,
+          huella: aeatPayload.chainHash,
+          huellaGeneratedAt: issuedAt.toISOString(),
+          previousHuella: previousOfficialRecord?.huella ?? null,
+          previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+        },
       });
 
       await transaction.insert(auditEvents).values({

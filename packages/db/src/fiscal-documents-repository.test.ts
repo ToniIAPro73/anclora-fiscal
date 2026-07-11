@@ -354,6 +354,23 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(chainRecords[0]?.aeatPreviousHuella).toBeNull();
       expect(chainRecords[0]?.previousFiscalDocumentId).toBeNull();
       expect(chainRecords[0]?.chainStatus).toBe('FIRST_RECORD');
+
+      const submissions = await getTenantVerifactuSubmissions(db, tenantId);
+      expect(submissions).toHaveLength(1);
+      expect(submissions[0]?.payloadRedacted).toMatchObject({
+        officialAeat: {
+          schemaVersion: 'anclora-aeat-official-billing-record-redacted-v1',
+          legalEntityId: chainRecords[0]?.legalEntityId,
+          softwareInstallationNumber: 'LOCAL-TEST-001',
+          idEmisorFactura: '12345678Z',
+          numSerieFactura: 'FS-00001',
+          fechaExpedicionFactura: chainRecords[0]?.aeatFechaExpedicionFactura,
+          tipoFactura: 'F1',
+          huella: chainRecords[0]?.aeatHuella,
+          previousHuella: null,
+          previousFiscalDocumentId: null,
+        },
+      });
     });
 
     it('devuelve OPERATION_NOT_FOUND para una operación de otro tenant', async () => {
