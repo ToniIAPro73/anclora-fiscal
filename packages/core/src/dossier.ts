@@ -45,6 +45,19 @@ export interface DossierVerifactuState {
   records: DossierVerifactuRecord[];
 }
 
+export interface DossierRoyaltySummary {
+  format: string;
+  unitsNet: number;
+  amount: number;
+  currency: string;
+}
+
+export interface DossierWarning {
+  type: 'OSS' | 'B2B' | 'REFUND';
+  orderId: string;
+  detail: string;
+}
+
 export interface VatDossierInput {
   period: string;
   invoices: DossierInvoice[];
@@ -52,6 +65,8 @@ export interface VatDossierInput {
   blockingApprovalId?: string;
   verifactuStatuses: Record<string, number>;
   verifactuRecords?: DossierVerifactuRecord[];
+  royaltiesByFormat?: DossierRoyaltySummary[];
+  warnings?: DossierWarning[];
 }
 
 export interface VatDossierResult {
@@ -83,6 +98,16 @@ const csv = (rows: DossierInvoice[]) => [
 function jsonBytes(value: unknown): Uint8Array {
   return strToU8(JSON.stringify(value, null, 2));
 }
+
+const royaltiesCsv = (rows: DossierRoyaltySummary[]) => [
+  'format,units_net,amount,currency',
+  ...rows.map((row) => [
+    row.format,
+    String(row.unitsNet),
+    row.amount.toFixed(2),
+    row.currency,
+  ].map(csvCell).join(',')),
+].join('\n');
 
 function createVerifactuState(input: VatDossierInput): DossierVerifactuState {
   return {
@@ -145,6 +170,12 @@ export async function createVatDossier(input: VatDossierInput): Promise<VatDossi
     'facturas.xlsx': xlsxBytes,
     'resumen-iva.pdf': summaryBytes,
     'estado-verifactu.json': jsonBytes(verifactuState),
+    'regalias-kdp.csv': strToU8(royaltiesCsv(input.royaltiesByFormat ?? [])),
+    'advertencias.json': jsonBytes({
+      schemaVersion: 'anclora-dossier-warnings-v1',
+      period: input.period,
+      warnings: input.warnings ?? [],
+    }),
   };
 
   const manifest = Object.fromEntries(

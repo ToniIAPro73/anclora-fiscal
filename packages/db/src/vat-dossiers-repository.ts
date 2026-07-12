@@ -5,17 +5,21 @@ import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
   createVatDossier,
   type DossierIssue,
+  type DossierRoyaltySummary,
   type DossierVerifactuRecord,
+  type DossierWarning,
   type StoragePort,
 } from '@anclora/core/server';
 import {
   auditEvents,
   canonicalOperations,
+  commercialOrders,
   fiscalDocuments,
   integrityChainRecords,
   issues,
   legalEntities,
   periodCloses,
+  royaltyLines,
   taxDecisions,
   vatDossiers,
   verifactuSubmissions,
@@ -233,6 +237,65 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
       });
     }
 
+    const royaltyRows = await this.db
+      .select({
+        classification: royaltyLines.classification,
+        currency: royaltyLines.currency,
+        unitsNet: sql<string>`coalesce(sum(${royaltyLines.unitsNet}), 0)`,
+        amount: sql<string>`coalesce(sum(${royaltyLines.amount}), 0)`,
+      })
+      .from(royaltyLines)
+      .where(and(
+        eq(royaltyLines.tenantId, input.tenantId),
+        eq(royaltyLines.period, input.period),
+      ))
+      .groupBy(royaltyLines.classification, royaltyLines.currency);
+
+    const royaltiesByFormat: DossierRoyaltySummary[] = royaltyRows.map((row) => ({
+      format: row.classification,
+      unitsNet: Number(row.unitsNet),
+      amount: Number(row.amount),
+      currency: row.currency,
+    }));
+
+    const warningRows = await this.db
+      .select({
+        externalOrderId: canonicalOperations.sourceOrderId,
+        customerCountry: canonicalOperations.customerCountry,
+        customerType: canonicalOperations.customerType,
+        ossEnabled: legalEntities.ossEnabled,
+        issuerCountry: legalEntities.countryCode,
+        refundStatus: commercialOrders.refundStatus,
+      })
+      .from(canonicalOperations)
+      .innerJoin(legalEntities, eq(canonicalOperations.legalEntityId, legalEntities.id))
+      .leftJoin(commercialOrders, and(
+        eq(commercialOrders.tenantId, canonicalOperations.tenantId),
+        eq(commercialOrders.sourceChannel, canonicalOperations.sourceChannel),
+        eq(commercialOrders.externalOrderId, canonicalOperations.sourceOrderId),
+      ))
+      .where(and(
+        eq(canonicalOperations.tenantId, input.tenantId),
+        sql`to_char(${canonicalOperations.createdAt}, 'YYYY-MM') = ${input.period}`,
+      ));
+
+    const dossierWarnings: DossierWarning[] = [];
+    for (const row of warningRows) {
+      const orderId = row.externalOrderId ?? 'unknown';
+
+      if (row.ossEnabled && row.customerCountry && row.customerCountry !== row.issuerCountry) {
+        dossierWarnings.push({ type: 'OSS', orderId, detail: `Venta a ${row.customerCountry}, posible sujeción a OSS` });
+      }
+
+      if (row.customerType === 'B2B') {
+        dossierWarnings.push({ type: 'B2B', orderId, detail: 'Cliente marcado como B2B; revisar datos fiscales completos' });
+      }
+
+      if (row.refundStatus && row.refundStatus !== 'NONE') {
+        dossierWarnings.push({ type: 'REFUND', orderId, detail: `Reembolso ${row.refundStatus.toLowerCase()}` });
+      }
+    }
+
     let generated;
     try {
       generated = await createVatDossier({
@@ -241,6 +304,8 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
         issues: dossierIssues,
         verifactuStatuses,
         verifactuRecords,
+        royaltiesByFormat,
+        warnings: dossierWarnings,
         ...(periodClose.blockingApprovalId ? { blockingApprovalId: periodClose.blockingApprovalId } : {}),
       });
     } catch (error) {

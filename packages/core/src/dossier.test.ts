@@ -111,4 +111,51 @@ describe('createVatDossier', () => {
       records: [],
     });
   });
+
+  it('incluye regalías KDP por formato y advertencias OSS/B2B/reembolso', async () => {
+    const result = await createVatDossier({
+      ...baseInput,
+      royaltiesByFormat: [
+        { format: 'ebook', unitsNet: 120, amount: 84.5, currency: 'EUR' },
+        { format: 'impreso', unitsNet: 8, amount: 32.1, currency: 'EUR' },
+      ],
+      warnings: [
+        { type: 'OSS', orderId: 'AI-1001', detail: 'Venta a FR, posible sujeción a OSS' },
+        { type: 'B2B', orderId: 'AI-1002', detail: 'Cliente marcado como B2B' },
+        { type: 'REFUND', orderId: 'AI-1003', detail: 'Reembolso partial' },
+      ],
+    });
+
+    expect(verifyVatDossier(result.zipBytes)).toBe(true);
+
+    const files = unzipSync(result.zipBytes);
+    const royaltiesCsv = new TextDecoder().decode(files['regalias-kdp.csv']!);
+
+    expect(royaltiesCsv).toContain('format,units_net,amount,currency');
+    expect(royaltiesCsv).toContain('"ebook","120","84.50","EUR"');
+    expect(royaltiesCsv).toContain('"impreso","8","32.10","EUR"');
+
+    const warnings = readJsonFile(result.zipBytes, 'advertencias.json');
+
+    expect(warnings).toEqual({
+      schemaVersion: 'anclora-dossier-warnings-v1',
+      period: '2026-07',
+      warnings: [
+        { type: 'OSS', orderId: 'AI-1001', detail: 'Venta a FR, posible sujeción a OSS' },
+        { type: 'B2B', orderId: 'AI-1002', detail: 'Cliente marcado como B2B' },
+        { type: 'REFUND', orderId: 'AI-1003', detail: 'Reembolso partial' },
+      ],
+    });
+  });
+
+  it('genera regalias-kdp.csv y advertencias.json vacíos cuando no se pasan datos', async () => {
+    const result = await createVatDossier(baseInput);
+    const files = unzipSync(result.zipBytes);
+    const royaltiesCsv = new TextDecoder().decode(files['regalias-kdp.csv']!);
+
+    expect(royaltiesCsv).toBe('format,units_net,amount,currency');
+
+    const warnings = readJsonFile(result.zipBytes, 'advertencias.json');
+    expect(warnings).toMatchObject({ warnings: [] });
+  });
 });

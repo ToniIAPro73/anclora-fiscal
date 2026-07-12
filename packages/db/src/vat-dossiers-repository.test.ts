@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
   encryptTaxIdentity,
+  readVatDossierFile,
   readVatDossierJsonFile,
   verifyVatDossier,
   type StoragePort,
@@ -15,11 +16,14 @@ import { DrizzleVatDossiersRepository } from './vat-dossiers-repository';
 import {
   auditEvents,
   canonicalOperations,
+  commercialOrders,
   importFiles,
   importJobs,
   invoiceSeries,
   legalEntities,
   productTaxProfiles,
+  royaltyLines,
+  royaltyStatements,
   shopifyOrderPaymentEvents,
   taxDecisions,
   tenants,
@@ -573,6 +577,145 @@ describe('DrizzleVatDossiersRepository', () => {
         ok: true,
         dossier: generated.dossier,
       });
+    });
+  });
+
+  describe('generate — regalías KDP y advertencias', () => {
+    it('agrega regalías por formato y detecta advertencias OSS/B2B/reembolso', async () => {
+      const { client, db } = createOfflineDatabase();
+      clients.push(client);
+      await migrateOfflineDatabase(client);
+
+      const { tenantId, actorId } = await seedIssuedInvoice(db, 'tenant-warnings');
+
+      const [legalEntity] = await db
+        .select({ id: legalEntities.id })
+        .from(legalEntities)
+        .where(eq(legalEntities.tenantId, tenantId))
+        .limit(1);
+      if (!legalEntity) throw new Error('No se encontró la entidad legal de prueba');
+
+      await db.update(legalEntities).set({ ossEnabled: true }).where(eq(legalEntities.id, legalEntity.id));
+
+      await db.insert(canonicalOperations).values([
+        {
+          tenantId,
+          legalEntityId: legalEntity.id,
+          sourceChannel: 'shopify',
+          sourceOrderId: 'ORDER-OSS',
+          operationType: 'SALE',
+          operationStatus: 'READY_FOR_INVOICING',
+          reviewStatus: 'REVIEWED',
+          reconciliationStatus: 'MATCHED',
+          verifactuStatus: 'PENDING',
+          customerCountry: 'FR',
+        },
+        {
+          tenantId,
+          legalEntityId: legalEntity.id,
+          sourceChannel: 'shopify',
+          sourceOrderId: 'ORDER-B2B',
+          operationType: 'SALE',
+          operationStatus: 'READY_FOR_INVOICING',
+          reviewStatus: 'REVIEWED',
+          reconciliationStatus: 'MATCHED',
+          verifactuStatus: 'PENDING',
+          customerType: 'B2B',
+        },
+      ]);
+
+      const [refundOrder] = await db.insert(commercialOrders).values({
+        tenantId,
+        sourceChannel: 'SHOPIFY',
+        externalOrderId: 'ORDER-REFUND',
+        commercialDate: new Date(),
+        refundStatus: 'PARTIAL',
+      }).returning({ id: commercialOrders.id });
+      if (!refundOrder) throw new Error('No se pudo crear el pedido con reembolso');
+
+      await db.insert(canonicalOperations).values({
+        tenantId,
+        legalEntityId: legalEntity.id,
+        sourceChannel: 'SHOPIFY',
+        sourceOrderId: 'ORDER-REFUND',
+        operationType: 'SALE',
+        operationStatus: 'READY_FOR_INVOICING',
+        reviewStatus: 'REVIEWED',
+        reconciliationStatus: 'MATCHED',
+        verifactuStatus: 'PENDING',
+      });
+
+      const [royaltyStatement] = await db.insert(royaltyStatements).values({
+        tenantId,
+        importFileId: (await db.select({ id: importFiles.id }).from(importFiles).where(eq(importFiles.tenantId, tenantId)).limit(1))[0]!.id,
+        sourceConnector: 'amazon-kdp-royalties',
+        currency: 'EUR',
+        periods: [PERIOD],
+        totalRoyalties: '116.60',
+        lineCount: '2',
+        hash: 'test-royalty-hash-warnings',
+      }).returning({ id: royaltyStatements.id });
+      if (!royaltyStatement) throw new Error('No se pudo crear el estado de regalías de prueba');
+
+      await db.insert(royaltyLines).values([
+        {
+          tenantId,
+          royaltyStatementId: royaltyStatement.id,
+          businessKey: 'royalty-ebook-1',
+          classification: 'ebook',
+          status: 'IMPORTED',
+          period: PERIOD,
+          isbnOrAsin: 'ASIN-1',
+          unitsNet: '120',
+          amount: '84.50',
+          currency: 'EUR',
+          sourceSheet: 'ebooks',
+        },
+        {
+          tenantId,
+          royaltyStatementId: royaltyStatement.id,
+          businessKey: 'royalty-impreso-1',
+          classification: 'impreso',
+          status: 'IMPORTED',
+          period: PERIOD,
+          isbnOrAsin: 'ASIN-2',
+          unitsNet: '8',
+          amount: '32.10',
+          currency: 'EUR',
+          sourceSheet: 'impresos',
+        },
+      ]);
+
+      const periodClosesRepository = new DrizzlePeriodClosesRepository(db);
+      const closed = await periodClosesRepository.close(tenantId, PERIOD, actorId);
+      expect(closed.ok).toBe(true);
+
+      const repository = new DrizzleVatDossiersRepository(db);
+      const storage = new InMemoryStorage();
+
+      const result = await repository.generate({ tenantId, period: PERIOD, actorId, storage });
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('expected ok result');
+
+      const persistedBytes = await storage.get(result.dossier.storageKey);
+      expect(verifyVatDossier(persistedBytes)).toBe(true);
+
+      const royaltiesCsvBytes = readVatDossierFile(persistedBytes, 'regalias-kdp.csv');
+      if (!royaltiesCsvBytes) throw new Error('No se encontró regalias-kdp.csv');
+      const royaltiesCsv = new TextDecoder().decode(royaltiesCsvBytes);
+      expect(royaltiesCsv).toContain('"ebook","120","84.50","EUR"');
+      expect(royaltiesCsv).toContain('"impreso","8","32.10","EUR"');
+
+      const warnings = readVatDossierJsonFile<{
+        warnings: Array<{ type: string; orderId: string }>;
+      }>(persistedBytes, 'advertencias.json');
+      if (!warnings) throw new Error('No se encontró advertencias.json');
+
+      expect(warnings.warnings).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'OSS', orderId: 'ORDER-OSS' }),
+        expect.objectContaining({ type: 'B2B', orderId: 'ORDER-B2B' }),
+        expect.objectContaining({ type: 'REFUND', orderId: 'ORDER-REFUND' }),
+      ]));
     });
   });
 });
