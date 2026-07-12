@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las veintitrés migraciones en orden y puede repetirse', async () => {
+  it('aplica las veinticuatro migraciones en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -46,6 +46,7 @@ describe('migrateOfflineDatabase', () => {
       '0021_verifactu_chain_metadata.sql',
       '0022_verifactu_submission_retry_scheduling.sql',
       '0023_sif_events.sql',
+      '0024_fiscal_document_counterparty.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(

@@ -6,6 +6,7 @@ import {
   createIntegrityRecord,
   createVerifactuSubmissionDraft,
   decryptTaxIdentity,
+  encryptTaxIdentity,
   InvoiceSequence,
   issueInvoice,
   type AeatVerifactuPreviousRecordReference,
@@ -15,9 +16,11 @@ import {
   type StoragePort,
   type VerifactuRuntimeConfig,
 } from '@anclora/core/server';
+import { isValidSpanishNifNie, normalizeSpanishTaxId } from '@anclora/core';
 import {
   auditEvents,
   canonicalOperations,
+  fiscalCounterparties,
   fiscalDocuments,
   integrityChainRecords,
   invoiceSeries,
@@ -96,6 +99,41 @@ export interface IssueEligibleForPeriodResult {
   skipped: Array<{ canonicalOperationId: string; reason: string }>;
   errors: Array<{ canonicalOperationId: string; message: string }>;
 }
+
+export interface IssueFullInvoiceBuyerInput {
+  displayName: string;
+  legalName?: string | undefined;
+  companyName?: string | undefined;
+  email?: string | undefined;
+  billingAddress: string;
+  taxIdentity: string;
+  customerType: 'B2C' | 'B2B';
+}
+
+export interface IssueFullInvoiceInput {
+  tenantId: string;
+  actorId: string | null;
+  canonicalOperationId: string;
+  storage: StoragePort;
+  buyer: IssueFullInvoiceBuyerInput;
+  verifactuConfig?: VerifactuRuntimeConfig;
+  verifactuSoftwareInstallationNumber?: string | undefined;
+}
+
+export type IssueFullInvoiceResult =
+  | { ok: true; document: FiscalDocument; alreadyIssued: boolean }
+  | {
+      ok: false;
+      reason:
+        | 'OPERATION_NOT_FOUND'
+        | 'TAX_DECISION_MISSING'
+        | 'FISCAL_CONFIGURATION_INCOMPLETE'
+        | 'CONFIGURACION_FISCAL_INCOMPLETA'
+        | 'COBRO_SHOPIFY_NO_CONFIRMADO'
+        | 'DECISION_FISCAL_NO_EMITIBLE'
+        | 'IMPORTE_CERO_EN_REVISION'
+        | 'INVALID_TAX_IDENTITY';
+    };
 
 const SIMPLIFIED_DOCUMENT_TYPE = 'SIMPLIFICADA';
 const FULL_DOCUMENT_TYPE = 'COMPLETA';
@@ -631,6 +669,319 @@ try {
         }
       }
 
+      throw error;
+    }
+  }
+
+  /**
+   * Issues a full invoice (COMPLETA, series `F`) on the buyer's explicit
+   * request (FASE 15). Unlike `issue()`, this never infers the document type
+   * from the tax decision's default (SIMPLIFICADA) — a full invoice is a
+   * buyer-driven override, so only `decision.status === 'DETERMINADA'` and a
+   * valid, cobro-confirmado operation are required. The buyer's NIF/NIE is
+   * validated explicitly (real checksum, via isValidSpanishNifNie) and
+   * persisted to `fiscal_counterparties` inside the same transaction as the
+   * document — never inferred from email domain, country, or company name.
+   */
+  async issueFullInvoice(input: IssueFullInvoiceInput): Promise<IssueFullInvoiceResult> {
+    const normalizedTaxIdentity = normalizeSpanishTaxId(input.buyer.taxIdentity);
+    if (!isValidSpanishNifNie(normalizedTaxIdentity)) {
+      return { ok: false, reason: 'INVALID_TAX_IDENTITY' };
+    }
+
+    try {
+      return await this.db.transaction(async (transaction) => {
+        const [operation] = await transaction
+          .select()
+          .from(canonicalOperations)
+          .where(and(eq(canonicalOperations.tenantId, input.tenantId), eq(canonicalOperations.id, input.canonicalOperationId)))
+          .limit(1);
+        if (!operation) return { ok: false, reason: 'OPERATION_NOT_FOUND' };
+
+        const [decision] = await transaction
+          .select()
+          .from(taxDecisions)
+          .where(and(
+            eq(taxDecisions.tenantId, input.tenantId),
+            eq(taxDecisions.canonicalOperationId, input.canonicalOperationId),
+          ))
+          .orderBy(desc(taxDecisions.decidedAt))
+          .limit(1);
+
+        if (!decision) return { ok: false, reason: 'TAX_DECISION_MISSING' };
+
+        const importeTotalDecision = Number(decision.totalAmount ?? operation.grossAmount ?? 0);
+
+        if (!Number.isFinite(importeTotalDecision) || importeTotalDecision < 0) {
+          return { ok: false, reason: 'DECISION_FISCAL_NO_EMITIBLE' };
+        }
+        if (importeTotalDecision === 0) {
+          return { ok: false, reason: 'IMPORTE_CERO_EN_REVISION' };
+        }
+        if (decision.status !== 'DETERMINADA') {
+          return { ok: false, reason: 'DECISION_FISCAL_NO_EMITIBLE' };
+        }
+
+        const [existing] = await transaction
+          .select()
+          .from(fiscalDocuments)
+          .where(and(
+            eq(fiscalDocuments.tenantId, input.tenantId),
+            eq(fiscalDocuments.canonicalOperationId, input.canonicalOperationId),
+            inArray(fiscalDocuments.documentType, documentTypeSeriesCandidates(FULL_DOCUMENT_TYPE)),
+          ))
+          .limit(1);
+        if (existing) return { ok: true, document: existing, alreadyIssued: true };
+
+        if (!operation.sourceOrderId) {
+          return { ok: false, reason: 'COBRO_SHOPIFY_NO_CONFIRMADO' };
+        }
+
+        const [cobroShopifyConfirmado] = await transaction
+          .select({ id: shopifyOrderPaymentEvents.id })
+          .from(shopifyOrderPaymentEvents)
+          .where(and(
+            eq(shopifyOrderPaymentEvents.tenantId, input.tenantId),
+            eq(shopifyOrderPaymentEvents.shopifyOrderName, operation.sourceOrderId),
+            sql`lower(${shopifyOrderPaymentEvents.kind}) in ('sale', 'capture')`,
+            sql`lower(${shopifyOrderPaymentEvents.status}) in ('success', 'succeeded')`,
+          ))
+          .limit(1);
+        if (!cobroShopifyConfirmado) {
+          return { ok: false, reason: 'COBRO_SHOPIFY_NO_CONFIRMADO' };
+        }
+
+        const [issuer] = await transaction.select().from(legalEntities).where(and(
+          eq(legalEntities.tenantId, input.tenantId),
+          eq(legalEntities.id, operation.legalEntityId),
+          eq(legalEntities.configurationStatus, 'READY'),
+        )).limit(1);
+        const [productProfile] = await transaction.select().from(productTaxProfiles).where(and(
+          eq(productTaxProfiles.tenantId, input.tenantId),
+          eq(productTaxProfiles.legalEntityId, operation.legalEntityId),
+          eq(productTaxProfiles.active, true),
+        )).limit(1);
+        if (!issuer || !productProfile || !issuer.address) {
+          return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
+        }
+        if (!issuer.taxIdentityEncrypted) {
+          return { ok: false, reason: 'CONFIGURACION_FISCAL_INCOMPLETA' };
+        }
+
+        let issuerTaxIdentity: string;
+        try {
+          issuerTaxIdentity = decryptTaxIdentity(issuer.taxIdentityEncrypted);
+        } catch {
+          return { ok: false, reason: 'CONFIGURACION_FISCAL_INCOMPLETA' };
+        }
+
+        const [seriesRow] = await transaction
+          .select()
+          .from(invoiceSeries)
+          .where(and(
+            eq(invoiceSeries.tenantId, input.tenantId),
+            eq(invoiceSeries.legalEntityId, operation.legalEntityId),
+            inArray(invoiceSeries.documentType, documentTypeSeriesCandidates(FULL_DOCUMENT_TYPE)),
+          ))
+          .limit(1);
+        if (!seriesRow) return { ok: false, reason: 'FISCAL_CONFIGURATION_INCOMPLETE' };
+
+        const [counterparty] = await transaction
+          .insert(fiscalCounterparties)
+          .values({
+            tenantId: input.tenantId,
+            displayName: input.buyer.displayName,
+            legalName: input.buyer.legalName ?? null,
+            companyName: input.buyer.companyName ?? null,
+            emailEncrypted: input.buyer.email ? encryptTaxIdentity(input.buyer.email) : null,
+            billingAddressEncrypted: encryptTaxIdentity(input.buyer.billingAddress),
+            customerType: input.buyer.customerType,
+            taxIdentityEncrypted: encryptTaxIdentity(normalizedTaxIdentity),
+            validationStatus: 'VALIDATED',
+            validatedAt: new Date(),
+            validationSource: 'BUYER_REQUEST_EXPLICIT',
+          })
+          .returning();
+        if (!counterparty) throw new Error('No se pudo crear el destinatario fiscal');
+
+        const issuedAt = new Date();
+        const reserved = await allocateInvoiceNumber(transaction, seriesRow.id);
+        const sequence = new InvoiceSequence(reserved.code, reserved.allocatedNumber);
+
+        const invoice = await issueInvoice(sequence, {
+          operationId: operation.id,
+          issuerName: issuer.legalName,
+          issuerTaxIdentity,
+          issuerAddress: issuer.address,
+          description: productProfile.invoiceDescription,
+          taxBase: Number(decision.taxBase ?? 0),
+          taxRate: Number(decision.taxRate ?? 0),
+          taxAmount: Number(decision.taxAmount ?? 0),
+          totalAmount: Number(decision.totalAmount ?? 0),
+          currency: 'EUR',
+          issuedAt: issuedAt.toISOString(),
+          buyer: {
+            taxIdentity: normalizedTaxIdentity,
+            name: input.buyer.displayName,
+            address: input.buyer.billingAddress,
+          },
+        }, FULL_DOCUMENT_TYPE, input.verifactuConfig
+          ? (input.verifactuConfig.mode === 'production' ? 'production' : 'test')
+          : undefined);
+
+        const stored = await input.storage.put({ tenantId: input.tenantId, bytes: invoice.pdfBytes, mimeType: 'application/pdf' });
+
+        const [document] = await transaction
+          .insert(fiscalDocuments)
+          .values({
+            tenantId: input.tenantId,
+            canonicalOperationId: input.canonicalOperationId,
+            number: invoice.number,
+            documentType: invoice.type,
+            status: 'ISSUED',
+            issuedAt,
+            taxBase: String(decision.taxBase ?? 0),
+            taxAmount: String(decision.taxAmount ?? 0),
+            totalAmount: String(decision.totalAmount ?? 0),
+            currency: 'EUR',
+            renderStorageKey: stored.key,
+            renderSha256: invoice.sha256,
+            counterpartyId: counterparty.id,
+          })
+          .returning();
+        if (!document) throw new Error('No se pudo crear el documento fiscal');
+
+        const [lastRecord] = await transaction
+          .select()
+          .from(integrityChainRecords)
+          .where(eq(integrityChainRecords.tenantId, input.tenantId))
+          .orderBy(desc(integrityChainRecords.createdAt))
+          .limit(1);
+
+        const softwareInstallationNumber = input.verifactuSoftwareInstallationNumber
+          ?? DEFAULT_VERIFACTU_SOFTWARE_INSTALLATION_NUMBER;
+
+        const previousOfficialRecord = await new DrizzleVerifactuChainResolutionService(
+          transaction as PgDatabase<TQueryResult, typeof schema>,
+        ).getPreviousOfficialBillingRecord({
+          tenantId: input.tenantId,
+          legalEntityId: operation.legalEntityId,
+          softwareInstallationNumber,
+        });
+
+        const integrityRecord = createIntegrityRecord(
+          {
+            documentId: document.id,
+            documentNumber: invoice.number,
+            recordType: 'ALTA',
+            issuedAt: issuedAt.toISOString(),
+            totalAmount: Number(decision.totalAmount ?? 0),
+            taxAmount: Number(decision.taxAmount ?? 0),
+            ...(lastRecord ? { previousHash: lastRecord.hash } : {}),
+          },
+          issuedAt.toISOString(),
+        );
+
+        const recordForAeatHuella = previousOfficialRecord
+          ? integrityRecord
+          : (() => {
+              const recordWithoutPreviousHash = { ...integrityRecord };
+              delete recordWithoutPreviousHash.previousHash;
+              return recordWithoutPreviousHash;
+            })();
+
+        const aeatPayload = buildAeatVerifactuUnsignedXml({
+          environment: 'test',
+          record: recordForAeatHuella,
+          issuer: {
+            taxId: issuerTaxIdentity,
+            name: issuer.legalName,
+          },
+          recipient: {
+            taxId: normalizedTaxIdentity,
+            name: input.buyer.displayName,
+          },
+          previousRecord: previousOfficialRecord
+            ? toAeatPreviousRecordReference(previousOfficialRecord)
+            : undefined,
+          software: buildAeatSoftwareIdentityForIssuer({
+            issuerTaxIdentity,
+            issuerName: issuer.legalName,
+            installationNumber: softwareInstallationNumber,
+          }),
+          generatedAt: issuedAt.toISOString(),
+          operationDescription: productProfile.invoiceDescription,
+          externalReference: document.id,
+        });
+
+        const [storedIntegrityRecord] = await transaction.insert(integrityChainRecords).values({
+          tenantId: input.tenantId,
+          fiscalDocumentId: document.id,
+          recordType: 'ALTA',
+          canonicalPayload: integrityRecord.canonicalPayload,
+          previousHash: integrityRecord.previousHash ?? null,
+          hash: integrityRecord.hash,
+          algorithm: integrityRecord.algorithm,
+          legalEntityId: operation.legalEntityId,
+          softwareInstallationNumber,
+          aeatIdEmisorFactura: issuerTaxIdentity.toUpperCase(),
+          aeatNumSerieFactura: invoice.number,
+          aeatFechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
+          aeatTipoFactura: 'F1',
+          aeatHuella: aeatPayload.chainHash,
+          aeatHuellaGeneratedAt: issuedAt,
+          aeatPreviousHuella: previousOfficialRecord?.huella ?? null,
+          previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+          chainStatus: previousOfficialRecord ? 'CHAINED' : 'FIRST_RECORD',
+        }).returning({ id: integrityChainRecords.id });
+        if (!storedIntegrityRecord) throw new Error('No se pudo crear el registro de integridad fiscal');
+
+        await insertVerifactuSubmissionDraft(transaction, {
+          tenantId: input.tenantId,
+          integrityRecordId: storedIntegrityRecord.id,
+          integrityRecord,
+          config: input.verifactuConfig,
+          officialAeat: {
+            legalEntityId: operation.legalEntityId,
+            softwareInstallationNumber,
+            idEmisorFactura: issuerTaxIdentity.toUpperCase(),
+            numSerieFactura: invoice.number,
+            fechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
+            tipoFactura: 'F1',
+            huella: aeatPayload.chainHash,
+            huellaGeneratedAt: issuedAt.toISOString(),
+            previousHuella: previousOfficialRecord?.huella ?? null,
+            previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+            previousIdEmisorFactura: previousOfficialRecord?.idEmisorFactura ?? null,
+            previousNumSerieFactura: previousOfficialRecord?.numSerieFactura ?? null,
+            previousFechaExpedicionFactura: previousOfficialRecord?.fechaExpedicionFactura ?? null,
+          },
+        });
+
+        await transaction.insert(auditEvents).values({
+          tenantId: input.tenantId,
+          actorId: input.actorId,
+          action: 'FULL_INVOICE_ISSUED',
+          entityType: 'FiscalDocument',
+          entityId: document.id,
+          metadata: { counterpartyId: counterparty.id },
+        });
+
+        return { ok: true, document, alreadyIssued: false };
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const [existing] = await this.db
+          .select()
+          .from(fiscalDocuments)
+          .where(and(
+            eq(fiscalDocuments.tenantId, input.tenantId),
+            eq(fiscalDocuments.canonicalOperationId, input.canonicalOperationId),
+            inArray(fiscalDocuments.documentType, documentTypeSeriesCandidates(FULL_DOCUMENT_TYPE)),
+          ))
+          .limit(1);
+        if (existing) return { ok: true, document: existing, alreadyIssued: true };
+      }
       throw error;
     }
   }

@@ -366,3 +366,82 @@ describe('POST /api/v1/periods/:period/invoices/issue-eligible', () => {
     }));
   });
 });
+
+describe('POST /api/v1/operations/:id/full-invoice', () => {
+  const validBuyer = {
+    displayName: 'Empresa Compradora SL',
+    companyName: 'Empresa Compradora SL',
+    billingAddress: 'Calle Comprador 5, Barcelona',
+    taxIdentity: '87654321X',
+    customerType: 'B2B' as const,
+  };
+
+  it('devuelve 401 cuando no existe sesión autenticada', async () => {
+    const issueFullInvoice = vi.fn();
+    const app = await buildApp({ fiscalDocumentsRepository: { issue: vi.fn(), issueFullInvoice }, storage: noopStorage });
+    apps.push(app);
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', payload: validBuyer });
+    expect(response.statusCode).toBe(401);
+    expect(issueFullInvoice).not.toHaveBeenCalled();
+  });
+
+  it('devuelve 403 cuando el rol no tiene permiso documents:issue', async () => {
+    const issueFullInvoice = vi.fn();
+    const { app, cookie } = await authenticatedApp('ADVISOR_READONLY', { issue: vi.fn(), issueFullInvoice });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', headers: { cookie }, payload: validBuyer });
+    expect(response.statusCode).toBe(403);
+    expect(issueFullInvoice).not.toHaveBeenCalled();
+  });
+
+  it('devuelve 503 cuando el repositorio no soporta factura completa', async () => {
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn() });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', headers: { cookie }, payload: validBuyer });
+    expect(response.statusCode).toBe(503);
+  });
+
+  it('devuelve 400 cuando faltan datos obligatorios del destinatario', async () => {
+    const issueFullInvoice = vi.fn();
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), issueFullInvoice });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', headers: { cookie }, payload: { displayName: 'Sin NIF' } });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'INVALID_BUYER_DATA' });
+    expect(issueFullInvoice).not.toHaveBeenCalled();
+  });
+
+  it('devuelve 422 cuando el NIF/NIE no es válido', async () => {
+    const issueFullInvoice = vi.fn().mockResolvedValue({ ok: false, reason: 'INVALID_TAX_IDENTITY' });
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), issueFullInvoice });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', headers: { cookie }, payload: validBuyer });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({ code: 'INVALID_TAX_IDENTITY' });
+  });
+
+  it('emite la factura completa pasando tenantId, actorId, operación, storage y destinatario', async () => {
+    const document = { id: 'doc-1', tenantId: '01977d43-75de-7000-8000-000000000010', documentType: 'COMPLETA' };
+    const issueFullInvoice = vi.fn().mockResolvedValue({ ok: true, document, alreadyIssued: false });
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), issueFullInvoice });
+
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', headers: { cookie }, payload: validBuyer });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual(document);
+    expect(issueFullInvoice).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '01977d43-75de-7000-8000-000000000010',
+      actorId: '01977d43-75de-7000-8000-000000000020',
+      canonicalOperationId: 'op-1',
+      storage: noopStorage,
+      buyer: validBuyer,
+    }));
+  });
+
+  it('devuelve 200 con el documento existente cuando la factura completa ya se había emitido (idempotente)', async () => {
+    const document = { id: 'doc-1', tenantId: '01977d43-75de-7000-8000-000000000010', documentType: 'COMPLETA' };
+    const issueFullInvoice = vi.fn().mockResolvedValue({ ok: true, document, alreadyIssued: true });
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), issueFullInvoice });
+
+    const response = await app.inject({ method: 'POST', url: '/api/v1/operations/op-1/full-invoice', headers: { cookie }, payload: validBuyer });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(document);
+  });
+});

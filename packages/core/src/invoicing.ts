@@ -14,6 +14,18 @@ export type FiscalDocumentType =
   | 'FULL_INVOICE'
   | 'RECTIFYING_INVOICE';
 
+/**
+ * Only present for full invoices (COMPLETA) issued via the explicit
+ * buyer-request flow (FASE 15). Never populated for automatic/simplified
+ * issuance — the simplified-invoice contract deliberately excludes buyer
+ * data (see the "no conserva datos del comprador" test in invoicing.test.ts).
+ */
+export interface InvoiceBuyerInput {
+  taxIdentity: string;
+  name: string;
+  address: string;
+}
+
 export interface InvoiceInput {
   operationId: string;
   issuerName: string;
@@ -26,6 +38,7 @@ export interface InvoiceInput {
   totalAmount: number;
   currency: 'EUR';
   issuedAt: string;
+  buyer?: InvoiceBuyerInput;
 }
 
 export interface FiscalDocument {
@@ -188,6 +201,40 @@ export async function renderInvoicePdf(
     font: ui,
     color: midnight,
   });
+
+  if (input.buyer) {
+    page.drawText('DESTINATARIO', {
+      x: 390,
+      y: 622,
+      size: 8,
+      font: ui,
+      color: gold,
+    });
+
+    page.drawText(input.buyer.name, {
+      x: 390,
+      y: 603,
+      size: 10,
+      font: display,
+      color: midnight,
+    });
+
+    page.drawText(`NIF/NIE: ${input.buyer.taxIdentity}`, {
+      x: 390,
+      y: 587,
+      size: 9,
+      font: ui,
+      color: midnight,
+    });
+
+    page.drawText(input.buyer.address, {
+      x: 390,
+      y: 572,
+      size: 9,
+      font: ui,
+      color: midnight,
+    });
+  }
 
   if (originalNumber) {
     page.drawText(

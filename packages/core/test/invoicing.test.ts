@@ -143,6 +143,38 @@ describe('facturación inmutable', () => {
     expect(withQr.length).toBeGreaterThan(withoutQr.length + 2000);
   });
 
+  it('emite una factura completa con destinatario cuando se solicita explícitamente (FASE 15)', async () => {
+    const invoice = await issueInvoice(
+      new InvoiceSequence('F'),
+      {
+        operationId: 'op-buyer-1',
+        issuerName: 'Anclora Fiscal',
+        issuerTaxIdentity: '12345678Z',
+        issuerAddress: 'Calle Fiscal 1, Palma',
+        description: 'Ebook',
+        taxBase: 6.72,
+        taxRate: 0.04,
+        taxAmount: 0.27,
+        totalAmount: 6.99,
+        currency: 'EUR',
+        issuedAt: '2026-07-03',
+        buyer: {
+          taxIdentity: '87654321X',
+          name: 'Empresa Compradora SL',
+          address: 'Calle Comprador 5, Barcelona',
+        },
+      },
+      'COMPLETA',
+    );
+
+    expect(invoice.input.buyer).toEqual({
+      taxIdentity: '87654321X',
+      name: 'Empresa Compradora SL',
+      address: 'Calle Comprador 5, Barcelona',
+    });
+    expect((await PDFDocument.load(invoice.pdfBytes)).getPageCount()).toBe(1);
+  });
+
   it('no incrusta QR cuando no se solicita entorno VERI*FACTU', async () => {
     const bytes = await renderInvoicePdf(
       'FS-00004',

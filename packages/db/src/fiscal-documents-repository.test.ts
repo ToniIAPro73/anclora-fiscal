@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import {
+  decryptTaxIdentity,
   encryptTaxIdentity,
   resolveVerifactuRuntimeConfig,
   verifyIntegrityChain,
@@ -14,6 +15,7 @@ import { DrizzleFiscalDocumentsRepository } from './fiscal-documents-repository'
 import {
   auditEvents,
   canonicalOperations,
+  fiscalCounterparties,
   fiscalDocuments,
   importFiles,
   importJobs,
@@ -1312,5 +1314,111 @@ describe('issueEligibleForPeriod', () => {
     });
 
     expect(result.issued).toHaveLength(0);
+  });
+});
+
+describe('issueFullInvoice', () => {
+  const validBuyer = {
+    displayName: 'Empresa Compradora SL',
+    companyName: 'Empresa Compradora SL',
+    email: 'compras@empresa-compradora.test',
+    billingAddress: 'Calle Comprador 5, Barcelona',
+    taxIdentity: '87654321X',
+    customerType: 'B2B' as const,
+  };
+
+  it('rechaza un NIF/NIE con checksum inválido sin tocar la base de datos', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-full-invoice-invalid-nif');
+
+    const result = await repository.issueFullInvoice({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+      buyer: { ...validBuyer, taxIdentity: '12345678A' },
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'INVALID_TAX_IDENTITY' });
+    expect(storage.puts).toHaveLength(0);
+  });
+
+  it('emite una factura completa serie F, persiste el destinatario cifrado y la enlaza al documento', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-full-invoice-valid');
+
+    const result = await repository.issueFullInvoice({
+      tenantId,
+      actorId,
+      canonicalOperationId: operationId,
+      storage,
+      buyer: validBuyer,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.document.documentType).toBe('COMPLETA');
+    expect(result.document.number).toBe('F-00001');
+    expect(result.document.counterpartyId).not.toBeNull();
+
+    const [counterparty] = await db
+      .select()
+      .from(fiscalCounterparties)
+      .where(eq(fiscalCounterparties.id, result.document.counterpartyId!));
+
+    expect(counterparty?.validationStatus).toBe('VALIDATED');
+    expect(counterparty?.validationSource).toBe('BUYER_REQUEST_EXPLICIT');
+    expect(decryptTaxIdentity(counterparty!.taxIdentityEncrypted!)).toBe('87654321X');
+
+    const chainRecords = await db.select().from(integrityChainRecords).where(eq(integrityChainRecords.tenantId, tenantId));
+    expect(chainRecords[0]?.aeatTipoFactura).toBe('F1');
+  });
+
+  it('es idempotente: solicitar dos veces la factura completa de la misma operación devuelve el mismo documento', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-full-invoice-idempotent');
+
+    const first = await repository.issueFullInvoice({ tenantId, actorId, canonicalOperationId: operationId, storage, buyer: validBuyer });
+    const second = await repository.issueFullInvoice({ tenantId, actorId, canonicalOperationId: operationId, storage, buyer: validBuyer });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+
+    expect(second.alreadyIssued).toBe(true);
+    expect(second.document.id).toBe(first.document.id);
+    expect(storage.puts).toHaveLength(1);
+  });
+
+  it('bloquea la emisión cuando no existe un cobro Shopify confirmado', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-full-invoice-no-cobro');
+
+    await db.delete(shopifyOrderPaymentEvents).where(eq(shopifyOrderPaymentEvents.tenantId, tenantId));
+
+    const result = await repository.issueFullInvoice({ tenantId, actorId, canonicalOperationId: operationId, storage, buyer: validBuyer });
+
+    expect(result).toEqual({ ok: false, reason: 'COBRO_SHOPIFY_NO_CONFIRMADO' });
   });
 });
