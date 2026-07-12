@@ -23,6 +23,7 @@ import { createInvoiceBatchIssueHandler, createInvoiceDownloadHandler, createInv
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesExportHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
+import { createSifEventsListHandler, createSifEventsVerifyHandler, type SifEventsRepositoryPort } from './sif-events-controller.js';
 import {
   createVerifactuSubmissionAttemptsListHandler,
   createVerifactuSubmissionsListHandler,
@@ -91,6 +92,7 @@ export async function buildApp(options: {
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
+  sifEventsRepository?: SifEventsRepositoryPort | undefined;
   verifactuSubmissionsRepository?: VerifactuSubmissionsRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
@@ -328,6 +330,16 @@ export async function buildApp(options: {
     '/api/v1/periods/:period/vat-dossier',
     { preHandler: requireRole(['dossier:read']) },
     createVatDossierGetHandler({ repository: options.vatDossiersRepository }),
+  );
+  app.get(
+    '/api/v1/sif-events',
+    { preHandler: requireRole(['dossier:read']) },
+    createSifEventsListHandler({ repository: options.sifEventsRepository }),
+  );
+  app.get(
+    '/api/v1/sif-events/verify',
+    { preHandler: requireRole(['dossier:read']) },
+    createSifEventsVerifyHandler({ repository: options.sifEventsRepository }),
   );
   app.get(
     '/api/v1/verifactu/submissions',

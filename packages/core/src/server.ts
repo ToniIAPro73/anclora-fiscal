@@ -20,6 +20,7 @@ export * from './verifactu-aeat-xml.js';
 export * from './verifactu-aeat-signing.js';
 export * from './verifactu-aeat-transport.js';
 export * from './dossier.js';
+export * from './sif-events.js';
 
 // Re-export the client-safe surface too, so server-side consumers can import
 // everything from a single subpath if convenient.

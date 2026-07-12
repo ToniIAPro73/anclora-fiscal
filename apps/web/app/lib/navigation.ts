@@ -32,6 +32,7 @@ export const navigation: NavItem[] = [
   { label: 'Conciliación', href: '/reconciliation', status: 'requiresData', pendingCountKey: 'reconciliationTotal', gatedBy: 'hasPayoutData' },
   { label: 'Facturación', href: '/invoicing', status: 'enabled' },
   { label: 'VERI*FACTU', href: '/verifactu', status: 'advanced' },
+  { label: 'Eventos SIF', href: '/sif-events', status: 'advanced' },
   { label: 'Reglas fiscales', href: '/tax-rules', status: 'enabled' },
   { label: 'Periodos fiscales', href: '/tax-periods', status: 'enabled' },
   { label: 'Liquidaciones KDP', href: '/settlements/kdp', status: 'comingSoon' },
