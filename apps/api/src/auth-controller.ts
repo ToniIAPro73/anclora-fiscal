@@ -20,7 +20,10 @@ import {
   resolveGoogleOAuthIdentity,
   type GoogleFetch,
 } from './google-oauth-client.js';
-import type { GoogleOAuthConfig } from './google-oauth-config.js';
+import {
+  readGoogleOAuthConfig,
+  type GoogleOAuthConfig,
+} from './google-oauth-config.js';
 import {
   createGoogleAuthorizationUrl,
   createGoogleOAuthTransaction,
@@ -194,6 +197,11 @@ export function registerAuthRoutes(
   auth: AuthService,
   options: AuthRoutesOptions = {},
 ): void {
+  const googleOAuthConfig =
+    options.googleOAuthConfig === undefined
+      ? readGoogleOAuthConfig()
+      : options.googleOAuthConfig;
+
   app.decorateRequest('authSession', null);
 
   app.addHook('preHandler', async (request) => {
@@ -324,10 +332,7 @@ export function registerAuthRoutes(
       if (
         !transaction ||
         !callback.data.code ||
-        !githubOAuthStatesMatch(
-          transaction.state,
-          callback.data.state,
-        )
+        !githubOAuthStatesMatch(transaction.state, callback.data.state)
       ) {
         return reply.redirect(
           oauthFailureRedirect('github_invalid_state'),
@@ -397,9 +402,7 @@ export function registerAuthRoutes(
       },
     },
     async (_request, reply) => {
-      const config = options.googleOAuthConfig;
-
-      if (!config) {
+      if (!googleOAuthConfig) {
         return reply.code(503).send({
           code: 'GOOGLE_OAUTH_NOT_CONFIGURED',
           message: 'El acceso mediante Google no está disponible',
@@ -422,7 +425,7 @@ export function registerAuthRoutes(
       );
 
       return reply.redirect(
-        createGoogleAuthorizationUrl(config, transaction),
+        createGoogleAuthorizationUrl(googleOAuthConfig, transaction),
       );
     },
   );
@@ -444,9 +447,7 @@ export function registerAuthRoutes(
         'google',
       );
 
-      const config = options.googleOAuthConfig;
-
-      if (!config) {
+      if (!googleOAuthConfig) {
         return reply.redirect(oauthFailureRedirect('google_error'));
       }
 
@@ -468,10 +469,7 @@ export function registerAuthRoutes(
       if (
         !transaction ||
         !callback.data.code ||
-        !googleOAuthStatesMatch(
-          transaction.state,
-          callback.data.state,
-        )
+        !googleOAuthStatesMatch(transaction.state, callback.data.state)
       ) {
         return reply.redirect(
           oauthFailureRedirect('google_invalid_state'),
@@ -480,7 +478,7 @@ export function registerAuthRoutes(
 
       try {
         const identity = await resolveGoogleOAuthIdentity(
-          config,
+          googleOAuthConfig,
           {
             code: callback.data.code,
             codeVerifier: transaction.codeVerifier,
