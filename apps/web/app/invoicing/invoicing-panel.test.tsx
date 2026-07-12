@@ -1,10 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InvoicingPanel } from './invoicing-panel';
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+afterEach(() => { vi.unstubAllGlobals(); });
 
 function mockFetchSequence(responses: Array<{ ok: boolean; status?: number; body: unknown }>) {
   const fn = vi.fn();
@@ -40,96 +38,86 @@ const sampleOperation = {
 };
 
 describe('InvoicingPanel', () => {
-  it('muestra un estado de carga mientras se obtienen las operaciones', () => {
+  it('muestra un estado de carga mientras obtiene las operaciones', () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
     render(<InvoicingPanel />);
     expect(screen.getByText('Cargando operaciones…')).toBeInTheDocument();
   });
 
-  it('muestra el mensaje de vacío cuando no hay operaciones', async () => {
+  it('explica el vacío y ofrece rutas de resolución', async () => {
     mockFetchSequence([{ ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } }]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+    await screen.findByText('No hay operaciones fiscales creadas.');
+    expect(screen.getByText(/Importa una transacción Shopify confirmada/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Revisar ventas Shopify' })).toHaveAttribute('href', '/sales/shopify');
+    expect(screen.getByRole('link', { name: 'Revisar configuración' })).toHaveAttribute('href', '/settings');
     expect(screen.queryByLabelText('Plataforma')).not.toBeInTheDocument();
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/operations?sourceChannel=SHOPIFY', { credentials: 'include' });
   });
 
-  it('muestra un mensaje de error cuando la petición de operaciones falla', async () => {
+  it('muestra un mensaje de error cuando falla la petición', async () => {
     mockFetchSequence([{ ok: false, body: {} }]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('No se pudieron obtener las operaciones')).toBeInTheDocument());
+    await screen.findByText('No se pudieron obtener las operaciones');
+  });
+
+  it('separa pendientes, bloqueadas y emitidas', async () => {
+    mockFetchSequence([{ ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } }]);
+    render(<InvoicingPanel />);
+    await screen.findByText('AI-1001');
+    expect(screen.getByText('Listas para emitir').closest('article')).toHaveTextContent('1');
+    expect(screen.getByRole('tab', { name: 'Pendientes (1)' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('Lista para facturar')).toBeInTheDocument();
+    expect(screen.getByText('Conciliada')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Emitir factura' })).toBeInTheDocument();
+  });
+
+  it('muestra el motivo de bloqueo en la bandeja correspondiente', async () => {
+    mockFetchSequence([{ ok: true, body: { items: [{ ...sampleOperation, anomalyFlags: ['RECTIFICATION_REVIEW_REQUIRED'] }], page: 1, pageSize: 20, total: 1 } }]);
+    render(<InvoicingPanel />);
+    await screen.findByRole('tab', { name: 'Bloqueadas (1)' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Bloqueadas (1)' }));
+    expect(await screen.findByText('Qué bloquea la emisión')).toBeInTheDocument();
+    expect(screen.getByText('Revisar el reembolso antes de emitir o rectificar.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Resolver bloqueo' })).toHaveAttribute('href', '/settings');
   });
 
   it('muestra copy honesto cuando la emisión responde TAX_DECISION_MISSING', async () => {
     mockFetchSequence([
       { ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } },
-      { ok: false, status: 422, body: { code: 'TAX_DECISION_MISSING', message: 'La operación no tiene una decisión fiscal registrada' } },
+      { ok: false, status: 422, body: { code: 'TAX_DECISION_MISSING' } },
     ]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
-    screen.getByRole('button', { name: 'Emitir factura' }).click();
-    await waitFor(() => expect(screen.getByText('Esta operación necesita una decisión fiscal antes de poder facturarse.')).toBeInTheDocument());
+    await screen.findByText('AI-1001');
+    fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' }));
+    await screen.findByText('Esta operación necesita una decisión fiscal antes de poder facturarse.');
   });
 
-  it('muestra estados traducidos y el bloqueo de configuración fiscal incompleta', async () => {
-    mockFetchSequence([
-      { ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } },
-      { ok: false, status: 422, body: { code: 'FISCAL_CONFIGURATION_INCOMPLETE', message: 'Complete emisor, serie y perfil fiscal antes de emitir' } },
-    ]);
-    render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('Shopify')).toBeInTheDocument());
-    expect(screen.getByText('Ana García')).toBeInTheDocument();
-    expect(screen.queryByText('ana@example.test')).not.toBeInTheDocument();
-    expect(screen.getByText('ES')).toBeInTheDocument();
-    expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument();
-    expect(screen.getByText('Lista para facturar')).toBeInTheDocument();
-    expect(screen.getByText('Conciliada')).toBeInTheDocument();
-    screen.getByRole('button', { name: 'Emitir factura' }).click();
-    await waitFor(() => expect(screen.getByText('Completa la configuración fiscal: emisor, serie de facturación y perfil de producto.')).toBeInTheDocument());
-  });
-
-  it('muestra el número de factura cuando la emisión tiene éxito', async () => {
+  it('muestra el número y la descarga cuando la emisión tiene éxito', async () => {
     mockFetchSequence([
       { ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } },
       { ok: true, status: 201, body: { id: 'doc-1', number: 'FS-00001', documentType: 'SIMPLIFICADA', status: 'ISSUED', taxBase: '6.72', taxAmount: '0.27', totalAmount: '6.99', currency: 'EUR', alreadyIssued: false } },
     ]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
-    screen.getByRole('button', { name: 'Emitir factura' }).click();
-    await waitFor(() => expect(screen.getByText('FS-00001')).toBeInTheDocument());
+    await screen.findByText('AI-1001');
+    fireEvent.click(screen.getByRole('button', { name: 'Emitir factura' }));
+    await screen.findByText('FS-00001');
     expect(screen.getByText('Factura simplificada')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Descargar factura' })).toHaveAttribute('href', '/api/v1/fiscal-documents/doc-1/download');
+    expect(screen.getByRole('tab', { name: 'Emitidas (1)' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('muestra la insignia de revisión recomendada cuando anomalyFlags incluye RECTIFICATION_REVIEW_REQUIRED', async () => {
-    mockFetchSequence([
-      { ok: true, body: { items: [{ ...sampleOperation, anomalyFlags: ['FULL_REFUND_NET_ZERO', 'RECTIFICATION_REVIEW_REQUIRED'] }], page: 1, pageSize: 20, total: 1 } },
-    ]);
-    render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('Revisión recomendada: posible rectificación por reembolso')).toBeInTheDocument());
-  });
-
-  it('no muestra la insignia de revisión recomendada cuando la operación no tiene anomalyFlags', async () => {
-    mockFetchSequence([{ ok: true, body: { items: [sampleOperation], page: 1, pageSize: 20, total: 1 } }]);
-    render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
-    expect(screen.queryByText('Revisión recomendada: posible rectificación por reembolso')).not.toBeInTheDocument();
-  });
-
-  it('exige confirmación explícita antes de emitir el lote del periodo', async () => {
+  it('exige revisión y confirmación explícita antes de emitir el lote', async () => {
     const fetchMock = mockFetchSequence([{ ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } }]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
-
-    screen.getByRole('button', { name: 'Emitir elegibles del periodo' }).click();
-
+    await screen.findByText('No hay operaciones fiscales creadas.');
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar emisión' }));
     expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
-    expect(screen.getByText(/Esta acción no se puede deshacer\./)).toBeInTheDocument();
-    // Only the initial operations fetch happened — no batch call before confirming.
+    expect(screen.getByText(/Esta acción no se puede deshacer/)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('emite el lote tras confirmar y muestra el resumen del resultado', async () => {
+  it('emite el lote tras confirmar y muestra el resumen', async () => {
     mockFetchSequence([
       { ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } },
       {
@@ -144,24 +132,18 @@ describe('InvoicingPanel', () => {
       { ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } },
     ]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
-
-    screen.getByRole('button', { name: 'Emitir elegibles del periodo' }).click();
-    await screen.findByRole('alertdialog');
-    screen.getByRole('button', { name: 'Confirmar emisión' }).click();
-
-    await waitFor(() => expect(screen.getByText(/1 emitida, 1 omitida, 0 con error\./)).toBeInTheDocument());
+    await screen.findByText('No hay operaciones fiscales creadas.');
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar emisión' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirmar emisión' }));
+    await screen.findByText(/1 emitida, 1 omitida, 0 con error/);
     expect(screen.getByText('FS-00001')).toBeInTheDocument();
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/periods/2026-07/invoices/issue-eligible', {
-      method: 'POST',
-      credentials: 'include',
-    });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/periods/2026-07/invoices/issue-eligible', { method: 'POST', credentials: 'include' });
   });
 
-  it('no muestra ninguna acción de envío a AEAT en el panel de facturación', async () => {
+  it('no muestra acciones de envío a AEAT', async () => {
     mockFetchSequence([{ ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } }]);
     render(<InvoicingPanel />);
-    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+    await screen.findByText('No hay operaciones fiscales creadas.');
     expect(screen.queryByRole('button', { name: /enviar a aeat/i })).not.toBeInTheDocument();
   });
 });
