@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { StatusBadge } from '@anclora/ui';
 import { emptyOperationFilters, OperationFilters, operationFiltersQuery, type OperationFilterValues } from '../components/operation-filters';
 import { channelLabel, statusLabel } from '../lib/display-labels';
@@ -251,7 +252,7 @@ export function InvoicingPanel() {
       <button type="button" role="tab" aria-selected={view === 'ISSUED'} onClick={() => setView('ISSUED')}>Emitidas ({classified.issued.length})</button>
     </div>
 
-    {!operations || operations.length === 0 ? <div className="invoicing-empty-state"><strong>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones fiscales creadas.'}</strong><p>{hasFilters ? 'Modifica los filtros para ampliar la búsqueda.' : 'Importa una transacción Shopify confirmada. Si ya lo hiciste, revisa que el emisor y la configuración fiscal estén completos.'}</p><div><a className="btn" href="/sales/shopify">Revisar ventas Shopify</a><a className="btn btn-secondary" href="/settings">Revisar configuración</a></div></div> : null}
+    {!operations || operations.length === 0 ? <div className="invoicing-empty-state"><strong>{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones fiscales creadas.'}</strong><p>{hasFilters ? 'Modifica los filtros para ampliar la búsqueda.' : 'Importa una transacción Shopify confirmada. Si ya lo hiciste, revisa que el emisor y la configuración fiscal estén completos.'}</p><div><Link className="btn" href="/sales/shopify">Revisar ventas Shopify</Link><Link className="btn btn-secondary" href="/settings">Revisar configuración</Link></div></div> : null}
 
     {operations && operations.length > 0 && visible.length === 0 ? <p className="workbench-notice">No hay operaciones en esta categoría.</p> : null}
 
