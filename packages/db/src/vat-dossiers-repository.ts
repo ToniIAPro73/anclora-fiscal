@@ -19,6 +19,8 @@ import {
   issues,
   legalEntities,
   periodCloses,
+  purchaseDocuments,
+  expenseDeductibilityDecisions,
   royaltyLines,
   taxDecisions,
   vatDossiers,
@@ -297,6 +299,8 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
     }
 
     let generated;
+    const purchaseRows = await this.db.select({ documentNumber: purchaseDocuments.documentNumber, issueDate: purchaseDocuments.issueDate, category: purchaseDocuments.categoryCode, currency: purchaseDocuments.currency, taxBase: purchaseDocuments.taxBase, vatAmount: purchaseDocuments.vatAmount, totalAmount: purchaseDocuments.totalAmount, withholdingAmount: purchaseDocuments.withholdingAmount, decisionStatus: expenseDeductibilityDecisions.status, deductibleIrpf: expenseDeductibilityDecisions.deductibleIrpfAmount, deductibleVat: expenseDeductibilityDecisions.deductibleVatAmount, ruleVersion: expenseDeductibilityDecisions.ruleVersion, explanation: expenseDeductibilityDecisions.explanation }).from(purchaseDocuments).leftJoin(expenseDeductibilityDecisions, and(eq(expenseDeductibilityDecisions.tenantId,input.tenantId),eq(expenseDeductibilityDecisions.purchaseDocumentId,purchaseDocuments.id))).where(and(eq(purchaseDocuments.tenantId,input.tenantId),sql`to_char(${purchaseDocuments.issueDate}, 'YYYY-MM') = ${input.period}`));
+    const dossierPurchases = purchaseRows.map(row=>({documentNumber:row.documentNumber,issueDate:row.issueDate,category:row.category,currency:row.currency,taxBase:Number(row.taxBase),vatAmount:Number(row.vatAmount),totalAmount:Number(row.totalAmount),withholdingAmount:Number(row.withholdingAmount),decisionStatus:row.decisionStatus??'REVIEW',deductibleIrpf:Number(row.deductibleIrpf??0),deductibleVat:Number(row.deductibleVat??0),ruleVersion:row.ruleVersion??'UNDECIDED',explanation:JSON.stringify(row.explanation??{})}));
     try {
       generated = await createVatDossier({
         period: input.period,
@@ -306,6 +310,7 @@ export class DrizzleVatDossiersRepository<TQueryResult extends PgQueryResultHKT>
         verifactuRecords,
         royaltiesByFormat,
         warnings: dossierWarnings,
+        purchases: dossierPurchases,
         ...(periodClose.blockingApprovalId ? { blockingApprovalId: periodClose.blockingApprovalId } : {}),
       });
     } catch (error) {

@@ -52,6 +52,7 @@ const baseInput: VatDossierInput = {
 };
 
 describe('createVatDossier', () => {
+  it('integra compras y deducibilidad con manifest SHA sin mezclarlas en VERI*FACTU', async () => { const result=await createVatDossier({...baseInput,purchases:[{documentNumber:'P-1',issueDate:'2026-06-01',category:'SOFTWARE_SAAS',currency:'EUR',taxBase:100,vatAmount:21,totalAmount:121,withholdingAmount:0,decisionStatus:'CALCULATED',deductibleIrpf:121,deductibleVat:21,ruleVersion:'expenses-es-v1',explanation:'100 %'}]}); const files=unzipSync(result.zipBytes);expect(files['purchases.csv']).toBeDefined();expect(files['expense-deductibility.csv']).toBeDefined();expect(verifyVatDossier(result.zipBytes)).toBe(true);expect(JSON.stringify(readJsonFile(result.zipBytes,'estado-verifactu.json'))).not.toContain('P-1'); });
   it('incluye un estado-verifactu.json detallado y verificable por manifest', async () => {
     const result = await createVatDossier(baseInput);
 
