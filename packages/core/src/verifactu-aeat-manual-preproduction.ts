@@ -24,6 +24,7 @@ export interface AeatVerifactuManualPreproductionDryRunInput {
   certificatePasswordConfigured?: boolean | undefined;
   certificateFingerprint?: string | undefined;
   issuer: AeatVerifactuPartyIdentity;
+  invoiceType?: import('./verifactu-aeat-xml.js').AeatInvoiceType | undefined;
   recipient?: AeatVerifactuPartyIdentity | undefined;
   software: AeatVerifactuSoftwareIdentity;
   sample: AeatVerifactuManualPreproductionSample;
@@ -90,7 +91,8 @@ export function buildAeatVerifactuManualPreproductionDryRun(
     environment: 'test',
     record,
     issuer: input.issuer,
-    recipient: input.recipient ?? input.issuer,
+    invoiceType: input.invoiceType ?? (input.recipient ? 'F1' : 'F2'),
+    recipient: input.recipient,
     software: input.software,
     generatedAt: input.generatedAt,
     previousRecord: input.previousRecord,

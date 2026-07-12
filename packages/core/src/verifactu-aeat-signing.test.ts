@@ -20,6 +20,7 @@ function unsignedPayload(environment: 'test' | 'production' = 'test') {
       taxId: 'B12345678',
       name: 'Anclora Fiscal',
     },
+    invoiceType: 'F2',
     software: {
       name: 'Anclora Fiscal',
       id: 'AF',

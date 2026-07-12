@@ -9,6 +9,7 @@ import type {
 import {
   buildAeatVerifactuUnsignedXml,
   type AeatVerifactuPartyIdentity,
+  type AeatInvoiceType,
   type AeatVerifactuPreviousRecordReference,
   type AeatVerifactuSoftwareIdentity,
   type AeatVerifactuXmlEnvironment,
@@ -81,6 +82,7 @@ export class AeatVerifactuXmlSubmissionAdapter implements VerifactuPort {
       environment: this.options.environment,
       record,
       issuer: this.options.issuer,
+      invoiceType: (officialAeat?.tipoFactura ?? 'F2') as AeatInvoiceType,
       software: this.options.software,
       generatedAt,
       operationDescription: this.options.operationDescription,
@@ -155,7 +157,10 @@ function assertOfficialAeatRecordCompatibility(
     throw new Error('AEAT_VERIFACTU_OFFICIAL_ISSUED_DATE_MISMATCH');
   }
 
-  if (record.recordType === 'ALTA' && officialAeat.tipoFactura !== 'F1') {
+  if (
+    record.recordType === 'ALTA'
+    && !['F1', 'F2', 'F3', 'R5'].includes(officialAeat.tipoFactura)
+  ) {
     throw new Error('AEAT_VERIFACTU_OFFICIAL_TIPO_FACTURA_UNSUPPORTED');
   }
 }

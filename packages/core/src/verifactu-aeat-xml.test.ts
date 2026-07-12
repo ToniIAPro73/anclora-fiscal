@@ -25,6 +25,7 @@ function baseInput(overrides: Partial<AeatVerifactuUnsignedXmlInput> = {}): Aeat
       taxId: 'b12345678',
       name: 'Anclora & Fiscal <Test>',
     },
+    invoiceType: 'F1',
     recipient: {
       taxId: 'b11223344',
       name: 'Cliente Prueba VERIFACTU',
@@ -54,6 +55,49 @@ describe('escapeXml', () => {
 });
 
 describe('buildAeatVerifactuUnsignedXml', () => {
+  it('genera F2 sin destinatario y usa tipo dinámico en huella', () => {
+    const f1 = buildAeatVerifactuUnsignedXml(baseInput());
+    const f2 = buildAeatVerifactuUnsignedXml(baseInput({ invoiceType: 'F2', recipient: undefined }));
+
+    expect(f2.xml).toContain('<sum1:TipoFactura>F2</sum1:TipoFactura>');
+    expect(f2.xml).not.toContain('<sum1:Destinatarios>');
+    expect(f2.chainHash).not.toBe(f1.chainHash);
+  });
+
+  it('aplica invariantes de destinatario para F1 y F2', () => {
+    expect(() => buildAeatVerifactuUnsignedXml(baseInput({ recipient: undefined })))
+      .toThrow('AEAT_VERIFACTU_F1_RECIPIENT_REQUIRED');
+    expect(() => buildAeatVerifactuUnsignedXml(baseInput({ invoiceType: 'F2' })))
+      .toThrow('AEAT_VERIFACTU_F2_RECIPIENT_FORBIDDEN');
+  });
+
+  it('genera F3 con referencias sustituidas y exige al menos una', () => {
+    expect(() => buildAeatVerifactuUnsignedXml(baseInput({ invoiceType: 'F3' })))
+      .toThrow('AEAT_VERIFACTU_F3_SUBSTITUTED_INVOICES_REQUIRED');
+    const payload = buildAeatVerifactuUnsignedXml(baseInput({
+      invoiceType: 'F3',
+      substitutedInvoices: [{ documentNumber: 'FS-2026-0000', issuedAt: '2026-07-08' }],
+    }));
+    expect(payload.xml).toContain('<sum1:FacturasSustituidas>');
+    expect(payload.xml).toContain('<sum1:IDFacturaSustituida>');
+  });
+
+  it('genera alta R5 con factura rectificada e importes de rectificación', () => {
+    const payload = buildAeatVerifactuUnsignedXml(baseInput({
+      invoiceType: 'R5',
+      recipient: undefined,
+      rectification: {
+        type: 'S',
+        correctedInvoices: [{ documentNumber: 'FS-2026-0000', issuedAt: '2026-07-08' }],
+        correctedTaxBase: 6.75,
+        correctedTaxAmount: 0.27,
+      },
+    }));
+    expect(payload.xml).toContain('<sum1:TipoFactura>R5</sum1:TipoFactura>');
+    expect(payload.xml).toContain('<sum1:TipoRectificativa>S</sum1:TipoRectificativa>');
+    expect(payload.xml).toContain('<sum1:FacturasRectificadas>');
+    expect(payload.xml).toContain('<sum1:BaseRectificada>6.75</sum1:BaseRectificada>');
+  });
   it('construye un XML SOAP con namespaces oficiales AEAT para alta', () => {
     const payload = buildAeatVerifactuUnsignedXml(baseInput());
 

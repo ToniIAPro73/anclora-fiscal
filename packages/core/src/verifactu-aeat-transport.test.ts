@@ -259,6 +259,7 @@ describe('AeatVerifactuXmlSubmissionAdapter', () => {
     const unsigned = buildAeatVerifactuUnsignedXml({
       environment: 'test',
       record: integrityRecord,
+      invoiceType: 'F2',
       issuer: {
         taxId: 'B12345678',
         name: 'Anclora Fiscal',
@@ -291,7 +292,7 @@ describe('AeatVerifactuXmlSubmissionAdapter', () => {
         idEmisorFactura: 'B12345678',
         numSerieFactura: 'FS-2026-0002',
         fechaExpedicionFactura: '2026-07-09',
-        tipoFactura: 'F1',
+        tipoFactura: 'F2',
         huella: unsigned.chainHash,
         huellaGeneratedAt: '2026-07-09T10:06:00.000Z',
         previousHuella,

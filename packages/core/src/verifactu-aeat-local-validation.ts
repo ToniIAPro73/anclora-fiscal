@@ -201,6 +201,7 @@ function validateAlta(
   blockingIssues: AeatVerifactuXmlValidationIssue[],
   warnings: AeatVerifactuXmlValidationIssue[],
 ): void {
+  const invoiceType = firstXmlText(xml, 'TipoFactura');
   for (const field of [
     'IDVersion',
     'IDFactura',
@@ -210,8 +211,6 @@ function validateAlta(
     'NombreRazonEmisor',
     'TipoFactura',
     'DescripcionOperacion',
-    'Destinatarios',
-    'IDDestinatario',
     'Desglose',
     'DetalleDesglose',
     'ClaveRegimen',
@@ -223,6 +222,19 @@ function validateAlta(
     'ImporteTotal',
   ]) {
     requireTag(xml, field, blockingIssues);
+  }
+
+  if (invoiceType === 'F1' || invoiceType === 'F3') {
+    requireTag(xml, 'Destinatarios', blockingIssues);
+    requireTag(xml, 'IDDestinatario', blockingIssues);
+  }
+  if (invoiceType === 'F2' && hasTag(xml, 'Destinatarios')) {
+    blockingIssues.push(issue(
+      'AEAT_VERIFACTU_F2_DESTINATARIOS_FORBIDDEN',
+      'blocking',
+      'F2 no admite Destinatarios en este flujo.',
+      'Destinatarios',
+    ));
   }
 
   validateDateField(xml, 'FechaExpedicionFactura', blockingIssues);

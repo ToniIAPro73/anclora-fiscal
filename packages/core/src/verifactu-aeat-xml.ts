@@ -3,6 +3,7 @@ import type { IntegrityRecord } from './verifactu.js';
 import { AEAT_VERIFACTU_NAMESPACES } from './verifactu-aeat-spec.js';
 
 export type AeatVerifactuXmlEnvironment = 'test' | 'production';
+export type AeatInvoiceType = 'F1' | 'F2' | 'F3' | 'R5';
 
 export interface AeatVerifactuPartyIdentity {
   taxId: string;
@@ -14,6 +15,19 @@ export interface AeatVerifactuPreviousRecordReference {
   documentNumber: string;
   issuedAt: string;
   huella: string;
+}
+
+export interface AeatReferencedInvoice {
+  issuerTaxId?: string | undefined;
+  documentNumber: string;
+  issuedAt: string;
+}
+
+export interface AeatRectificationData {
+  type: 'S' | 'I';
+  correctedInvoices: AeatReferencedInvoice[];
+  correctedTaxBase: number;
+  correctedTaxAmount: number;
 }
 
 export interface AeatVerifactuSoftwareIdentity {
@@ -30,7 +44,10 @@ export interface AeatVerifactuUnsignedXmlInput {
   environment: AeatVerifactuXmlEnvironment;
   record: IntegrityRecord;
   issuer: AeatVerifactuPartyIdentity;
+  invoiceType: AeatInvoiceType;
   recipient?: AeatVerifactuPartyIdentity | undefined;
+  substitutedInvoices?: AeatReferencedInvoice[] | undefined;
+  rectification?: AeatRectificationData | undefined;
   previousRecord?: AeatVerifactuPreviousRecordReference | undefined;
   software: AeatVerifactuSoftwareIdentity;
   generatedAt: string;
@@ -54,7 +71,8 @@ export function buildAeatVerifactuUnsignedXml(input: AeatVerifactuUnsignedXmlInp
 
   const issuer = normalizeParty(input.issuer, 'ISSUER');
   const producer = normalizeParty(input.software.producer, 'SOFTWARE_PRODUCER');
-  const recipient = normalizeParty(input.recipient ?? input.issuer, 'RECIPIENT');
+  assertInvoiceTypeInvariants(input);
+  const recipient = input.recipient ? normalizeParty(input.recipient, 'RECIPIENT') : undefined;
   const software = normalizeSoftware(input.software, producer);
   const chainHash = input.record.recordType === 'ALTA'
     ? calculateRegistroAltaHuella(input, issuer)
@@ -102,7 +120,7 @@ function buildCabecera(issuer: AeatVerifactuPartyIdentity): string {
 function buildRegistroAlta(
   input: AeatVerifactuUnsignedXmlInput,
   issuer: AeatVerifactuPartyIdentity,
-  recipient: AeatVerifactuPartyIdentity,
+  recipient: AeatVerifactuPartyIdentity | undefined,
   software: NormalizedSoftwareIdentity,
 ): string {
   return [
@@ -111,9 +129,11 @@ function buildRegistroAlta(
     buildIdFacturaAlta(input.record, issuer),
     element('sum1:RefExterna', input.externalReference ?? input.record.documentId),
     element('sum1:NombreRazonEmisor', issuer.name),
-    element('sum1:TipoFactura', 'F1'),
+    element('sum1:TipoFactura', input.invoiceType),
+    input.invoiceType === 'R5' ? buildRectification(input, issuer) : '',
+    input.invoiceType === 'F3' ? buildSubstitutedInvoices(input, issuer) : '',
     element('sum1:DescripcionOperacion', input.operationDescription ?? 'Operación registrada desde Anclora Fiscal'),
-    buildDestinatarios(recipient),
+    recipient ? buildDestinatarios(recipient) : '',
     buildDesglose(input.record),
     element('sum1:CuotaTotal', formatAmount(input.record.taxAmount)),
     element('sum1:ImporteTotal', formatAmount(input.record.totalAmount)),
@@ -143,7 +163,7 @@ function calculateRegistroAltaHuella(
     `IDEmisorFactura=${issuer.taxId}`,
     `NumSerieFactura=${input.record.documentNumber}`,
     `FechaExpedicionFactura=${formatDate(input.record.issuedAt)}`,
-    'TipoFactura=F1',
+    `TipoFactura=${input.invoiceType}`,
     `CuotaTotal=${formatAmount(input.record.taxAmount)}`,
     `ImporteTotal=${formatAmount(input.record.totalAmount)}`,
     `Huella=${previousHuella}`,
@@ -151,6 +171,77 @@ function calculateRegistroAltaHuella(
   ].join('&');
 
   return createHash('sha256').update(source, 'utf8').digest('hex').toUpperCase();
+}
+
+function assertInvoiceTypeInvariants(input: AeatVerifactuUnsignedXmlInput): void {
+  if (!['F1', 'F2', 'F3', 'R5'].includes(input.invoiceType)) {
+    throw new Error('AEAT_VERIFACTU_INVOICE_TYPE_UNSUPPORTED');
+  }
+  if (input.record.recordType === 'ANULACION') return;
+  if ((input.invoiceType === 'F1' || input.invoiceType === 'F3') && !input.recipient) {
+    throw new Error(`AEAT_VERIFACTU_${input.invoiceType}_RECIPIENT_REQUIRED`);
+  }
+  if (input.invoiceType === 'F2' && input.recipient) {
+    throw new Error('AEAT_VERIFACTU_F2_RECIPIENT_FORBIDDEN');
+  }
+  if (input.invoiceType === 'F3' && !input.substitutedInvoices?.length) {
+    throw new Error('AEAT_VERIFACTU_F3_SUBSTITUTED_INVOICES_REQUIRED');
+  }
+  if (input.invoiceType === 'R5' && (!input.rectification || !input.rectification.correctedInvoices.length)) {
+    throw new Error('AEAT_VERIFACTU_R5_RECTIFICATION_REQUIRED');
+  }
+}
+
+function buildInvoiceReferences(
+  tag: 'FacturasSustituidas' | 'FacturasRectificadas',
+  itemTag: 'IDFacturaSustituida' | 'IDFacturaRectificada',
+  invoices: AeatReferencedInvoice[],
+  issuer: AeatVerifactuPartyIdentity,
+): string {
+  return [
+    `<sum1:${tag}>`,
+    ...invoices.map((invoice) => [
+      `<sum1:${itemTag}>`,
+      element('sum1:IDEmisorFactura', invoice.issuerTaxId ?? issuer.taxId),
+      element('sum1:NumSerieFactura', required(invoice.documentNumber, 'REFERENCED_DOCUMENT_NUMBER')),
+      element('sum1:FechaExpedicionFactura', formatDate(invoice.issuedAt)),
+      `</sum1:${itemTag}>`,
+    ].join('')),
+    `</sum1:${tag}>`,
+  ].join('');
+}
+
+function buildSubstitutedInvoices(
+  input: AeatVerifactuUnsignedXmlInput,
+  issuer: AeatVerifactuPartyIdentity,
+): string {
+  return buildInvoiceReferences(
+    'FacturasSustituidas',
+    'IDFacturaSustituida',
+    input.substitutedInvoices ?? [],
+    issuer,
+  );
+}
+
+function buildRectification(
+  input: AeatVerifactuUnsignedXmlInput,
+  issuer: AeatVerifactuPartyIdentity,
+): string {
+  const data = input.rectification;
+  if (!data) throw new Error('AEAT_VERIFACTU_R5_RECTIFICATION_REQUIRED');
+  return [
+    element('sum1:TipoRectificativa', data.type),
+    buildInvoiceReferences(
+      'FacturasRectificadas',
+      'IDFacturaRectificada',
+      data.correctedInvoices,
+      issuer,
+    ),
+    '<sum1:ImporteRectificacion>',
+    element('sum1:BaseRectificada', formatAmount(data.correctedTaxBase)),
+    element('sum1:CuotaRectificada', formatAmount(data.correctedTaxAmount)),
+    '</sum1:ImporteRectificacion>',
+  ].join('');
 }
 
 function buildDestinatarios(recipient: AeatVerifactuPartyIdentity): string {
