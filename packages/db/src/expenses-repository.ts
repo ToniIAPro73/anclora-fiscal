@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
-import { purchaseDocuments, suppliers } from "./schema.js";
+import { expenseDeductibilityDecisions, purchaseDocuments, suppliers } from "./schema.js";
 import * as schema from "./schema.js";
+import { decideExpenseDeductibility, type ExpenseDecisionInput } from "@anclora/core";
 export class DrizzleExpensesRepository<T extends PgQueryResultHKT> {
   constructor(private readonly db: PgDatabase<T, typeof schema>) {}
   async list(tenantId: string) { return this.db.select().from(purchaseDocuments).where(eq(purchaseDocuments.tenantId, tenantId)); }
@@ -52,5 +53,11 @@ export class DrizzleExpensesRepository<T extends PgQueryResultHKT> {
       .returning();
     if (!document) throw new Error("PURCHASE_CREATE_FAILED");
     return { document, duplicate: false };
+  }
+  async decide(tenantId: string, purchaseDocumentId: string, input: ExpenseDecisionInput) {
+    const decision = decideExpenseDeductibility(input);
+    const [row] = await this.db.insert(expenseDeductibilityDecisions).values({ tenantId, purchaseDocumentId, ruleVersion: decision.ruleVersion, inputsSnapshot: decision.inputsSnapshot, deductibleIrpfAmount: String(decision.deductibleIrpfAmount), deductibleVatBase: String(decision.deductibleVatBase), deductibleVatAmount: String(decision.deductibleVatAmount), explanation: decision.explanation, warnings: decision.warnings, status: decision.status }).returning();
+    if (!row) throw new Error("EXPENSE_DECISION_CREATE_FAILED");
+    return row;
   }
 }
