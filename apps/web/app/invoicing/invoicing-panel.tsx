@@ -72,6 +72,110 @@ function documentDownloadHref(documentId: string) {
   return `/api/v1/fiscal-documents/${encodeURIComponent(documentId)}/download`;
 }
 
+interface BatchIssueResult {
+  period: string;
+  issued: Array<{ canonicalOperationId: string; documentId: string; documentNumber: string }>;
+  skipped: Array<{ canonicalOperationId: string; reason: string }>;
+  errors: Array<{ canonicalOperationId: string; message: string }>;
+}
+
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function BatchIssuancePanel({ onIssued }: { onIssued: () => void }) {
+  const [period, setPeriod] = useState(currentPeriod());
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<BatchIssueResult | null>(null);
+  const [error, setError] = useState('');
+  const periodValid = /^\d{4}-\d{2}$/.test(period);
+
+  async function confirmBatchIssue() {
+    setSubmitting(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/v1/periods/${encodeURIComponent(period)}/invoices/issue-eligible`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { message?: string };
+        setError(body.message ?? 'No se pudo emitir el lote del periodo');
+        return;
+      }
+      const data = await response.json() as BatchIssueResult;
+      setResult(data);
+      setConfirming(false);
+      if (data.issued.length > 0) onIssued();
+    } catch {
+      setError('No se pudo emitir el lote del periodo');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <section className="invoicing-batch" aria-labelledby="invoicing-batch-heading">
+    <h2 id="invoicing-batch-heading">Emisión por lote</h2>
+    <label htmlFor="invoicing-batch-period">Periodo (AAAA-MM)</label>
+    <input
+      id="invoicing-batch-period"
+      type="text"
+      inputMode="numeric"
+      placeholder="2026-07"
+      value={period}
+      onChange={(event) => { setPeriod(event.target.value); setResult(null); setConfirming(false); }}
+    />
+    {!confirming ? <button
+      type="button"
+      disabled={!periodValid}
+      onClick={() => setConfirming(true)}
+    >
+      Emitir elegibles del periodo
+    </button> : null}
+
+    {confirming ? <div className="invoicing-batch-confirm" role="alertdialog" aria-labelledby="invoicing-batch-confirm-heading">
+      <p id="invoicing-batch-confirm-heading">
+        Vas a emitir automáticamente todas las facturas simplificadas Shopify elegibles del periodo <strong>{period}</strong>:
+        cobro confirmado, decisión fiscal determinada, sin reembolso pendiente ni incidencia abierta, y que aún no tengan
+        factura. Esta acción no se puede deshacer.
+      </p>
+      <button type="button" disabled={submitting} onClick={() => void confirmBatchIssue()}>
+        {submitting ? 'Emitiendo…' : 'Confirmar emisión'}
+      </button>
+      <button type="button" disabled={submitting} onClick={() => setConfirming(false)}>
+        Cancelar
+      </button>
+    </div> : null}
+
+    {error ? <p className="import-error" role="status">{error}</p> : null}
+
+    {result ? <div className="invoicing-batch-result" role="status">
+      <p>
+        Periodo {result.period}: {result.issued.length} emitida{result.issued.length === 1 ? '' : 's'},{' '}
+        {result.skipped.length} omitida{result.skipped.length === 1 ? '' : 's'},{' '}
+        {result.errors.length} con error.
+      </p>
+      {result.issued.length > 0 ? <ul>
+        {result.issued.map((item) => <li key={item.canonicalOperationId}>{item.documentNumber}</li>)}
+      </ul> : null}
+      {result.skipped.length > 0 ? <details>
+        <summary>Ver operaciones omitidas</summary>
+        <ul>
+          {result.skipped.map((item) => <li key={item.canonicalOperationId}>{statusLabel(item.reason)}</li>)}
+        </ul>
+      </details> : null}
+      {result.errors.length > 0 ? <details>
+        <summary>Ver errores</summary>
+        <ul>
+          {result.errors.map((item) => <li key={item.canonicalOperationId}>{item.message}</li>)}
+        </ul>
+      </details> : null}
+    </div> : null}
+  </section>;
+}
+
 export function InvoicingPanel() {
   const [operations, setOperations] = useState<Operation[]>();
   const [error, setError] = useState('');
@@ -79,6 +183,7 @@ export function InvoicingPanel() {
   const [issuing, setIssuing] = useState<Record<string, boolean>>({});
   const [outcomes, setOutcomes] = useState<Record<string, IssueOutcome>>({});
   const [filters, setFilters] = useState<OperationFilterValues>({ ...emptyOperationFilters, sourceChannel: 'SHOPIFY' });
+  const [reloadToken, setReloadToken] = useState(0);
   const hasFilters = Boolean(filters.dateFrom || filters.dateTo || filters.productNature);
 
   useEffect(() => {
@@ -97,7 +202,7 @@ export function InvoicingPanel() {
     }
     void load();
     return () => { cancelled = true; };
-  }, [filters]);
+  }, [filters, reloadToken]);
 
   async function issueInvoiceFor(operationId: string) {
     setIssuing((current) => ({ ...current, [operationId]: true }));
@@ -124,6 +229,7 @@ export function InvoicingPanel() {
   if (error) return <section className="invoicing-documents"><p className="import-error">{error}</p></section>;
   return <section className="invoicing-documents">
     <span className="section-index">Operaciones pendientes de facturar</span>
+    <BatchIssuancePanel onIssued={() => setReloadToken((token) => token + 1)} />
     <OperationFilters value={filters} onChange={setFilters} showPlatform={false} />
     {!operations || operations.length === 0 ? <p className="workbench-notice">{hasFilters ? 'No hay operaciones para los filtros seleccionados.' : 'No hay operaciones todavía.'}</p> : null}
     {operations && operations.length > 0 ? <div className="invoice-grid">{operations.map((operation) => {

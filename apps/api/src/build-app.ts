@@ -19,7 +19,7 @@ import { createReconciliationCandidatesListHandler, type ReconciliationRepositor
 import { parsePagination } from './pagination.js';
 import type { Paginated } from './pagination.js';
 import { createIssueResolveHandler, createIssuesListHandler, type IssuesRepositoryPort } from './issues-controller.js';
-import { createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
+import { createInvoiceBatchIssueHandler, createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
@@ -273,6 +273,15 @@ export async function buildApp(options: {
     createInvoiceDownloadHandler({
       repository: options.fiscalDocumentsRepository,
       storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+    }),
+  );
+  app.post(
+    '/api/v1/periods/:period/invoices/issue-eligible',
+    { preHandler: requireRole(['documents:issue']) },
+    createInvoiceBatchIssueHandler({
+      repository: options.fiscalDocumentsRepository,
+      storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      verifactuConfig: verifactuRuntimeConfig,
     }),
   );
   app.post(

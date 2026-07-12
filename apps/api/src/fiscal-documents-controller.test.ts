@@ -311,3 +311,58 @@ describe('GET /api/v1/fiscal-documents/:id/download', () => {
     expect(response.json()).toMatchObject({ code: 'DOCUMENT_NOT_FOUND' });
   });
 });
+
+describe('POST /api/v1/periods/:period/invoices/issue-eligible', () => {
+  it('devuelve 401 cuando no existe sesión autenticada', async () => {
+    const issueEligibleForPeriod = vi.fn();
+    const app = await buildApp({ fiscalDocumentsRepository: { issue: vi.fn(), issueEligibleForPeriod }, storage: noopStorage });
+    apps.push(app);
+    const response = await app.inject({ method: 'POST', url: '/api/v1/periods/2026-07/invoices/issue-eligible' });
+    expect(response.statusCode).toBe(401);
+    expect(issueEligibleForPeriod).not.toHaveBeenCalled();
+  });
+
+  it('devuelve 403 cuando el rol no tiene permiso documents:issue', async () => {
+    const issueEligibleForPeriod = vi.fn();
+    const { app, cookie } = await authenticatedApp('REVIEWER', { issue: vi.fn(), issueEligibleForPeriod });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/periods/2026-07/invoices/issue-eligible', headers: { cookie } });
+    expect(response.statusCode).toBe(403);
+    expect(issueEligibleForPeriod).not.toHaveBeenCalled();
+  });
+
+  it('devuelve 503 cuando el repositorio no soporta emisión por lote', async () => {
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn() });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/periods/2026-07/invoices/issue-eligible', headers: { cookie } });
+    expect(response.statusCode).toBe(503);
+  });
+
+  it('devuelve 400 cuando el periodo no tiene el formato AAAA-MM', async () => {
+    const issueEligibleForPeriod = vi.fn();
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), issueEligibleForPeriod });
+    const response = await app.inject({ method: 'POST', url: '/api/v1/periods/not-a-period/invoices/issue-eligible', headers: { cookie } });
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toMatchObject({ code: 'INVALID_PERIOD' });
+    expect(issueEligibleForPeriod).not.toHaveBeenCalled();
+  });
+
+  it('emite el lote pasando tenantId, actorId, periodo y storage al repositorio', async () => {
+    const batchResult = {
+      period: '2026-07',
+      issued: [{ canonicalOperationId: 'op-1', documentId: 'doc-1', documentNumber: 'FS-00001' }],
+      skipped: [{ canonicalOperationId: 'op-2', reason: 'IMPORTE_CERO_EN_REVISION' }],
+      errors: [],
+    };
+    const issueEligibleForPeriod = vi.fn().mockResolvedValue(batchResult);
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { issue: vi.fn(), issueEligibleForPeriod });
+
+    const response = await app.inject({ method: 'POST', url: '/api/v1/periods/2026-07/invoices/issue-eligible', headers: { cookie } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(batchResult);
+    expect(issueEligibleForPeriod).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: '01977d43-75de-7000-8000-000000000010',
+      actorId: '01977d43-75de-7000-8000-000000000020',
+      period: '2026-07',
+    }));
+  });
+});

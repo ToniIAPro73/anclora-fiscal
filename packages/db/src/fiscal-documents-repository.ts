@@ -21,6 +21,7 @@ import {
   fiscalDocuments,
   integrityChainRecords,
   invoiceSeries,
+  issues,
   legalEntities,
   productTaxProfiles,
   shopifyOrderPaymentEvents,
@@ -78,6 +79,23 @@ export interface RectifyInvoiceInput {
 export type RectifyInvoiceResult =
   | { ok: true; document: FiscalDocument; alreadyRectified: boolean }
   | { ok: false; reason: 'DOCUMENT_NOT_FOUND' | 'INVALID_DOCUMENT_STATE' | 'CONFIGURACION_FISCAL_INCOMPLETA' };
+
+export interface IssueEligibleForPeriodInput {
+  tenantId: string;
+  /** See IssueInvoiceInput.actorId — `null` for automatic issuance. */
+  actorId: string | null;
+  /** `YYYY-MM`, matched the same way as `vat-dossiers-repository.ts` (`to_char(..., 'YYYY-MM')`). */
+  period: string;
+  storage: StoragePort;
+  verifactuConfig?: VerifactuRuntimeConfig;
+}
+
+export interface IssueEligibleForPeriodResult {
+  period: string;
+  issued: Array<{ canonicalOperationId: string; documentId: string; documentNumber: string }>;
+  skipped: Array<{ canonicalOperationId: string; reason: string }>;
+  errors: Array<{ canonicalOperationId: string; message: string }>;
+}
 
 const SIMPLIFIED_DOCUMENT_TYPE = 'SIMPLIFICADA';
 const FULL_DOCUMENT_TYPE = 'COMPLETA';
@@ -615,6 +633,102 @@ try {
 
       throw error;
     }
+  }
+
+  /**
+   * Issues every eligible Shopify simplified invoice for a tenant/period in
+   * one controlled batch. Deliberately thin: candidate selection narrows to
+   * operations that plausibly qualify (Shopify, latest decision DETERMINADA +
+   * SIMPLIFICADA, no existing document, no open issue, no refund in flight),
+   * then delegates the actual eligibility gating (cobro confirmado, importe
+   * cero, config fiscal, idempotency) to `issue()` itself rather than
+   * duplicating that logic here. A single operation's unexpected failure is
+   * captured per-item and does not abort the rest of the batch.
+   */
+  async issueEligibleForPeriod(
+    input: IssueEligibleForPeriodInput,
+  ): Promise<IssueEligibleForPeriodResult> {
+    const candidates = await this.db
+      .select({ id: canonicalOperations.id })
+      .from(canonicalOperations)
+      .innerJoin(
+        taxDecisions,
+        eq(taxDecisions.canonicalOperationId, canonicalOperations.id),
+      )
+      .where(and(
+        eq(canonicalOperations.tenantId, input.tenantId),
+        eq(canonicalOperations.sourceChannel, 'shopify'),
+        sql`to_char(${canonicalOperations.createdAt}, 'YYYY-MM') = ${input.period}`,
+        eq(taxDecisions.status, 'DETERMINADA'),
+        inArray(taxDecisions.documentType, [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE']),
+        sql`${taxDecisions.decidedAt} = (
+          select max(${taxDecisions.decidedAt})
+          from ${taxDecisions}
+          where ${taxDecisions.tenantId} = ${canonicalOperations.tenantId}
+            and ${taxDecisions.canonicalOperationId} = ${canonicalOperations.id}
+        )`,
+        sql`not exists (
+          select 1 from ${fiscalDocuments}
+          where ${fiscalDocuments.tenantId} = ${canonicalOperations.tenantId}
+            and ${fiscalDocuments.canonicalOperationId} = ${canonicalOperations.id}
+            and ${fiscalDocuments.documentType} in (${SIMPLIFIED_DOCUMENT_TYPE}, 'SIMPLIFIED_INVOICE')
+        )`,
+        sql`not exists (
+          select 1 from ${issues}
+          where ${issues.tenantId} = ${canonicalOperations.tenantId}
+            and ${issues.canonicalOperationId} = ${canonicalOperations.id}
+            and ${issues.status} = 'OPEN'
+        )`,
+        sql`not exists (
+          select 1 from ${shopifyOrderPaymentEvents}
+          where ${shopifyOrderPaymentEvents.tenantId} = ${canonicalOperations.tenantId}
+            and ${shopifyOrderPaymentEvents.shopifyOrderName} = ${canonicalOperations.sourceOrderId}
+            and lower(${shopifyOrderPaymentEvents.kind}) in ('refund', 'partial_refund')
+            and lower(${shopifyOrderPaymentEvents.status}) not in ('success', 'succeeded')
+        )`,
+      ));
+
+    const result: IssueEligibleForPeriodResult = {
+      period: input.period,
+      issued: [],
+      skipped: [],
+      errors: [],
+    };
+
+    for (const candidate of candidates) {
+      try {
+        const outcome = await this.issue({
+          tenantId: input.tenantId,
+          actorId: input.actorId,
+          canonicalOperationId: candidate.id,
+          storage: input.storage,
+          ...(input.verifactuConfig ? { verifactuConfig: input.verifactuConfig } : {}),
+        });
+
+        if (!outcome.ok) {
+          result.skipped.push({ canonicalOperationId: candidate.id, reason: outcome.reason });
+          continue;
+        }
+
+        if (outcome.alreadyIssued) {
+          result.skipped.push({ canonicalOperationId: candidate.id, reason: 'ALREADY_ISSUED' });
+          continue;
+        }
+
+        result.issued.push({
+          canonicalOperationId: candidate.id,
+          documentId: outcome.document.id,
+          documentNumber: outcome.document.number,
+        });
+      } catch (error) {
+        result.errors.push({
+          canonicalOperationId: candidate.id,
+          message: error instanceof Error ? error.message : 'Error desconocido al emitir la factura',
+        });
+      }
+    }
+
+    return result;
   }
 
   /**

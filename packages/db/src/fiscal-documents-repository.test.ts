@@ -19,6 +19,7 @@ import {
   importJobs,
   integrityChainRecords,
   invoiceSeries,
+  issues,
   legalEntities,
   productTaxProfiles,
   shopifyOrderPaymentEvents,
@@ -1148,5 +1149,168 @@ describe('VERI*FACTU submission drafts', () => {
     expect(submissions).toHaveLength(2);
     expect(submissions.map((submission) => submission.status)).toEqual(['PENDING', 'PENDING']);
     expect(submissions.map((submission) => (submission.payloadRedacted as { recordType: string }).recordType)).toEqual(['ALTA', 'ANULACION']);
+  });
+});
+
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+describe('issueEligibleForPeriod', () => {
+  it('emite sólo la operación Shopify elegible del periodo y encola VERI*FACTU en modo test', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId } = await seedOperationWithDecision(db, 'tenant-batch-eligible');
+
+    const result = await repository.issueEligibleForPeriod({
+      tenantId,
+      actorId,
+      period: currentPeriod(),
+      storage,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    expect(result.issued).toHaveLength(1);
+    expect(result.issued[0]?.documentNumber).toBe('FS-00001');
+    expect(result.skipped).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+
+    const submissions = await getTenantVerifactuSubmissions(db, tenantId);
+    expect(submissions).toHaveLength(1);
+  });
+
+  it('es idempotente: repetir el lote no vuelve a emitir la misma operación', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId } = await seedOperationWithDecision(db, 'tenant-batch-idempotent');
+    const period = currentPeriod();
+
+    const first = await repository.issueEligibleForPeriod({ tenantId, actorId, period, storage });
+    const second = await repository.issueEligibleForPeriod({ tenantId, actorId, period, storage });
+
+    expect(first.issued).toHaveLength(1);
+    expect(second.issued).toHaveLength(0);
+    expect(second.skipped).toHaveLength(0);
+  });
+
+  it('no emite operaciones con decisión fiscal de factura completa (B2B/OSS)', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId } = await seedOperationWithDecision(db, 'tenant-batch-b2b', { documentType: 'COMPLETA' });
+
+    const result = await repository.issueEligibleForPeriod({
+      tenantId,
+      actorId,
+      period: currentPeriod(),
+      storage,
+    });
+
+    expect(result.issued).toHaveLength(0);
+  });
+
+  it('no emite operaciones con un reembolso Shopify pendiente', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId } = await seedOperationWithDecision(db, 'tenant-batch-refund');
+
+    const [importJob] = await db.insert(importJobs).values({ tenantId, connectorId: 'shopify-order-transactions-test' }).returning({ id: importJobs.id });
+    const [importFile] = await db.insert(importFiles).values({
+      tenantId,
+      importJobId: importJob!.id,
+      storageKey: 'tests/tenant-batch-refund/refund.csv',
+      originalNameEncrypted: 'refund.csv',
+      mimeType: 'text/csv',
+      byteSize: '1',
+      sha256: 'test-sha256-tenant-batch-refund',
+      importerVersion: 'test',
+    }).returning({ id: importFiles.id });
+
+    await db.insert(shopifyOrderPaymentEvents).values({
+      tenantId,
+      importFileId: importFile!.id,
+      externalEventKey: 'tenant-batch-refund:ORDER-1:refund:1',
+      shopifyOrderId: '1',
+      shopifyOrderName: 'ORDER-1',
+      kind: 'refund',
+      gateway: 'shopify_payments',
+      status: 'pending',
+      amount: '6.99',
+      currency: 'EUR',
+      occurredAt: new Date(),
+    });
+
+    const result = await repository.issueEligibleForPeriod({
+      tenantId,
+      actorId,
+      period: currentPeriod(),
+      storage,
+    });
+
+    expect(result.issued).toHaveLength(0);
+  });
+
+  it('no emite operaciones con una incidencia abierta', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId, operationId } = await seedOperationWithDecision(db, 'tenant-batch-open-issue');
+
+    await db.insert(issues).values({
+      tenantId,
+      canonicalOperationId: operationId,
+      code: 'REFUND_EXCEEDS_ORIGINAL',
+      severity: 'HIGH',
+      status: 'OPEN',
+      title: 'Incidencia de prueba',
+      explanation: 'Bloquea la emisión automática',
+    });
+
+    const result = await repository.issueEligibleForPeriod({
+      tenantId,
+      actorId,
+      period: currentPeriod(),
+      storage,
+    });
+
+    expect(result.issued).toHaveLength(0);
+  });
+
+  it('no emite operaciones fuera del periodo solicitado', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storage = new InMemoryStorage();
+    const { tenantId, actorId } = await seedOperationWithDecision(db, 'tenant-batch-wrong-period');
+
+    const result = await repository.issueEligibleForPeriod({
+      tenantId,
+      actorId,
+      period: '1999-01',
+      storage,
+    });
+
+    expect(result.issued).toHaveLength(0);
   });
 });

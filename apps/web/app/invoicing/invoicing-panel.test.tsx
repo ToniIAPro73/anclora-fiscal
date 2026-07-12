@@ -115,4 +115,53 @@ describe('InvoicingPanel', () => {
     await waitFor(() => expect(screen.getByText('AI-1001')).toBeInTheDocument());
     expect(screen.queryByText('Revisión recomendada: posible rectificación por reembolso')).not.toBeInTheDocument();
   });
+
+  it('exige confirmación explícita antes de emitir el lote del periodo', async () => {
+    const fetchMock = mockFetchSequence([{ ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } }]);
+    render(<InvoicingPanel />);
+    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+
+    screen.getByRole('button', { name: 'Emitir elegibles del periodo' }).click();
+
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.getByText(/Esta acción no se puede deshacer\./)).toBeInTheDocument();
+    // Only the initial operations fetch happened — no batch call before confirming.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('emite el lote tras confirmar y muestra el resumen del resultado', async () => {
+    mockFetchSequence([
+      { ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } },
+      {
+        ok: true,
+        body: {
+          period: '2026-07',
+          issued: [{ canonicalOperationId: 'op-1', documentId: 'doc-1', documentNumber: 'FS-00001' }],
+          skipped: [{ canonicalOperationId: 'op-2', reason: 'IMPORTE_CERO_EN_REVISION' }],
+          errors: [],
+        },
+      },
+      { ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } },
+    ]);
+    render(<InvoicingPanel />);
+    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+
+    screen.getByRole('button', { name: 'Emitir elegibles del periodo' }).click();
+    await screen.findByRole('alertdialog');
+    screen.getByRole('button', { name: 'Confirmar emisión' }).click();
+
+    await waitFor(() => expect(screen.getByText(/1 emitida, 1 omitida, 0 con error\./)).toBeInTheDocument());
+    expect(screen.getByText('FS-00001')).toBeInTheDocument();
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/v1/periods/2026-07/invoices/issue-eligible', {
+      method: 'POST',
+      credentials: 'include',
+    });
+  });
+
+  it('no muestra ninguna acción de envío a AEAT en el panel de facturación', async () => {
+    mockFetchSequence([{ ok: true, body: { items: [], page: 1, pageSize: 20, total: 0 } }]);
+    render(<InvoicingPanel />);
+    await waitFor(() => expect(screen.getByText('No hay operaciones todavía.')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /enviar a aeat/i })).not.toBeInTheDocument();
+  });
 });
