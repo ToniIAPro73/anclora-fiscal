@@ -1,9 +1,26 @@
 'use client';
-import { useEffect, useState } from 'react';
+
+import { useEffect, useMemo, useState } from 'react';
 import { Button, StatusBadge } from '@anclora/ui';
 import { settlementLabel, statusLabel } from '../lib/display-labels';
 
-interface LinkRecord { id: string; linkType: string; state: string; confidence: string; explanationJson: { shopifyOrderName?: string; fiscalStatus?: string; transactionAmount?: number; ledgerNetAmount?: number; platformFeeAmount?: number; payoutStatus?: string; externalPayoutId?: string | null; bankVerified?: boolean }; }
+interface LinkRecord {
+  id: string;
+  linkType: string;
+  state: string;
+  confidence: string;
+  explanationJson: {
+    shopifyOrderName?: string;
+    fiscalStatus?: string;
+    transactionAmount?: number;
+    ledgerNetAmount?: number;
+    platformFeeAmount?: number;
+    payoutStatus?: string;
+    externalPayoutId?: string | null;
+    bankVerified?: boolean;
+  };
+}
+
 const LINK_TYPE_LABELS: Record<string, string> = {
   ORDER_TO_TRANSACTION: 'Pedido → transacción',
   'Order to transaction': 'Pedido → transacción',
@@ -11,106 +28,154 @@ const LINK_TYPE_LABELS: Record<string, string> = {
   'Order to ledger': 'Pedido → movimiento',
   TRANSACTION_TO_LEDGER: 'Transacción → movimiento',
 };
+
 const linkTypeLabel = (linkType: string) => LINK_TYPE_LABELS[linkType] ?? statusLabel(linkType);
+type OrderReconciliationStatus = 'CRUZADO' | 'REVISAR' | 'DISCREPANTE';
+type ViewMode = 'ATTENTION' | 'ALL';
 
-type OrderReconciliationStatus = 'CONCILIADO' | 'PENDIENTE' | 'DISCREPANTE';
+interface OrderGroup {
+  orderName: string;
+  links: LinkRecord[];
+  status: OrderReconciliationStatus;
+  fiscalStatus: string;
+  payoutId: string | null;
+  transactionAmount: number | null;
+  ledgerNetAmount: number | null;
+  feeAmount: number | null;
+}
 
-const ORDER_STATUS_LABEL: Record<OrderReconciliationStatus, string> = {
-  CONCILIADO: 'Conciliado',
-  PENDIENTE: 'Pendiente',
-  DISCREPANTE: 'Discrepante',
+function orderStatus(links: LinkRecord[]): OrderReconciliationStatus {
+  if (links.some((link) => link.state === 'REJECTED')) return 'DISCREPANTE';
+  if (links.some((link) => link.state === 'PROPOSED')) return 'REVISAR';
+  return 'CRUZADO';
+}
+
+function groupByOrder(links: LinkRecord[]): OrderGroup[] {
+  const groups = new Map<string, LinkRecord[]>();
+  for (const link of links) {
+    const orderName = link.explanationJson.shopifyOrderName ?? 'Sin pedido asociado';
+    groups.set(orderName, [...(groups.get(orderName) ?? []), link]);
+  }
+
+  return [...groups.entries()].map(([orderName, orderLinks]) => {
+    const financialLink = orderLinks.find((link) => link.linkType === 'TRANSACTION_TO_LEDGER')
+      ?? orderLinks.find((link) => link.explanationJson.transactionAmount !== undefined)
+      ?? orderLinks[0];
+    const payoutLink = orderLinks.find((link) => link.explanationJson.externalPayoutId);
+    return {
+      orderName,
+      links: orderLinks,
+      status: orderStatus(orderLinks),
+      fiscalStatus: financialLink?.explanationJson.fiscalStatus ?? 'PENDIENTE_REVISION_FISCAL',
+      payoutId: payoutLink?.explanationJson.externalPayoutId ?? null,
+      transactionAmount: financialLink?.explanationJson.transactionAmount ?? null,
+      ledgerNetAmount: financialLink?.explanationJson.ledgerNetAmount ?? null,
+      feeAmount: financialLink?.explanationJson.platformFeeAmount ?? null,
+    };
+  });
+}
+
+const STATUS_COPY: Record<OrderReconciliationStatus, { label: string; tone: 'info' | 'warning' | 'high'; description: string }> = {
+  CRUZADO: { label: 'Datos internos cruzados', tone: 'info', description: 'Los archivos importados se relacionan sin incidencias.' },
+  REVISAR: { label: 'Revisión necesaria', tone: 'warning', description: 'Queda al menos una propuesta por confirmar.' },
+  DISCREPANTE: { label: 'Discrepancia', tone: 'high', description: 'Existe un enlace rechazado o incompatible.' },
 };
 
-const ORDER_STATUS_TONE: Record<OrderReconciliationStatus, 'info' | 'warning' | 'high'> = {
-  CONCILIADO: 'info',
-  PENDIENTE: 'warning',
-  DISCREPANTE: 'high',
-};
-
-/**
- * Aggregates evidence-link state up to the order level: any REJECTED link
- * on the order marks it DISCREPANTE (needs human attention), any remaining
- * PROPOSED link marks it PENDIENTE (still awaiting review), otherwise every
- * link is AUTO_LINKED/CONFIRMED so the order is CONCILIADO.
- */
-function computeOrderStatuses(links: LinkRecord[]): Map<string, OrderReconciliationStatus> {
-  const byOrder = new Map<string, LinkRecord[]>();
-
-  for (const link of links) {
-    const order = link.explanationJson.shopifyOrderName;
-    if (!order) continue;
-    const existing = byOrder.get(order) ?? [];
-    existing.push(link);
-    byOrder.set(order, existing);
-  }
-
-  const statuses = new Map<string, OrderReconciliationStatus>();
-
-  for (const [order, orderLinks] of byOrder) {
-    if (orderLinks.some((link) => link.state === 'REJECTED')) {
-      statuses.set(order, 'DISCREPANTE');
-    } else if (orderLinks.some((link) => link.state === 'PROPOSED')) {
-      statuses.set(order, 'PENDIENTE');
-    } else {
-      statuses.set(order, 'CONCILIADO');
-    }
-  }
-
-  return statuses;
+function amountLabel(value: number | null) {
+  return value === null ? '—' : `${value.toFixed(2)} €`;
 }
 
-interface PayoutSummary {
-  payoutId: string;
-  orderCount: number;
-  netAmount: number;
-  feeAmount: number;
-}
-
-function computePayoutSummaries(links: LinkRecord[]): PayoutSummary[] {
-  const byPayout = new Map<string, { orders: Set<string>; netAmount: number; feeAmount: number }>();
-
-  for (const link of links) {
-    const payoutId = link.explanationJson.externalPayoutId;
-    if (!payoutId) continue;
-    const entry = byPayout.get(payoutId) ?? { orders: new Set<string>(), netAmount: 0, feeAmount: 0 };
-    if (link.explanationJson.shopifyOrderName) entry.orders.add(link.explanationJson.shopifyOrderName);
-    entry.netAmount += link.explanationJson.ledgerNetAmount ?? 0;
-    entry.feeAmount += link.explanationJson.platformFeeAmount ?? 0;
-    byPayout.set(payoutId, entry);
-  }
-
-  return [...byPayout.entries()].map(([payoutId, entry]) => ({
-    payoutId,
-    orderCount: entry.orders.size,
-    netAmount: entry.netAmount,
-    feeAmount: entry.feeAmount,
-  }));
-}
 export function ReconciliationWorkbench() {
-  const [links, setLinks] = useState<LinkRecord[]>(); const [error, setError] = useState(''); const [state, setState] = useState('');
-  const load = () => fetch(`/api/v1/shopify/evidence-links${state ? `?state=${state}` : ''}`, { credentials: 'include' }).then(async r => { if (!r.ok) throw new Error('No se pudieron obtener los enlaces de evidencia'); return r.json(); }).then(setLinks).catch((e: Error) => setError(e.message));
-  useEffect(() => { void load(); }, [state]);
-  const decide = async (id: string, decision: 'CONFIRMED' | 'REJECTED') => { await fetch(`/api/v1/shopify/evidence-links/${id}`, { method: 'PATCH', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state: decision }) }); load(); };
+  const [links, setLinks] = useState<LinkRecord[]>();
+  const [error, setError] = useState('');
+  const [view, setView] = useState<ViewMode>('ATTENTION');
+
+  const load = () => fetch('/api/v1/shopify/evidence-links', { credentials: 'include' })
+    .then(async (response) => {
+      if (!response.ok) throw new Error('No se pudieron obtener los enlaces de evidencia');
+      return response.json() as Promise<LinkRecord[]>;
+    })
+    .then(setLinks)
+    .catch((reason: Error) => setError(reason.message));
+
+  useEffect(() => { void load(); }, []);
+
+  const groups = useMemo(() => groupByOrder(links ?? []), [links]);
+  const visibleGroups = view === 'ATTENTION' ? groups.filter((group) => group.status !== 'CRUZADO') : groups;
+  const counts = {
+    CRUZADO: groups.filter((group) => group.status === 'CRUZADO').length,
+    REVISAR: groups.filter((group) => group.status === 'REVISAR').length,
+    DISCREPANTE: groups.filter((group) => group.status === 'DISCREPANTE').length,
+  };
+
+  async function decide(id: string, decision: 'CONFIRMED' | 'REJECTED') {
+    await fetch(`/api/v1/shopify/evidence-links/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ state: decision }),
+    });
+    await load();
+  }
+
   if (error) return <p className="workbench-notice workbench-notice-error">{error}</p>;
 
-  const orderStatuses = links ? computeOrderStatuses(links) : new Map<string, OrderReconciliationStatus>();
-  const payoutSummaries = links ? computePayoutSummaries(links) : [];
-  const statusCounts = { CONCILIADO: 0, PENDIENTE: 0, DISCREPANTE: 0 } as Record<OrderReconciliationStatus, number>;
-  for (const status of orderStatuses.values()) statusCounts[status] += 1;
+  return <section className="reconciliation-workbench reconciliation-exceptions">
+    <div className="workflow-guide" role="note">
+      <strong>Qué comprueba esta pantalla</strong>
+      <span>Relaciona pedidos, transacciones de pedido y movimientos de Shopify Payments.</span>
+      <span>“Datos internos cruzados” no confirma el ingreso en tu banco ni resuelve la fiscalidad del pedido.</span>
+    </div>
 
-  return <section className="reconciliation-workbench"><p className="workbench-notice">Esta pantalla concilia evidencias internas de Shopify. “Liquidación identificada” significa que existe una referencia de liquidación; no implica que el banco la haya confirmado.</p>
-    <div className="reconciliation-filters"><label>Estado<select value={state} onChange={e => setState(e.target.value)}><option value="">Todos</option><option value="PROPOSED">Pendiente de revisión</option><option value="AUTO_LINKED">Enlace exacto</option><option value="CONFIRMED">Confirmado</option><option value="REJECTED">Rechazado</option></select></label></div>
-    {links && links.length > 0 ? <div className="summary-grid">
-      <article><span>Pedidos conciliados</span><strong>{statusCounts.CONCILIADO}</strong></article>
-      <article><span>Pedidos pendientes</span><strong>{statusCounts.PENDIENTE}</strong></article>
-      <article><span>Pedidos discrepantes</span><strong>{statusCounts.DISCREPANTE}</strong></article>
+    {links && links.length > 0 ? <div className="summary-grid reconciliation-summary-grid">
+      <article><span>Datos cruzados</span><strong>{counts.CRUZADO}</strong></article>
+      <article><span>Necesitan revisión</span><strong>{counts.REVISAR}</strong></article>
+      <article><span>Discrepancias</span><strong>{counts.DISCREPANTE}</strong></article>
     </div> : null}
-    {payoutSummaries.length > 0 ? <div className="reconciliation-table-panel">
-      <h2 className="section-index">Resumen por payout</h2>
-      <table><thead><tr><th>Payout</th><th>Pedidos</th><th>Neto</th><th>Comisión</th></tr></thead><tbody>
-        {payoutSummaries.map(summary => <tr key={summary.payoutId}><td>{summary.payoutId}</td><td>{summary.orderCount}</td><td>{summary.netAmount.toFixed(2)}</td><td>{summary.feeAmount.toFixed(2)}</td></tr>)}
-      </tbody></table>
+
+    <div className="reconciliation-view-switch" role="group" aria-label="Vista de conciliación">
+      <button type="button" aria-pressed={view === 'ATTENTION'} onClick={() => setView('ATTENTION')}>Necesitan revisión ({counts.REVISAR + counts.DISCREPANTE})</button>
+      <button type="button" aria-pressed={view === 'ALL'} onClick={() => setView('ALL')}>Todos los cruces ({groups.length})</button>
+    </div>
+
+    {!links ? <p className="workbench-notice">Cargando cruces de Shopify…</p> : null}
+    {links?.length === 0 ? <p className="workbench-notice">No hay datos que cruzar. Importa pedidos, transacciones de pedidos y movimientos de Shopify Payments.</p> : null}
+    {links && links.length > 0 && visibleGroups.length === 0 ? <div className="reconciliation-empty-success">
+      <strong>No hay excepciones pendientes.</strong>
+      <span>Los {counts.CRUZADO} pedidos disponibles tienen sus evidencias internas cruzadas.</span>
+      <button type="button" onClick={() => setView('ALL')}>Ver todos los cruces</button>
     </div> : null}
-    {!links ? <p className="workbench-notice">Cargando enlaces…</p> : links.length === 0 ? <p className="workbench-notice">No hay enlaces para este filtro. Importa pedidos, transacciones y movimientos para construir la cadena de evidencia.</p> : <div className="reconciliation-table-panel"><table><thead><tr><th>Pedido</th><th>Estado del pedido</th><th>Enlace</th><th>Importes</th><th>Payout / banco</th><th>Estado fiscal</th><th>Estado</th><th>Revisión</th></tr></thead><tbody>{links.map(link => { const orderName = link.explanationJson.shopifyOrderName; const orderStatus = orderName ? orderStatuses.get(orderName) : undefined; return <tr key={link.id}><td>{orderName ?? '—'}</td><td>{orderStatus ? <StatusBadge tone={ORDER_STATUS_TONE[orderStatus]}>{ORDER_STATUS_LABEL[orderStatus]}</StatusBadge> : '—'}</td><td>{linkTypeLabel(link.linkType)}</td><td>{link.explanationJson.transactionAmount ?? '—'} / neto {link.explanationJson.ledgerNetAmount ?? '—'} / comisión {link.explanationJson.platformFeeAmount ?? '—'}</td><td><StatusBadge tone={link.explanationJson.externalPayoutId ? 'info' : 'warning'}>{settlementLabel(link.explanationJson.externalPayoutId ? 'SETTLED' : 'PAYOUT_PENDING')}</StatusBadge></td><td>{statusLabel(link.explanationJson.fiscalStatus ?? 'PENDIENTE_REVISION_FISCAL')}</td><td>{statusLabel(link.state)} · {(Number(link.confidence) * 100).toFixed(0)}%</td><td>{link.state === 'PROPOSED' ? <div className="reconciliation-actions"><Button onClick={() => decide(link.id, 'CONFIRMED')}>Confirmar</Button><Button variant="secondary" onClick={() => decide(link.id, 'REJECTED')}>Rechazar</Button></div> : '—'}</td></tr>; })}</tbody></table></div>}
+
+    {visibleGroups.length > 0 ? <div className="reconciliation-order-list">
+      {visibleGroups.map((group) => {
+        const status = STATUS_COPY[group.status];
+        const proposedLinks = group.links.filter((link) => link.state === 'PROPOSED');
+        return <article key={group.orderName} className="reconciliation-order-card">
+          <div className="reconciliation-order-main">
+            <div className="cell-stack"><span className="table-kicker">Pedido</span><strong>{group.orderName}</strong><span>{group.links.length} enlace{group.links.length === 1 ? '' : 's'} de evidencia</span></div>
+            <div className="cell-stack"><span className="table-kicker">Resultado del cruce</span><StatusBadge tone={status.tone}>{status.label}</StatusBadge><span>{status.description}</span></div>
+            <div className="cell-stack"><span className="table-kicker">Importes</span><strong>{amountLabel(group.transactionAmount)}</strong><span>Neto {amountLabel(group.ledgerNetAmount)} · comisión {amountLabel(group.feeAmount)}</span></div>
+            <div className="cell-stack"><span className="table-kicker">Payout</span><StatusBadge tone={group.payoutId ? 'info' : 'warning'}>{settlementLabel(group.payoutId ? 'SETTLED' : 'PAYOUT_PENDING')}</StatusBadge><span>{group.payoutId ?? 'Sin identificador de payout'}</span></div>
+            <div className="cell-stack"><span className="table-kicker">Fiscalidad</span><strong>{statusLabel(group.fiscalStatus)}</strong><span>{proposedLinks.length > 0 ? `${proposedLinks.length} decisión pendiente` : 'Sin acción de conciliación'}</span></div>
+          </div>
+
+          <details className="reconciliation-evidence-details">
+            <summary>Ver detalle técnico ({group.links.length})</summary>
+            <div className="reconciliation-table-panel">
+              <table>
+                <thead><tr><th>Relación</th><th>Estado</th><th>Confianza</th><th>Importes</th><th>Revisión</th></tr></thead>
+                <tbody>{group.links.map((link) => <tr key={link.id}>
+                  <td>{linkTypeLabel(link.linkType)}</td>
+                  <td>{statusLabel(link.state)}</td>
+                  <td>{(Number(link.confidence) * 100).toFixed(0)}%</td>
+                  <td>{amountLabel(link.explanationJson.transactionAmount ?? null)} / neto {amountLabel(link.explanationJson.ledgerNetAmount ?? null)}</td>
+                  <td>{link.state === 'PROPOSED' ? <div className="reconciliation-actions"><Button onClick={() => void decide(link.id, 'CONFIRMED')}>Confirmar</Button><Button variant="secondary" onClick={() => void decide(link.id, 'REJECTED')}>Rechazar</Button></div> : 'Sin acción'}</td>
+                </tr>)}</tbody>
+              </table>
+            </div>
+          </details>
+        </article>;
+      })}
+    </div> : null}
   </section>;
 }
