@@ -27,6 +27,7 @@ export * from './fiscal-documents-repository.js';
 export * from './shopify-sales-repository.js';
 export * from './period-closes-repository.js';
 export * from './period-readiness-repository.js';
+export * from './expenses-repository.js';
 export * from './vat-dossiers-repository.js';
 export * from './sif-events-repository.js';
 export * from './system-alerts-repository.js';

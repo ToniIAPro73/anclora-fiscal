@@ -9,7 +9,7 @@ afterEach(async () => {
 });
 
 describe('migrateOfflineDatabase', () => {
-  it('aplica las veinticuatro migraciones en orden y puede repetirse', async () => {
+  it('aplica las migraciones versionadas en orden y puede repetirse', async () => {
     const { client } = createOfflineDatabase();
     clients.push(client);
 
@@ -49,6 +49,9 @@ describe('migrateOfflineDatabase', () => {
       '0024_fiscal_document_counterparty.sql',
       '0025_aeat_invoice_semantics.sql',
       '0026_verifactu_submission_claims.sql',
+      '0027_system_alerts.sql',
+      '0028_royalty_exchange_rates.sql',
+      '0029_expense_domain.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
