@@ -18,11 +18,15 @@ export const IMPORT_ISSUE_CODES = [
   'PLATFORM_VAT_ZERO_UNVALIDATED',
   'ORDER_EVIDENCE_MISSING',
   'ORDER_TRANSACTION_STATUS_UNSUPPORTED',
+  'EXPENSE_NUMBER_MISSING',
+  'EXPENSE_DATE_INVALID',
+  'EXPENSE_TOTAL_INCOHERENT',
+  'EXPENSE_CATEGORY_UNKNOWN',
 ] as const;
 
 export type ImportIssueCode = (typeof IMPORT_ISSUE_CODES)[number];
 
-export const IMPORT_CONNECTOR_IDS = ['shopify-orders', 'shopify-order-transactions', 'shopify-payments', 'amazon-kdp-royalties'] as const;
+export const IMPORT_CONNECTOR_IDS = ['shopify-orders', 'shopify-order-transactions', 'shopify-payments', 'amazon-kdp-royalties', 'expenses-csv'] as const;
 
 export type ImportConnectorId = (typeof IMPORT_CONNECTOR_IDS)[number];
 
@@ -40,6 +44,10 @@ export const IMPORT_ISSUE_CODE_CONNECTORS: Record<ImportIssueCode, readonly Impo
   PLATFORM_VAT_ZERO_UNVALIDATED: ['shopify-payments'],
   ORDER_EVIDENCE_MISSING: ['shopify-order-transactions'],
   ORDER_TRANSACTION_STATUS_UNSUPPORTED: ['shopify-order-transactions'],
+  EXPENSE_NUMBER_MISSING: ['expenses-csv'],
+  EXPENSE_DATE_INVALID: ['expenses-csv'],
+  EXPENSE_TOTAL_INCOHERENT: ['expenses-csv'],
+  EXPENSE_CATEGORY_UNKNOWN: ['expenses-csv'],
 };
 
 export function isImportIssueCode(value: string): value is ImportIssueCode {

@@ -1,4 +1,4 @@
-export type ConnectorId = 'shopify-orders' | 'shopify-order-transactions' | 'shopify-payments' | 'amazon-kdp-royalties';
+export type ConnectorId = 'shopify-orders' | 'shopify-order-transactions' | 'shopify-payments' | 'amazon-kdp-royalties' | 'expenses-csv';
 
 /**
  * Job/preview status is an opaque string driven by this label map — never

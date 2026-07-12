@@ -5,14 +5,16 @@ import { KdpRoyaltiesCard } from './kdp-royalties-card';
 import { ShopifyOrdersCard } from './shopify-orders-card';
 import { ShopifyPaymentsCard } from './shopify-payments-card';
 import { ShopifyOrderTransactionsCard } from './shopify-order-transactions-card';
+import { ExpensesCsvCard } from './expenses-csv-card';
 
-type ImportPlatform = 'shopify' | 'amazon-kdp';
+type ImportPlatform = 'shopify' | 'amazon-kdp' | 'expenses';
 
 type ImportKind =
   | 'shopify-orders'
   | 'shopify-order-transactions'
   | 'shopify-payments'
-  | 'amazon-kdp-royalties';
+  | 'amazon-kdp-royalties'
+  | 'expenses-csv';
 
 interface ImportTypeOption {
   platform: ImportPlatform;
@@ -24,9 +26,11 @@ interface ImportTypeOption {
 const platformOptions: Array<{ value: ImportPlatform; label: string }> = [
   { value: 'shopify', label: 'Shopify' },
   { value: 'amazon-kdp', label: 'Amazon KDP' },
+  { value: 'expenses', label: 'Gastos' },
 ];
 
 const importTypes: ImportTypeOption[] = [
+  { platform: 'expenses', kind: 'expenses-csv', label: 'Facturas recibidas CSV', description: 'Importación con preview, incidencias e idempotencia.' },
   {
     platform: 'shopify',
     kind: 'shopify-orders',
@@ -63,6 +67,8 @@ function renderImportCard(kind: ImportKind) {
       return <ShopifyPaymentsCard />;
     case 'amazon-kdp-royalties':
       return <KdpRoyaltiesCard />;
+    case 'expenses-csv':
+      return <ExpensesCsvCard />;
   }
 }
 

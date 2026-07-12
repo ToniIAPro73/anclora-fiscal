@@ -25,6 +25,7 @@ export interface SourceConnector {
 // exporting only the latter here avoids a duplicate-member conflict while
 // direct imports from 'shopify-csv.js' keep working (backward compatibility).
 export * from './shopify-payments-ledger-csv.js';
+export * from './expenses-csv.js';
 export * from './shopify-orders-csv.js';
 export * from './shopify-order-transactions-csv.js';
 export * from './kdp-xlsx.js';

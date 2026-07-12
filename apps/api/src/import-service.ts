@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { extractShopifyOrdersCsv, isKdpXlsxFile, isShopifyOrdersCsvFile, isShopifyOrderTransactionsCsvFile, isShopifyPaymentsLedgerCsvFile, parseShopifyOrderTransactionsCsv, previewKdpXlsx, previewShopifyCsv } from '@anclora/connectors';
+import { extractShopifyOrdersCsv, isExpensesCsvFile, isKdpXlsxFile, isShopifyOrdersCsvFile, isShopifyOrderTransactionsCsvFile, isShopifyPaymentsLedgerCsvFile, parseShopifyOrderTransactionsCsv, previewExpensesCsv, previewKdpXlsx, previewShopifyCsv } from '@anclora/connectors';
 import { summarizeRoyaltyLinesByFormat, type RoyaltyFormatSummary, type RoyaltyLine, type RoyaltyStatement, type StoragePort } from '@anclora/core/server';
 import {
   normalizeShopifyOrdersCsv,
@@ -39,7 +39,7 @@ export type PreviewPaymentsLedgerEntry = NewShopifyPaymentsLedgerEntryWithoutTen
 export interface ImportPreviewResponse {
   jobId: string;
   status: 'PREVIEW_READY';
-  connector: 'shopify-csv' | 'shopify-orders-csv' | 'shopify-order-transactions-csv' | 'kdp-xlsx';
+  connector: 'shopify-csv' | 'shopify-orders-csv' | 'shopify-order-transactions-csv' | 'kdp-xlsx' | 'expenses-csv';
   evidence: { key: string; sha256: string; size: number; mimeType: string };
   summary: { records: number; issues: number; orderIds: string[]; royaltyByFormat?: RoyaltyFormatSummary[]; alreadyImportedCount?: number; allAlreadyImported?: boolean; grouping?: ImportGroupingSummary };
   issues: Array<{ code: string; severity: string; message: string; row?: number; sheet?: string }>;
@@ -56,6 +56,7 @@ export interface ImportPreviewResponse {
   shopifyOrders?: { orders: Array<{ orderName: string; commercialDate?: string; totalAmount?: string; taxAmount?: string; financialStatus?: string; fulfillmentStatus?: string; productNature?: string; customerName?: string; customerEmail?: string; customerAddress?: string; customerCountry?: string; customerType?: string; discountCode?: string; discountAmount?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
   shopifyOrderTransactions?: { events: PreviewOrderTransaction[] };
   shopifyPaymentsLedger?: { entries: PreviewPaymentsLedgerEntry[] };
+  expenses?: ReturnType<typeof previewExpensesCsv>;
 }
 
 export function toSafeImportPreview(preview: ImportPreviewResponse, status: string, issueIds: string[] = []) {
@@ -131,6 +132,7 @@ export async function previewImport(
 ): Promise<ImportPreviewResponse> {
   const jobId = randomUUID();
   if (input.filename.toLowerCase().endsWith('.csv') || input.mimeType === 'text/csv') {
+    if (isExpensesCsvFile(input.bytes)) { const expenses=previewExpensesCsv(input.bytes); const evidence=await input.storage.put({tenantId:input.tenantId,bytes:input.bytes,mimeType:input.mimeType}); return {jobId,status:'PREVIEW_READY',connector:'expenses-csv',evidence,summary:{records:expenses.documents.length,issues:expenses.issues.length,orderIds:[]},issues:expenses.issues.map(issue=>({code:issue.code,severity:issue.blocking?'BLOCKING':'WARNING',message:issue.message,row:issue.row})),expenses}; }
     if (isShopifyOrdersCsvFile(input.bytes)) {
       const preview = extractShopifyOrdersCsv(input.bytes);
       const evidence = await input.storage.put({ tenantId: input.tenantId, bytes: input.bytes, mimeType: input.mimeType });

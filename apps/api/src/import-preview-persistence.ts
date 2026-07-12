@@ -126,6 +126,7 @@ const IMPORTER_VERSIONS: Record<ImportPreviewResponse['connector'], string> = {
   'shopify-orders-csv': 'shopify-orders-csv@0.1.0',
   'shopify-order-transactions-csv': 'shopify-order-transactions-csv@0.1.0',
   'kdp-xlsx': 'kdp-xlsx@0.1.0',
+  'expenses-csv': 'expenses-csv@0.1.0',
 };
 
 export class ImportPreviewPersistenceService implements ImportPreviewPersistencePort, FiscalPersistencePort {
@@ -139,6 +140,7 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
     private readonly shopifyOrderPaymentEventsRepository?: ShopifyOrderPaymentEventsRepositoryPort,
     private readonly shopifyPaymentsLedgerRepository?: ShopifyPaymentsLedgerRepositoryPort,
     private readonly shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort,
+    private readonly expensesRepository?: { createSupplier(input: { tenantId:string; taxIdEncrypted?:string; normalizedTaxIdHash?:string; legalName:string; countryCode:string; source:string }): Promise<{id:string}>; createPurchase(input: Record<string,unknown>): Promise<{document:{id?:string};duplicate:boolean}> },
   ) {}
 
   /**
@@ -173,6 +175,8 @@ export class ImportPreviewPersistenceService implements ImportPreviewPersistence
    */
   async persistFiscalRecords(tenantId: string, importFileId: string, preview: ImportPreviewResponse): Promise<{ createdRecordIds: Record<string, string[]> }> {
     const createdRecordIds: Record<string, string[]> = {};
+
+    if (preview.expenses && this.expensesRepository) { const ids:string[]=[]; for (const row of preview.expenses.documents) { const taxId=row.supplierTaxId.replace(/\s/g,'').toUpperCase(); const supplier=await this.expensesRepository.createSupplier({tenantId,legalName:row.supplierName,countryCode:row.country,source:'CSV',...(taxId?{taxIdEncrypted:this.cipher.encrypt(taxId),normalizedTaxIdHash:createHash('sha256').update(taxId).digest('hex')}:{})}); const result=await this.expensesRepository.createPurchase({tenantId,supplierId:supplier.id,documentType:row.documentType,documentNumber:row.invoiceNumber,issueDate:row.issueDate,currency:row.currency,taxBase:String(row.taxBase),vatAmount:String(row.vatAmount),totalAmount:String(row.total),withholdingAmount:String(row.withholding),categoryCode:row.category,description:row.description,status:'REVIEW',storageKey:`import:${importFileId}`,sha256:preview.evidence.sha256,mimeType:'text/csv',importFileId}); if(!result.duplicate&&result.document.id)ids.push(result.document.id); } createdRecordIds.purchaseDocuments=ids; }
 
     if (this.royaltyRepository && preview.royalty) {
       const royaltyResult = await this.royaltyRepository.persist({

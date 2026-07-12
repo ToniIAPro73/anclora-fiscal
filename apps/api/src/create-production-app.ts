@@ -221,6 +221,7 @@ export async function createProductionApp() {
       shopifyOrderPaymentEventsRepositoryForPersistence,
       shopifyPaymentsLedgerRepositoryForPersistence,
       shopifyEvidenceLinksRepositoryForPersistence,
+      new DrizzleExpensesRepository(database.db),
     );
     importLifecycleRepository = importPreviewRepository;
     importDedup = {
@@ -326,6 +327,7 @@ export async function createProductionApp() {
       shopifyOrderPaymentEventsRepositoryForPersistence,
       shopifyPaymentsLedgerRepositoryForPersistence,
       shopifyEvidenceLinksRepositoryForPersistence,
+      new DrizzleExpensesRepository(database.db),
     );
     importLifecycleRepository = importPreviewRepository;
     importDedup = {

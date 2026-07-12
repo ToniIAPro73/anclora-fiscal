@@ -1,0 +1,2 @@
+document type,issue date,operation date,invoice number,supplier tax id,supplier name,country,currency,tax base,vat rate,vat amount,total,withholding,category,description,paid date,evidence filename
+COMPRA,2026-01-15,,F-001,B12345678,Proveedor SL,ES,EUR,100.00,21,21.00,121.00,0,SOFTWARE_SAAS,Licencia anual,,factura.pdf
