@@ -23,6 +23,12 @@ import type { FiscalConfigurationRepositoryPort } from './fiscal-configuration-c
 import type { CommercialOrdersRepositoryPort } from './commercial-orders-controller.js';
 import type { ShopifyEvidenceLinksRepositoryPort } from './shopify-evidence-links-controller.js';
 import type { ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createInternalVerifactuSubmissionExecutionService } from './verifactu-runtime.js';
+import {
+  processDueVerifactuSubmissions,
+  type VerifactuDueRepositoryPort,
+} from './verifactu-due-processor.js';
 
 // Reads env vars and wires storage/repositories/auth for production or the
 // local offline (PGlite) database, then builds the Fastify app. Shared by
@@ -67,6 +73,7 @@ export async function createProductionApp() {
   let vatDossiersRepository: VatDossiersRepositoryPort;
   let sifEventsRepository: SifEventsRepositoryPort;
   let verifactuSubmissionsRepository: VerifactuSubmissionsRepositoryPort;
+  let verifactuDueRepository: VerifactuDueRepositoryPort;
   let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
   let importLifecycleRepository: ImportLifecycleRepositoryPort;
   let authService: AuthService;
@@ -134,7 +141,9 @@ export async function createProductionApp() {
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
     sifEventsRepository = new DrizzleSifEventsRepository(database.db);
-    verifactuSubmissionsRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
+    const verifactuRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
+    verifactuSubmissionsRepository = verifactuRepository;
+    verifactuDueRepository = verifactuRepository;
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
@@ -198,7 +207,9 @@ export async function createProductionApp() {
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
     sifEventsRepository = new DrizzleSifEventsRepository(database.db);
-    verifactuSubmissionsRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
+    const verifactuRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
+    verifactuSubmissionsRepository = verifactuRepository;
+    verifactuDueRepository = verifactuRepository;
     dashboardSummaryRepository = new DrizzleDashboardSummaryRepository(database.db);
     authService = new AuthService(new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON), new DrizzleAuthAuditRepository(database.db));
     fiscalConfigurationRepository = fiscalConfigurationRepositoryForTax;
@@ -229,6 +240,35 @@ export async function createProductionApp() {
     shopifySalesRepository,
     authService,
   });
+  const execution = createInternalVerifactuSubmissionExecutionService({
+    repository: verifactuDueRepository,
+    env: process.env,
+  });
+  const processDueHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const secret = process.env.CRON_SECRET ?? process.env.VERIFACTU_INTERNAL_TOKEN;
+    if (!secret || request.headers.authorization !== `Bearer ${secret}`) {
+      return reply.code(401).send({ code: 'UNAUTHORIZED' });
+    }
+    if (!execution.service || execution.runtimeConfig.mode !== 'test') {
+      return reply.code(503).send({
+        code: execution.reason ?? 'VERIFACTU_TEST_RUNTIME_REQUIRED',
+      });
+    }
+    const now = new Date().toISOString();
+    const summary = await processDueVerifactuSubmissions({
+      repository: verifactuDueRepository,
+      service: execution.service,
+      now,
+      workerId: `cron-${now}`,
+      batchSize: Number(process.env.VERIFACTU_CRON_BATCH_SIZE ?? 10),
+      leaseMs: Number(process.env.VERIFACTU_CRON_LEASE_MS ?? 300_000),
+    });
+    return reply.send(summary);
+  };
+  if (typeof app.get === 'function' && typeof app.post === 'function') {
+    app.get('/api/v1/internal/verifactu/process-due', processDueHandler);
+    app.post('/api/v1/internal/verifactu/process-due', processDueHandler);
+  }
   app.addHook('onClose', closeDatabase);
   return app;
 }

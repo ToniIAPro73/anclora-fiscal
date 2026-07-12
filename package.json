@@ -17,7 +17,8 @@
     "test": "turbo test",
     "test:e2e": "turbo test:e2e",
     "db:migrate": "pnpm --filter @anclora/db db:migrate",
-    "seed": "pnpm --filter @anclora/db seed"
+    "seed": "pnpm --filter @anclora/db seed",
+    "verifactu:process-due": "node scripts/process-due-verifactu.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.0",
