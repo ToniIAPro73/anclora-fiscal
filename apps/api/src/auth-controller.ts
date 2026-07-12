@@ -314,6 +314,15 @@ export function registerAuthRoutes(
           options.githubFetch,
         );
 
+        const githubEmailHash = createHash('sha256')
+          .update(identity.email.trim().toLowerCase())
+          .digest('hex');
+
+        request.log.info(
+          { githubEmailHash },
+          'GitHub OAuth identity resolved',
+        );
+
         const session = await auth.loginWithExternalIdentity(
           {
             provider: identity.provider,
