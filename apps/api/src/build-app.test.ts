@@ -140,18 +140,26 @@ describe('API foundation', () => {
     expect(response.json()).not.toMatchObject({ error: 'Not Found' });
   });
 
-  it('registra la ruta GET /api/v1/verifactu/submissions como read model sin envío', async () => {
+  it('registra las rutas read-only de envíos y reintentos VERI*FACTU sin endpoint de envío', async () => {
     const app = await buildApp();
     apps.push(app);
 
-    const response = await app.inject({ method: 'GET', url: '/api/v1/verifactu/submissions' });
-    expect(response.statusCode).not.toBe(404);
-    expect(response.json()).not.toMatchObject({ error: 'Not Found' });
+    const submissionsResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/verifactu/submissions',
+    });
+    expect(submissionsResponse.statusCode).not.toBe(404);
+    expect(submissionsResponse.json()).not.toMatchObject({ error: 'Not Found' });
+
+    const attemptsResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/verifactu/submissions/submission-test/attempts',
+    });
+    expect(attemptsResponse.statusCode).not.toBe(404);
+    expect(attemptsResponse.json()).not.toMatchObject({ error: 'Not Found' });
 
     await app.ready();
     const routes = app.printRoutes();
-    expect(routes).toMatch(/verifactu\/submissions/i);
-    expect(routes).toMatch(/verifactu\/submissions[\s\S]*:submissionId[\s\S]*\/attempts/i);
     expect(routes).not.toMatch(/verifactu\/submit/i);
     expect(routes).not.toMatch(/verifactu\/send/i);
   });
