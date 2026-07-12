@@ -20,6 +20,8 @@ export interface VerifactuSubmissionListItem {
   recordType: string;
   chainHash: string;
   previousHash: string | null;
+  nextAttemptAt: string | null;
+  lastError: string | null;
 }
 
 export interface VerifactuSubmissionAttemptItem {

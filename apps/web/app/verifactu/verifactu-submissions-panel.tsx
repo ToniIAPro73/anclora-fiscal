@@ -56,6 +56,8 @@ interface VerifactuSubmission {
   chainHash: string;
   previousHash: string | null;
   attemptCount: string;
+  nextAttemptAt: string | null;
+  lastError: string | null;
 }
 
 interface VerifactuSubmissionListResponse {
@@ -82,8 +84,10 @@ const statusOptions = [
   { value: '', label: 'Todos' },
   { value: 'PENDING', label: 'Pendiente' },
   { value: 'ACCEPTED', label: 'Aceptado' },
+  { value: 'ACCEPTED_WITH_ERRORS', label: 'Aceptado con errores' },
   { value: 'REJECTED', label: 'Rechazado' },
   { value: 'TECHNICAL_ERROR', label: 'Error técnico' },
+  { value: 'RETRY_SCHEDULED', label: 'Reintento programado' },
   { value: 'BLOCKED', label: 'Bloqueado' },
 ];
 
@@ -98,15 +102,18 @@ function statusLabel(status: string): string {
   if (status === 'PENDING') return 'Pendiente';
   if (status === 'SENT') return 'Enviado';
   if (status === 'ACCEPTED') return 'Aceptado';
+  if (status === 'ACCEPTED_WITH_ERRORS') return 'Aceptado con errores';
   if (status === 'REJECTED') return 'Rechazado';
   if (status === 'TECHNICAL_ERROR') return 'Error técnico';
+  if (status === 'RETRY_SCHEDULED') return 'Reintento programado';
   if (status === 'BLOCKED') return 'Bloqueado';
   return status;
 }
 
 function statusTone(status: string): 'info' | 'warning' | 'high' | 'blocking' {
   if (status === 'ACCEPTED') return 'info';
-  if (status === 'PENDING') return 'warning';
+  if (status === 'ACCEPTED_WITH_ERRORS') return 'warning';
+  if (status === 'PENDING' || status === 'RETRY_SCHEDULED') return 'warning';
   if (status === 'REJECTED' || status === 'TECHNICAL_ERROR') return 'high';
   if (status === 'BLOCKED') return 'blocking';
   return 'info';
@@ -590,6 +597,7 @@ function VerifactuResultsCard({
               <th scope="col">Registro</th>
               <th scope="col">Fecha</th>
               <th scope="col">Intentos</th>
+              <th scope="col">Próximo intento / Error</th>
               <th scope="col">Hash de cadena</th>
               <th scope="col">Auditoría</th>
             </tr>
@@ -607,6 +615,11 @@ function VerifactuResultsCard({
                   <td>{recordTypeLabel(item.recordType)}</td>
                   <td>{formatDate(item.issuedAt)}</td>
                   <td>{item.attemptCount}</td>
+                  <td>
+                    {item.nextAttemptAt ? <span>{formatDate(item.nextAttemptAt)}</span> : null}
+                    {item.lastError ? <span className="verifactu-last-error">{item.lastError}</span> : null}
+                    {!item.nextAttemptAt && !item.lastError ? '—' : null}
+                  </td>
                   <td><code>{shortHash(item.chainHash)}</code></td>
                   <td>
                     <button
@@ -622,7 +635,7 @@ function VerifactuResultsCard({
                 </tr>
                 {expandedId === item.id ? (
                   <tr className="verifactu-attempts-row">
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <VerifactuAttemptsPanel
                         attempts={attemptsBySubmission[item.id]}
                         loading={Boolean(attemptsLoading[item.id])}

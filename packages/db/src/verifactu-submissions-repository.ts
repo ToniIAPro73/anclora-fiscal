@@ -33,6 +33,8 @@ export interface VerifactuSubmissionListItem {
   recordType: string;
   chainHash: string;
   previousHash: string | null;
+  nextAttemptAt: string | null;
+  lastError: string | null;
 }
 
 export interface ListVerifactuSubmissionsInput {
@@ -283,6 +285,8 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
         payloadRedacted: verifactuSubmissions.payloadRedacted,
         responseRedacted: verifactuSubmissions.responseRedacted,
         attemptCount: verifactuSubmissions.attemptCount,
+        nextAttemptAt: verifactuSubmissions.nextAttemptAt,
+        lastError: verifactuSubmissions.lastError,
         createdAt: verifactuSubmissions.createdAt,
         updatedAt: verifactuSubmissions.updatedAt,
         fiscalDocumentId: fiscalDocuments.id,
@@ -305,6 +309,7 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
       items: rows.map((row) => ({
         ...row,
         attemptCount: String(row.attemptCount),
+        nextAttemptAt: row.nextAttemptAt ? row.nextAttemptAt.toISOString() : null,
       })),
       page: input.page,
       pageSize: input.pageSize,

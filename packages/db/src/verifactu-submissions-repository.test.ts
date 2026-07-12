@@ -158,6 +158,8 @@ describe('DrizzleVerifactuSubmissionsRepository', () => {
       chainHash: 'tenant-verifactu-list-chain-hash',
       previousHash: null,
       attemptCount: '0',
+      nextAttemptAt: null,
+      lastError: null,
     });
   });
 

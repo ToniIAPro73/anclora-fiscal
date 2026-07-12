@@ -2997,6 +2997,17 @@ select option:checked {
   font-size: 0.78rem;
 }
 
+.verifactu-last-error {
+  display: block;
+  margin-top: 4px;
+  color: var(--fiscal-muted, rgb(245 239 227 / 62%));
+  font-size: 0.72rem;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .verifactu-empty-state {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

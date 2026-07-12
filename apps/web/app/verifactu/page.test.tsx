@@ -207,6 +207,67 @@ describe('VerifactuPage', () => {
     );
   });
 
+  it('muestra estados de aceptación parcial y reintento programado con su próximo intento y error', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString();
+
+      if (url === '/health') {
+        return jsonResponse(runtimeTest);
+      }
+
+      if (url === '/api/v1/verifactu/submissions?page=1&pageSize=25') {
+        return jsonResponse({
+          items: [
+            {
+              id: 'submission-2',
+              fiscalDocumentNumber: 'FS-2',
+              documentType: 'SIMPLIFICADA',
+              issuedAt: '2026-07-09T10:00:00.000Z',
+              environment: 'test',
+              status: 'ACCEPTED_WITH_ERRORS',
+              recordType: 'ALTA',
+              chainHash: 'abcdef1234567890abcdef1234567890',
+              previousHash: null,
+              attemptCount: '1',
+              nextAttemptAt: null,
+              lastError: null,
+            },
+            {
+              id: 'submission-3',
+              fiscalDocumentNumber: 'FS-3',
+              documentType: 'SIMPLIFICADA',
+              issuedAt: '2026-07-09T10:00:00.000Z',
+              environment: 'test',
+              status: 'RETRY_SCHEDULED',
+              recordType: 'ALTA',
+              chainHash: 'abcdef1234567890abcdef1234567891',
+              previousHash: null,
+              attemptCount: '2',
+              nextAttemptAt: '2026-07-13T09:00:00.000Z',
+              lastError: 'Timeout al conectar con AEAT',
+            },
+          ],
+          page: 1,
+          pageSize: 25,
+          total: 2,
+        });
+      }
+
+      return jsonResponse({}, false);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<VerifactuPage />);
+
+    expect(await screen.findByText('FS-2')).toBeInTheDocument();
+    expect(screen.getAllByText('Aceptado con errores').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Reintento programado').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Timeout al conectar con AEAT')).toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
+  });
+
   it('renderiza estado vacío cuando no hay registros', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(runtimeDisabled))
