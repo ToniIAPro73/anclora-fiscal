@@ -98,6 +98,9 @@ importers:
       postgres:
         specifier: ^3.4.7
         version: 3.4.9
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       xlsx:
         specifier: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
         version: https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz
