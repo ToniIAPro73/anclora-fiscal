@@ -35,3 +35,14 @@ pnpm build
 
 VERI*FACTU permanece desactivado por defecto. La aplicación no declara
 cumplimiento fiscal hasta completar y validar la matriz normativa.
+
+## Documentación VERI*FACTU
+
+- [`docs/verifactu-compliance-matrix.md`](docs/verifactu-compliance-matrix.md) — matriz
+  requisito-por-requisito y su estado de implementación.
+- [`docs/verifactu-production-readiness.md`](docs/verifactu-production-readiness.md) —
+  flags de entorno, gates obligatorios antes de producción y qué queda pendiente
+  (declaración responsable, certificado de producción, backups, retención de evidencias).
+- [`docs/adr/0005-verifactu-preparation-only.md`](docs/adr/0005-verifactu-preparation-only.md)
+  — decisión de diseño: preparación técnica, sin endpoint de envío público ni botón de
+  envío en la UI.
