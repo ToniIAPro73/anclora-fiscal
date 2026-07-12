@@ -95,7 +95,9 @@ export function createVatDossierGetHandler(dependencies: {
 
     if (!result.ok) return reply.code(404).send({ code: 'NOT_FOUND', message: 'No existe un expediente de IVA para este período' });
 
-    const { storageKey: _storageKey, ...metadata } = result.dossier;
+    const metadata = Object.fromEntries(
+      Object.entries(result.dossier).filter(([key]) => key !== 'storageKey'),
+    );
     return reply.code(200).send(metadata);
   };
 }
