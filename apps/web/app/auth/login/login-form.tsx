@@ -21,19 +21,49 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     'No se ha podido completar el acceso mediante Google.',
 };
 
+function safeNextPath(search: string): string {
+  const next = new URLSearchParams(search).get('next');
+  return next?.startsWith('/') && !next.startsWith('//') ? next : '/';
+}
+
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const oauthError = new URLSearchParams(window.location.search).get(
-      'oauth',
-    );
+    const search = window.location.search;
+    const params = new URLSearchParams(search);
+    const oauthError = params.get('oauth');
 
     if (oauthError && OAUTH_ERROR_MESSAGES[oauthError]) {
       setError(OAUTH_ERROR_MESSAGES[oauthError]);
+      return;
     }
+
+    if (!params.has('next')) {
+      return;
+    }
+
+    // A SameSite=Strict session cookie created during the cross-site OAuth
+    // callback may be withheld during that redirect chain. Once the login page
+    // has loaded, a same-origin session check can see the cookie and complete
+    // the navigation without asking the user to click Google a second time.
+    void (async () => {
+      try {
+        const response = await fetch('/api/v1/session', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
+        const session = (await response.json()) as { authenticated?: boolean };
+
+        if (response.ok && session.authenticated) {
+          window.location.assign(safeNextPath(search));
+        }
+      } catch {
+        // The normal credential form remains available if the check fails.
+      }
+    })();
   }, []);
 
   function startGitHubLogin() {
