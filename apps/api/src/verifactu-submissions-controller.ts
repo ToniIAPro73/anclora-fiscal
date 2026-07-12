@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { parsePagination } from './pagination.js';
 import type { Paginated } from './pagination.js';
+import { diagnoseVerifactuFailure, type RemediationAction } from '@anclora/core/server';
 
 export interface VerifactuSubmissionListItem {
   id: string;
@@ -49,6 +50,7 @@ export interface VerifactuSubmissionsRepositoryPort {
     tenantId: string;
     submissionId: string;
   }): Promise<VerifactuSubmissionAttemptItem[]>;
+  recordRemediationAction?(input: { tenantId: string; submissionId: string; actorId: string; action: string; evidence: string }): Promise<boolean>;
 }
 
 function unauthenticated(reply: FastifyReply) {
@@ -75,13 +77,30 @@ export function createVerifactuSubmissionsListHandler(dependencies: {
     const { page, pageSize } = parsePagination(request.query);
     const query = request.query as { status?: string; environment?: string } | undefined;
 
-    return dependencies.repository.list({
+    const result = await dependencies.repository.list({
       tenantId,
       page,
       pageSize,
       status: query?.status,
       environment: query?.environment,
     });
+    return { ...result, items: result.items.map((item) => { const code = responseCode(item.responseRedacted); return { ...item, ...(['REJECTED','ACCEPTED_WITH_ERRORS','TECHNICAL_ERROR'].includes(item.status) ? { remediation: diagnoseVerifactuFailure({ status: item.status, ...(code ? { code } : {}), documentType: item.documentType }) } : {}) }; }) };
+  };
+}
+
+function responseCode(value: unknown): string | undefined { if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined; const code = (value as Record<string, unknown>).code; return typeof code === 'string' ? code : undefined; }
+
+const actions = new Set<RemediationAction>(['REVIEW_DATA','CREATE_RECTIFYING_R5','CREATE_REPLACEMENT_F3','RETRY_TECHNICAL','MANUAL_ADVISOR_REVIEW']);
+export function createVerifactuRemediationHandler(dependencies: { repository?: VerifactuSubmissionsRepositoryPort | undefined }) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = request.authSession?.tenantId; const actorId = request.authSession?.actorId;
+    if (!tenantId || !actorId) return unauthenticated(reply);
+    if (!dependencies.repository?.recordRemediationAction) return reply.code(503).send({ code: 'VERIFACTU_REMEDIATION_UNAVAILABLE' });
+    const body = request.body as { action?: RemediationAction; evidence?: string };
+    if (!body.action || !actions.has(body.action) || !body.evidence?.trim()) return reply.code(400).send({ code: 'INVALID_REMEDIATION_ACTION' });
+    const recorded = await dependencies.repository.recordRemediationAction({ tenantId, actorId, submissionId: (request.params as { submissionId: string }).submissionId, action: body.action, evidence: body.evidence.trim() });
+    if (!recorded) return reply.code(404).send({ code: 'SUBMISSION_NOT_REMEDIABLE' });
+    return reply.code(202).send({ recorded: true, originalImmutable: true });
   };
 }
 

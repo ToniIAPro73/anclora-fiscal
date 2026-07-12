@@ -28,6 +28,7 @@ import { createSifEventsListHandler, createSifEventsVerifyHandler, type SifEvent
 import { createSystemAlertResolveHandler, createSystemAlertsListHandler, type SystemAlertsRepositoryPort } from './system-alerts-controller.js';
 import {
   createVerifactuSubmissionAttemptsListHandler,
+  createVerifactuRemediationHandler,
   createVerifactuSubmissionsListHandler,
 } from './verifactu-submissions-controller.js';
 import type { VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
@@ -166,6 +167,7 @@ export async function buildApp(options: {
       };
     },
   );
+  app.post('/api/v1/verifactu/submissions/:submissionId/remediation', { preHandler: requireRole(['documents:rectify']) }, createVerifactuRemediationHandler({ repository: options.verifactuSubmissionsRepository }));
   const authService = options.authService ?? new AuthService(
     new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON),
     { record: async () => undefined },

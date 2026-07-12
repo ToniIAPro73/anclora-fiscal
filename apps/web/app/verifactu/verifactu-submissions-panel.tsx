@@ -58,6 +58,7 @@ interface VerifactuSubmission {
   attemptCount: string;
   nextAttemptAt: string | null;
   lastError: string | null;
+  remediation?: { catalogVersion: string; code: string; description: string; diagnosis: string; action: string; requirements: string[]; retryable: boolean } | null;
 }
 
 interface VerifactuSubmissionListResponse {
@@ -636,6 +637,7 @@ function VerifactuResultsCard({
                 {expandedId === item.id ? (
                   <tr className="verifactu-attempts-row">
                     <td colSpan={9}>
+                      {item.remediation ? <section aria-label={`Subsanación de ${item.fiscalDocumentNumber}`}><h3>Diagnóstico y subsanación</h3><dl><div><dt>Código</dt><dd>{item.remediation.code}</dd></div><div><dt>Diagnóstico</dt><dd>{item.remediation.diagnosis}</dd></div><div><dt>Acción propuesta</dt><dd>{item.remediation.action}</dd></div><div><dt>Catálogo</dt><dd>{item.remediation.catalogVersion}</dd></div></dl><ul>{item.remediation.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul><p>{item.remediation.retryable ? 'Reintento técnico permitido por cola.' : 'No se reintentará automáticamente.'}</p></section> : null}
                       <VerifactuAttemptsPanel
                         attempts={attemptsBySubmission[item.id]}
                         loading={Boolean(attemptsLoading[item.id])}

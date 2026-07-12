@@ -9,6 +9,7 @@ import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import {
   fiscalDocuments,
+  auditEvents,
   integrityChainRecords,
   verifactuSubmissionAttempts,
   verifactuSubmissions,
@@ -83,6 +84,13 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
   constructor(
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
+
+  async recordRemediationAction(input: { tenantId: string; submissionId: string; actorId: string; action: string; evidence: string }): Promise<boolean> {
+    const [submission] = await this.db.select({ id: verifactuSubmissions.id }).from(verifactuSubmissions).where(and(eq(verifactuSubmissions.tenantId, input.tenantId), eq(verifactuSubmissions.id, input.submissionId), inArray(verifactuSubmissions.status, ['REJECTED','ACCEPTED_WITH_ERRORS','TECHNICAL_ERROR']))).limit(1);
+    if (!submission) return false;
+    await this.db.insert(auditEvents).values({ tenantId: input.tenantId, actorId: input.actorId, action: 'VERIFACTU_REMEDIATION_RECORDED', entityType: 'VerifactuSubmission', entityId: submission.id, metadata: { action: input.action, evidence: input.evidence } });
+    return true;
+  }
 
   async releaseExpiredClaims(input: { now: string }): Promise<number> {
     const now = new Date(input.now);
