@@ -13,6 +13,7 @@ export * from "./shopify-payment.js";
 export * from "./advisory-export.js";
 export * from "./expenses.js";
 export * from "./expense-deductibility.js";
+export * from "./advanced-expense-capture.js";
 
 export const importStatusSchema = z.enum([
   "PENDING",
