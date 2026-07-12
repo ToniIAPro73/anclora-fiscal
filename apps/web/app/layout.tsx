@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { EB_Garamond, Montserrat, Playfair_Display } from 'next/font/google';
 import '@anclora/ui/tokens.css';
 import './styles.css';
+import './ux-overrides.css';
 
 const playfair = Playfair_Display({ subsets: ['latin'], variable: '--font-display' });
 const garamond = EB_Garamond({ subsets: ['latin'], variable: '--font-editorial' });
