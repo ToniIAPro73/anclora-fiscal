@@ -229,10 +229,15 @@ idempotente normal). Primera generación → `201`. Error genérico:
 ### `GET /api/v1/periods/:period/vat-dossier`
 
 Requiere `dossier:read`. Devuelve los metadatos del expediente
-(`storageKey`, `archiveSha256`, `manifest`, `status`, etc.) o
-`404 NOT_FOUND` si no existe para el período/tenant. **No** incluye una URL de
-descarga firmada — `StoragePort` no expone ese mecanismo todavía; se devuelve
-el `storageKey` en crudo. Ver la brecha documentada en `docs/security.md`.
+(`archiveSha256`, `manifest`, `status`, etc.) o `404 NOT_FOUND` si no existe
+para el período/tenant. No expone la clave interna de almacenamiento.
+
+### `GET /api/v1/periods/:period/vat-dossier/archive`
+
+Requiere `dossier:read`. Lee el ZIP tenant-scoped, recalcula SHA-256 y solo lo
+entrega si coincide con el hash persistido. Responde como adjunto ZIP con
+`Cache-Control: private, no-store`; una alteración devuelve
+`409 DOSSIER_INTEGRITY_ERROR` y genera un incidente de integridad.
 
 ### `GET /api/v1/shopify/sales`
 

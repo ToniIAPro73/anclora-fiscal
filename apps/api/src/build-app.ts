@@ -22,7 +22,7 @@ import { createIssueResolveHandler, createIssuesListHandler, type IssuesReposito
 import { createFullInvoiceIssueHandler, createInvoiceBatchIssueHandler, createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesExportHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
-import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
+import { createVatDossierArchiveHandler, createVatDossierGenerateHandler, createVatDossierGetHandler, type DossierIntegrityIncidentPort, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import { createSifEventsListHandler, createSifEventsVerifyHandler, type SifEventsRepositoryPort } from './sif-events-controller.js';
 import {
   createVerifactuSubmissionAttemptsListHandler,
@@ -92,6 +92,7 @@ export async function buildApp(options: {
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
+  dossierIntegrityIncidents?: DossierIntegrityIncidentPort | undefined;
   sifEventsRepository?: SifEventsRepositoryPort | undefined;
   verifactuSubmissionsRepository?: VerifactuSubmissionsRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
@@ -339,6 +340,15 @@ export async function buildApp(options: {
     '/api/v1/periods/:period/vat-dossier',
     { preHandler: requireRole(['dossier:read']) },
     createVatDossierGetHandler({ repository: options.vatDossiersRepository }),
+  );
+  app.get(
+    '/api/v1/periods/:period/vat-dossier/archive',
+    { preHandler: requireRole(['dossier:read']) },
+    createVatDossierArchiveHandler({
+      repository: options.vatDossiersRepository,
+      storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')),
+      integrityIncidents: options.dossierIntegrityIncidents,
+    }),
   );
   app.get(
     '/api/v1/sif-events',

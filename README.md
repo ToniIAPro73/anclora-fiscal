@@ -19,7 +19,8 @@ pnpm dev
 
 La web queda disponible en `http://localhost:3000` y la API en
 `http://localhost:3001`. La documentación OpenAPI se publica en
-`http://localhost:3001/documentation`.
+`http://localhost:3001/documentation`. Los expedientes de IVA cerrados se
+descargan desde Periodos fiscales mediante un ZIP autenticado y verificado.
 
 No ejecute `pnpm db:migrate` o `pnpm seed` contra una base compartida sin una
 revisión previa de la URL y la migración versionada.

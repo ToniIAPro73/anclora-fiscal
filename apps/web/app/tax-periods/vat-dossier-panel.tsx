@@ -26,6 +26,7 @@ export function VatDossierPanel() {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   function resetOutcome() {
     setDossier(undefined);
@@ -68,6 +69,26 @@ export function VatDossierPanel() {
     }
   }
 
+  async function downloadDossier(currentPeriod: string) {
+    setDownloading(true); setError('');
+    try {
+      const response = await fetch(`/api/v1/periods/${encodeURIComponent(currentPeriod)}/vat-dossier/archive`, { credentials: 'include' });
+      if (response.status === 404) throw new Error('No existe un expediente de IVA para este periodo');
+      if (response.status === 409) throw new Error('No se descargó el expediente porque falló la verificación de integridad');
+      if (!response.ok) throw new Error('No se pudo descargar el expediente de IVA');
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `expediente-iva-${currentPeriod}.zip`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'No se pudo descargar el expediente de IVA');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return <section className="vat-dossier">
     <span className="section-index">Consultar expediente</span>
     <form
@@ -87,6 +108,7 @@ export function VatDossierPanel() {
     {dossier ? <>
       <StatusBadge tone="info">{statusLabels[dossier.status] ?? dossier.status}</StatusBadge>
       <h2>Periodo {dossier.period}</h2>
+      <button type="button" disabled={downloading} onClick={() => void downloadDossier(period.trim())}>{downloading ? 'Descargando…' : 'Descargar ZIP verificado'}</button>
       <table>
         <thead><tr><th scope="col">Fichero</th><th scope="col">Descripción</th></tr></thead>
         <tbody>{Object.entries(dossier.manifest).map(([file]) => <tr key={file}><td>{file}</td><td>{fileDescriptions[file] ?? 'Fichero del expediente'}</td></tr>)}</tbody>

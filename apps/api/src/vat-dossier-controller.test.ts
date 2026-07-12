@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import type { Role } from '@anclora/core';
 import type { StoragePort } from '@anclora/core/server';
 import { buildApp } from './build-app';
 import { AuthService } from './auth-service';
-import type { VatDossiersRepositoryPort } from './vat-dossier-controller';
+import type { DossierIntegrityIncidentPort, VatDossiersRepositoryPort } from './vat-dossier-controller';
 
 const apps: Awaited<ReturnType<typeof buildApp>>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
@@ -13,10 +14,11 @@ const noopStorage: StoragePort = {
   get: vi.fn(),
 };
 
-async function authenticatedApp(role: Role, repository?: VatDossiersRepositoryPort) {
+async function authenticatedApp(role: Role, repository?: VatDossiersRepositoryPort, storage: StoragePort = noopStorage, integrityIncidents?: DossierIntegrityIncidentPort) {
   const app = await buildApp({
     vatDossiersRepository: repository,
-    storage: noopStorage,
+    storage,
+    dossierIntegrityIncidents: integrityIncidents,
     authService: new AuthService({ authenticate: async () => ({
       actorId: '01977d43-75de-7000-8000-000000000020',
       tenantId: '01977d43-75de-7000-8000-000000000010',
@@ -154,14 +156,54 @@ describe('GET /api/v1/periods/:period/vat-dossier', () => {
     expect(response.json()).toMatchObject({ code: 'NOT_FOUND' });
   });
 
-  it('devuelve la metadata del expediente incluyendo storageKey', async () => {
+  it('devuelve la metadata sin exponer storageKey', async () => {
     const dossier = { id: 'vd-1', tenantId: '01977d43-75de-7000-8000-000000000010', status: 'CLOSED', storageKey: 'tenant/vd-1.zip', archiveSha256: 'abc' };
     const get = vi.fn().mockResolvedValue({ ok: true, dossier });
     const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', { generate: vi.fn(), get });
     const response = await app.inject({ method: 'GET', url: '/api/v1/periods/2026-06/vat-dossier', headers: { cookie } });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual(dossier);
+    expect(response.json()).toEqual(expect.objectContaining({ id: 'vd-1', archiveSha256: 'abc' }));
+    expect(response.json()).not.toHaveProperty('storageKey');
     expect(get).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', '2026-06');
+  });
+});
+
+describe('GET /api/v1/periods/:period/vat-dossier/archive', () => {
+  const bytes = Buffer.from('zip-real');
+  const archiveSha256 = createHash('sha256').update(bytes).digest('hex');
+  const dossier = { id: 'vd-1', tenantId: '01977d43-75de-7000-8000-000000000010', status: 'CLOSED', storageKey: 'tenant/vd-1.zip', archiveSha256 };
+
+  it('entrega el ZIP verificado con headers privados', async () => {
+    const storage: StoragePort = { put: vi.fn(), get: vi.fn().mockResolvedValue(bytes) };
+    const repository = { generate: vi.fn(), get: vi.fn().mockResolvedValue({ ok: true, dossier }) };
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', repository, storage);
+    const response = await app.inject({ method: 'GET', url: '/api/v1/periods/2026-06/vat-dossier/archive', headers: { cookie } });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload).toEqual(bytes);
+    expect(response.headers['content-type']).toContain('application/zip');
+    expect(response.headers['content-disposition']).toBe('attachment; filename="expediente-iva-2026-06.zip"');
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(storage.get).toHaveBeenCalledWith('tenant/vd-1.zip');
+  });
+
+  it('devuelve 404 y conserva el aislamiento por tenant delegado al repositorio', async () => {
+    const repository = { generate: vi.fn(), get: vi.fn().mockResolvedValue({ ok: false, reason: 'NOT_FOUND' }) };
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', repository);
+    const response = await app.inject({ method: 'GET', url: '/api/v1/periods/2026-06/vat-dossier/archive', headers: { cookie } });
+    expect(response.statusCode).toBe(404);
+    expect(repository.get).toHaveBeenCalledWith('01977d43-75de-7000-8000-000000000010', '2026-06');
+  });
+
+  it('bloquea un SHA incorrecto y reporta el incidente', async () => {
+    const storage: StoragePort = { put: vi.fn(), get: vi.fn().mockResolvedValue(Buffer.from('alterado')) };
+    const repository = { generate: vi.fn(), get: vi.fn().mockResolvedValue({ ok: true, dossier }) };
+    const incidents = { report: vi.fn().mockResolvedValue(undefined) };
+    const { app, cookie } = await authenticatedApp('FISCAL_OPERATOR', repository, storage, incidents);
+    const response = await app.inject({ method: 'GET', url: '/api/v1/periods/2026-06/vat-dossier/archive', headers: { cookie } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ code: 'DOSSIER_INTEGRITY_ERROR' });
+    expect(incidents.report).toHaveBeenCalledWith(expect.objectContaining({ tenantId: dossier.tenantId, dossierId: dossier.id }));
   });
 });

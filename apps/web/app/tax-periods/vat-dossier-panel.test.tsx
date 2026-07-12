@@ -11,6 +11,7 @@ function mockFetchOnce(response: { ok: boolean; status?: number; body: unknown }
     ok: response.ok,
     status: response.status ?? (response.ok ? 200 : 500),
     json: () => Promise.resolve(response.body),
+    blob: () => Promise.resolve(new Blob(['zip'])),
   });
   vi.stubGlobal('fetch', fn);
   return fn;
@@ -43,5 +44,25 @@ describe('VatDossierPanel', () => {
     typePeriod('2026-T3');
     fireEvent.click(screen.getByRole('button', { name: 'Generar expediente' }));
     await waitFor(() => expect(screen.getByText('El período no está cerrado todavía; no se puede generar un expediente de IVA hasta que exista un cierre de periodo.')).toBeInTheDocument());
+  });
+
+  it('descarga el ZIP binario desde la API real', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ id: 'dossier-1', period: '2026-06', status: 'CLOSED', manifest: {} }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, blob: () => Promise.resolve(new Blob(['zip'])) });
+    vi.stubGlobal('fetch', fetchMock);
+    const createObjectURL = vi.fn().mockReturnValue('blob:zip');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    render(<VatDossierPanel />);
+    typePeriod('2026-06');
+    fireEvent.click(screen.getByRole('button', { name: 'Consultar expediente' }));
+    await screen.findByRole('button', { name: 'Descargar ZIP verificado' });
+    fireEvent.click(screen.getByRole('button', { name: 'Descargar ZIP verificado' }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/periods/2026-06/vat-dossier/archive', { credentials: 'include' });
+    expect(click).toHaveBeenCalled();
+    click.mockRestore();
   });
 });

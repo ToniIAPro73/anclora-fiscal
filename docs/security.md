@@ -51,12 +51,11 @@ paquetes que lo usan. La auditoría queda sin vulnerabilidades conocidas.
 
 ## Riesgos pendientes
 
-El filesystem de `FilesystemStorage` no cifra en reposo. No existen URLs de
-descarga firmadas: `GET /api/v1/periods/:period/vat-dossier` devuelve el
-`storageKey` en crudo porque `StoragePort` no expone todavía un mecanismo de
-firma (ver `docs/api.md`) — cualquier cliente con acceso al `storageKey` y al
-filesystem/almacén subyacente puede leer el expediente sin control adicional
-de expiración o alcance. Tampoco hay CSRF token específico más allá de
+El filesystem de `FilesystemStorage` no cifra en reposo. Las claves internas
+no se exponen: el dossier se descarga por un endpoint autenticado, tenant-scoped
+y con verificación SHA-256 previa; la respuesta es privada y no almacenable.
+No se usan URLs firmadas porque la API transmite el archivo tras autorizar la
+sesión. Tampoco hay CSRF token específico más allá de
 `SameSite=Strict` en la cookie de sesión, ni rotación de sesión (la sesión
 vive hasta su `expiresAt` de ocho horas o hasta el logout explícito). SSRF no
 aplica a las rutas actuales: ninguna realiza peticiones a URLs aportadas por

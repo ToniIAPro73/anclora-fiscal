@@ -1,5 +1,8 @@
 # Matriz de preparación VERI*FACTU
 
+> Los expedientes IVA se descargan con autorización tenant-scoped, verificación
+> SHA-256 y bloqueo ante alteración.
+
 > Estado del módulo: preparación técnica. `VERIFACTU_ENABLED=false`. No existe
 > conexión con la AEAT ni declaración responsable del productor.
 

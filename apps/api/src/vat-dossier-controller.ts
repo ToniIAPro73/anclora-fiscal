@@ -1,5 +1,6 @@
 import type { StoragePort } from '@anclora/core/server';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { createHash } from 'node:crypto';
 
 export interface VatDossier {
   id: string;
@@ -94,9 +95,50 @@ export function createVatDossierGetHandler(dependencies: {
 
     if (!result.ok) return reply.code(404).send({ code: 'NOT_FOUND', message: 'No existe un expediente de IVA para este período' });
 
-    // StoragePort has no signed-URL mechanism (see packages/core/src/storage.ts) —
-    // return the raw storageKey rather than inventing one. See docs/security.md
-    // for the retrieval gap this leaves.
-    return reply.code(200).send(result.dossier);
+    const { storageKey: _storageKey, ...metadata } = result.dossier;
+    return reply.code(200).send(metadata);
+  };
+}
+
+function archiveFilename(period: string): string {
+  return `expediente-iva-${period.replace(/[^A-Za-z0-9._-]+/g, '-')}.zip`;
+}
+
+export interface DossierIntegrityIncidentPort {
+  report(input: { tenantId: string; dossierId: string; period: string; expectedSha256: string; actualSha256: string }): Promise<void>;
+}
+
+export function createVatDossierArchiveHandler(dependencies: {
+  repository?: VatDossiersRepositoryPort | undefined;
+  storage: StoragePort;
+  integrityIncidents?: DossierIntegrityIncidentPort | undefined;
+}) {
+  return async function vatDossierArchiveHandler(request: FastifyRequest, reply: FastifyReply) {
+    const tenantId = request.authSession?.tenantId;
+    if (!tenantId) return reply.code(401).send({ code: 'UNAUTHENTICATED', message: 'Debe iniciar sesión' });
+    if (!dependencies.repository) return reply.code(503).send({ code: 'VAT_DOSSIERS_REPOSITORY_UNAVAILABLE', message: 'El servicio de expedientes de IVA no está disponible' });
+
+    const { period } = request.params as { period: string };
+    const result = await dependencies.repository.get(tenantId, period);
+    if (!result.ok) return reply.code(404).send({ code: 'NOT_FOUND', message: 'No existe un expediente de IVA para este período' });
+
+    const bytes = await dependencies.storage.get(result.dossier.storageKey);
+    const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+    if (actualSha256 !== result.dossier.archiveSha256) {
+      await dependencies.integrityIncidents?.report({
+        tenantId,
+        dossierId: result.dossier.id,
+        period,
+        expectedSha256: result.dossier.archiveSha256,
+        actualSha256,
+      });
+      return reply.code(409).send({ code: 'DOSSIER_INTEGRITY_ERROR', message: 'La integridad del expediente no se puede verificar' });
+    }
+
+    return reply
+      .header('content-disposition', `attachment; filename="${archiveFilename(period)}"`)
+      .header('cache-control', 'private, no-store')
+      .type('application/zip')
+      .send(Buffer.from(bytes));
   };
 }

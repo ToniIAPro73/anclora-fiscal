@@ -18,6 +18,9 @@
 
 ## Fiscalidad y cumplimiento
 
+- `FilesystemStorage` no cifra los expedientes en reposo. La descarga sí exige
+  sesión, tenant y permiso, verifica SHA-256 y usa `private, no-store`.
+
 - VERI\*FACTU permanece en modo preparación; no hay envío activo a la AEAT ni se
   declara cumplimiento normativo.
 - Las reglas internacionales incompletas producen revisión fiscal explícita,
