@@ -7,7 +7,7 @@ export default function InvoicingPage() {
     <PageHeader
       eyebrow="04 / DOCUMENTO FISCAL"
       title="Facturación"
-      description="Operaciones reales pendientes de facturar. La emisión requiere una decisión fiscal registrada."
+      description="Revisa qué ventas están listas para emitir, cuáles están bloqueadas y qué documentos ya se han generado."
       backHref="/"
     />
     <InvoicingPanel />
