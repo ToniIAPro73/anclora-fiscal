@@ -93,4 +93,15 @@ describe('DrizzleSifEventsRepository', () => {
     expect(page2.items).toHaveLength(1);
     expect(page2.items[0]?.eventType).toBe('STARTUP');
   });
+
+  it('registra STARTUP una sola vez por despliegue y tenant', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const repository = new DrizzleSifEventsRepository(db);
+    const tenantId = await seedTenant(db, 'tenant-startup');
+    await repository.recordStartupForAll('deploy-1');
+    await repository.recordStartupForAll('deploy-1');
+    expect((await repository.list({ tenantId, page: 1, pageSize: 10 })).total).toBe(1);
+  });
 });

@@ -32,6 +32,7 @@ export async function processDueVerifactuSubmissions(input: {
   workerId: string;
   batchSize: number;
   leaseMs: number;
+  onOutcome?: (event: { tenantId: string; submissionId: string; status: string }) => Promise<void>;
 }): Promise<VerifactuDueProcessingSummary> {
   await input.repository.releaseExpiredClaims({ now: input.now });
   const claimed = await input.repository.claimDueBatch({
@@ -60,6 +61,7 @@ export async function processDueVerifactuSubmissions(input: {
         summary.skipped += 1;
         continue;
       }
+      await input.onOutcome?.({ tenantId: submission.tenantId, submissionId: submission.id, status: result.outcome.status });
       if (result.outcome.status === 'ACCEPTED') summary.accepted += 1;
       else if (result.outcome.status === 'ACCEPTED_WITH_ERRORS') summary.acceptedWithErrors += 1;
       else if (result.outcome.status === 'REJECTED') summary.rejected += 1;

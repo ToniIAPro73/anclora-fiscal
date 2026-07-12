@@ -420,6 +420,18 @@ select:focus-visible,
     radial-gradient(80% 45% at 75% 0%, rgb(231 183 102 / 8%), transparent 60%),
     #080d15;
 }
+
+.integrity-alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  margin-bottom: 1rem;
+  border: 2px solid #9f1d20;
+  background: #fff0f0;
+  color: #6f1114;
+}
+.integrity-alert-banner a { margin-left: auto; font-weight: 700; color: inherit; }
 .topbar {
   min-height: 142px;
   display: flex;

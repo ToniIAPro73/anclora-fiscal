@@ -1,5 +1,5 @@
 import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleShopifySalesRepository, DrizzleSifEventsRepository, DrizzleTaxDecisionsRepository, DrizzleVatDossiersRepository, DrizzleVerifactuSubmissionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleShopifySalesRepository, DrizzleSifEventsRepository, DrizzleSystemAlertsRepository, DrizzleTaxDecisionsRepository, DrizzleVatDossiersRepository, DrizzleVerifactuSubmissionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type FiscalPersistencePort, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
@@ -14,6 +14,7 @@ import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controlle
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import type { VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import type { SifEventsRepositoryPort } from './sif-events-controller.js';
+import type { SystemAlertsRepositoryPort } from './system-alerts-controller.js';
 import type { VerifactuSubmissionsRepositoryPort } from './verifactu-submissions-controller.js';
 import type { DashboardSummaryRepositoryPort } from './dashboard-controller.js';
 import type { ImportLifecycleRepositoryPort } from './import-lifecycle-controller.js';
@@ -72,6 +73,9 @@ export async function createProductionApp() {
   let periodClosesRepository: PeriodClosesRepositoryPort;
   let vatDossiersRepository: VatDossiersRepositoryPort;
   let sifEventsRepository: SifEventsRepositoryPort;
+  let systemAlertsRepository: SystemAlertsRepositoryPort & { open(input: { tenantId: string; severity: string; type: string; source: string; detail: Record<string, unknown>; deduplicationKey: string; eventType?: 'INTEGRITY_ERROR' | 'SUBMISSION_ERROR' | 'ANOMALY' }): Promise<unknown>; report(input: { tenantId: string; dossierId: string; period: string; expectedSha256: string; actualSha256: string }): Promise<void> };
+  let recordOperationalSif: (input: { tenantId: string; eventType: 'ACCEPTED_WITH_ERRORS' | 'REJECTED' | 'RESTORE_RETRY' | 'SUBMISSION_ERROR'; actor: string; detail: Record<string, unknown> }) => Promise<unknown>;
+  let recordStartup: (deploymentId: string) => Promise<number>;
   let verifactuSubmissionsRepository: VerifactuSubmissionsRepositoryPort;
   let verifactuDueRepository: VerifactuDueRepositoryPort;
   let dashboardSummaryRepository: DashboardSummaryRepositoryPort;
@@ -140,7 +144,11 @@ export async function createProductionApp() {
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
-    sifEventsRepository = new DrizzleSifEventsRepository(database.db);
+    const sifRepository = new DrizzleSifEventsRepository(database.db);
+    sifEventsRepository = sifRepository;
+    systemAlertsRepository = new DrizzleSystemAlertsRepository(database.db, sifRepository);
+    recordOperationalSif = (input) => sifRepository.record(input);
+    recordStartup = (deploymentId) => sifRepository.recordStartupForAll(deploymentId);
     const verifactuRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
     verifactuSubmissionsRepository = verifactuRepository;
     verifactuDueRepository = verifactuRepository;
@@ -206,7 +214,11 @@ export async function createProductionApp() {
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
     vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
-    sifEventsRepository = new DrizzleSifEventsRepository(database.db);
+    const sifRepository = new DrizzleSifEventsRepository(database.db);
+    sifEventsRepository = sifRepository;
+    systemAlertsRepository = new DrizzleSystemAlertsRepository(database.db, sifRepository);
+    recordOperationalSif = (input) => sifRepository.record(input);
+    recordStartup = (deploymentId) => sifRepository.recordStartupForAll(deploymentId);
     const verifactuRepository = new DrizzleVerifactuSubmissionsRepository(database.db);
     verifactuSubmissionsRepository = verifactuRepository;
     verifactuDueRepository = verifactuRepository;
@@ -233,6 +245,8 @@ export async function createProductionApp() {
     periodClosesRepository,
     vatDossiersRepository,
     sifEventsRepository,
+    systemAlertsRepository,
+    dossierIntegrityIncidents: systemAlertsRepository,
     verifactuSubmissionsRepository,
     dashboardSummaryRepository,
     fiscalConfigurationRepository,
@@ -240,6 +254,7 @@ export async function createProductionApp() {
     shopifySalesRepository,
     authService,
   });
+  await recordStartup(process.env.VERCEL_DEPLOYMENT_ID ?? process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GIT_COMMIT_SHA ?? 'local-development');
   const execution = createInternalVerifactuSubmissionExecutionService({
     repository: verifactuDueRepository,
     env: process.env,
@@ -262,6 +277,16 @@ export async function createProductionApp() {
       workerId: `cron-${now}`,
       batchSize: Number(process.env.VERIFACTU_CRON_BATCH_SIZE ?? 10),
       leaseMs: Number(process.env.VERIFACTU_CRON_LEASE_MS ?? 300_000),
+      onOutcome: async ({ tenantId, submissionId, status }) => {
+        if (status === 'ACCEPTED_WITH_ERRORS' || status === 'REJECTED') {
+          await recordOperationalSif({ tenantId, eventType: status, actor: 'verifactu-cron', detail: { submissionId } });
+        } else if (status === 'RETRY_SCHEDULED') {
+          await recordOperationalSif({ tenantId, eventType: 'RESTORE_RETRY', actor: 'verifactu-cron', detail: { submissionId } });
+        }
+        if (status === 'REJECTED') {
+          await systemAlertsRepository.open({ tenantId, severity: 'CRITICAL', type: 'VERIFACTU_REJECTED', source: 'verifactu-cron', detail: { submissionId }, deduplicationKey: `verifactu-rejected:${submissionId}`, eventType: 'SUBMISSION_ERROR' });
+        }
+      },
     });
     return reply.send(summary);
   };

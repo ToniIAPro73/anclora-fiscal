@@ -24,6 +24,7 @@ import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, create
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierArchiveHandler, createVatDossierGenerateHandler, createVatDossierGetHandler, type DossierIntegrityIncidentPort, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import { createSifEventsListHandler, createSifEventsVerifyHandler, type SifEventsRepositoryPort } from './sif-events-controller.js';
+import { createSystemAlertResolveHandler, createSystemAlertsListHandler, type SystemAlertsRepositoryPort } from './system-alerts-controller.js';
 import {
   createVerifactuSubmissionAttemptsListHandler,
   createVerifactuSubmissionsListHandler,
@@ -94,6 +95,7 @@ export async function buildApp(options: {
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
   dossierIntegrityIncidents?: DossierIntegrityIncidentPort | undefined;
   sifEventsRepository?: SifEventsRepositoryPort | undefined;
+  systemAlertsRepository?: SystemAlertsRepositoryPort | undefined;
   verifactuSubmissionsRepository?: VerifactuSubmissionsRepositoryPort | undefined;
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
@@ -355,6 +357,8 @@ export async function buildApp(options: {
     { preHandler: requireRole(['dossier:read']) },
     createSifEventsListHandler({ repository: options.sifEventsRepository }),
   );
+  app.get('/api/v1/system-alerts', { preHandler: requireRole(['alerts:read']) }, createSystemAlertsListHandler({ repository: options.systemAlertsRepository }));
+  app.post('/api/v1/system-alerts/:id/resolve', { preHandler: requireRole(['alerts:resolve']) }, createSystemAlertResolveHandler({ repository: options.systemAlertsRepository }));
   app.get(
     '/api/v1/sif-events/verify',
     { preHandler: requireRole(['dossier:read']) },

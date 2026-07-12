@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   class GenericRepository {
     constructor() {}
+    record() { return Promise.resolve({}); }
+    recordStartupForAll() { return Promise.resolve(0); }
+    open() { return Promise.resolve({}); }
+    report() { return Promise.resolve(); }
   }
 
   class DrizzleVatDossiersRepository {
@@ -58,6 +62,7 @@ vi.mock('@anclora/db', () => ({
   DrizzleShopifyPaymentsLedgerRepository: mocks.GenericRepository,
   DrizzleShopifySalesRepository: mocks.GenericRepository,
   DrizzleSifEventsRepository: mocks.GenericRepository,
+  DrizzleSystemAlertsRepository: mocks.GenericRepository,
   DrizzleTaxDecisionsRepository: mocks.GenericRepository,
   DrizzleVatDossiersRepository: mocks.DrizzleVatDossiersRepository,
   DrizzleVerifactuSubmissionsRepository: mocks.DrizzleVerifactuSubmissionsRepository,

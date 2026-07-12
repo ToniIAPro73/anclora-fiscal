@@ -60,3 +60,7 @@ sesión. Tampoco hay CSRF token específico más allá de
 vive hasta su `expiresAt` de ocho horas o hasta el logout explícito). SSRF no
 aplica a las rutas actuales: ninguna realiza peticiones a URLs aportadas por
 usuarios.
+
+Las alertas críticas no se descartan desde el cliente: solo una resolución
+autenticada con `alerts:resolve` cambia su estado y conserva tanto el evento
+SIF encadenado como el registro de auditoría.

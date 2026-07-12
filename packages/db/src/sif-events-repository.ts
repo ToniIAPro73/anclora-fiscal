@@ -1,8 +1,8 @@
-import { count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
 import { createSifEvent, verifySifEventChain, type SifEvent, type SifEventType } from '@anclora/core/server';
-import { sifEvents } from './schema.js';
+import { sifEvents, tenants } from './schema.js';
 import * as schema from './schema.js';
 
 export interface RecordSifEventInput {
@@ -10,6 +10,7 @@ export interface RecordSifEventInput {
   eventType: SifEventType;
   actor: string;
   detail: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 export type SifEventRow = typeof sifEvents.$inferSelect;
@@ -32,6 +33,10 @@ export class DrizzleSifEventsRepository<TQueryResult extends PgQueryResultHKT> {
    * for the same tenant cannot both chain off the same previousHash.
    */
   async record(input: RecordSifEventInput): Promise<SifEventRow> {
+    if (input.idempotencyKey) {
+      const [existing] = await this.db.select().from(sifEvents).where(and(eq(sifEvents.tenantId, input.tenantId), eq(sifEvents.idempotencyKey, input.idempotencyKey))).limit(1);
+      if (existing) return existing;
+    }
     return this.db.transaction(async (transaction) => {
       const [lastEvent] = await transaction
         .select({ hash: sifEvents.hash })
@@ -62,6 +67,7 @@ export class DrizzleSifEventsRepository<TQueryResult extends PgQueryResultHKT> {
           hash: event.hash,
           previousHash: event.previousHash ?? null,
           algorithm: event.algorithm,
+          idempotencyKey: input.idempotencyKey ?? null,
           occurredAt,
         })
         .returning();
@@ -70,6 +76,14 @@ export class DrizzleSifEventsRepository<TQueryResult extends PgQueryResultHKT> {
 
       return row;
     });
+  }
+
+  async recordStartupForAll(deploymentId: string): Promise<number> {
+    const tenantRows = await this.db.select({ id: tenants.id }).from(tenants);
+    for (const tenant of tenantRows) {
+      await this.record({ tenantId: tenant.id, eventType: 'STARTUP', actor: 'system', detail: { deploymentId }, idempotencyKey: `startup:${deploymentId}` });
+    }
+    return tenantRows.length;
   }
 
   async list(input: ListSifEventsInput): Promise<{ items: SifEventRow[]; page: number; pageSize: number; total: number }> {

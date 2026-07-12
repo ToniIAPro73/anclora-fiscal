@@ -52,6 +52,7 @@ export function AppShell({
 
   const [fetchedHasPayoutData, setFetchedHasPayoutData] = useState<boolean>();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [criticalAlerts, setCriticalAlerts] = useState(0);
 
   useEffect(() => {
     try {
@@ -93,6 +94,13 @@ export function AppShell({
       cancelled = true;
     };
   }, [hasPayoutData]);
+
+  useEffect(() => {
+    fetch('/api/v1/system-alerts?status=OPEN', { credentials: 'include' })
+      .then((response) => response.ok ? response.json() : { items: [] })
+      .then((data: { items?: Array<{ severity: string }> }) => setCriticalAlerts((data.items ?? []).filter((alert) => alert.severity === 'CRITICAL').length))
+      .catch(() => undefined);
+  }, [pathname]);
 
   function toggleSidebar() {
     setIsSidebarCollapsed((currentValue) => {
@@ -222,7 +230,10 @@ export function AppShell({
         </div>
       </aside>
 
-      <section className="workspace">{children}</section>
+      <section className="workspace">
+        {criticalAlerts > 0 ? <div className="integrity-alert-banner" role="alert"><strong>Alerta crítica de integridad abierta</strong><span>{criticalAlerts} incidencia(s) requieren resolución explícita.</span><Link href="/sif-events">Ver detalle</Link></div> : null}
+        {children}
+      </section>
     </main>
   );
 }

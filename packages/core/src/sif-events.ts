@@ -6,7 +6,10 @@ export type SifEventType =
   | 'INTEGRITY_ERROR'
   | 'SUBMISSION_ERROR'
   | 'RESTORE_RETRY'
-  | 'ANOMALY';
+  | 'ANOMALY'
+  | 'ACCEPTED_WITH_ERRORS'
+  | 'REJECTED'
+  | 'ALERT_RESOLVED';
 
 export interface SifEventInput {
   eventType: SifEventType;

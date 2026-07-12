@@ -20,6 +20,8 @@
 
 - `FilesystemStorage` no cifra los expedientes en reposo. La descarga sí exige
   sesión, tenant y permiso, verifica SHA-256 y usa `private, no-store`.
+- `SHUTDOWN` no se registra automáticamente: en serverless no es un evento
+  fiable. `STARTUP` se deduplica mediante el identificador del despliegue.
 
 - VERI\*FACTU permanece en modo preparación; no hay envío activo a la AEAT ni se
   declara cumplimiento normativo.

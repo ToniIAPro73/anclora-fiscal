@@ -239,6 +239,17 @@ entrega si coincide con el hash persistido. Responde como adjunto ZIP con
 `Cache-Control: private, no-store`; una alteración devuelve
 `409 DOSSIER_INTEGRITY_ERROR` y genera un incidente de integridad.
 
+### Alertas e historial SIF
+
+`GET /api/v1/system-alerts` requiere `alerts:read` y admite `status=OPEN` o
+`RESOLVED`. `POST /api/v1/system-alerts/:id/resolve` requiere
+`alerts:resolve`, una explicación no vacía y registra actor, auditoría y evento
+SIF. El rol de solo lectura puede consultar, pero no resolver.
+
+Los arranques se deduplican por tenant y despliegue. El procesador programado
+registra aceptación con errores, rechazo y recuperación/reintento; un rechazo
+abre además una alerta crítica persistente.
+
 ### `GET /api/v1/shopify/sales`
 
 Listado operativo tenant-scoped de pedidos Shopify. Admite filtros de fecha,

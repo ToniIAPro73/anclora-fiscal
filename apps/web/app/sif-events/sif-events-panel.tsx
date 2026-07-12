@@ -61,6 +61,7 @@ export function SifEventsPanel() {
   const [verifying, setVerifying] = useState(false);
   const [chainValid, setChainValid] = useState<boolean | null>(null);
   const [verifyError, setVerifyError] = useState('');
+  const [alerts, setAlerts] = useState<Array<{ id: string; severity: string; type: string; source: string; status: string; openedAt: string }>>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +76,12 @@ export function SifEventsPanel() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [page]);
+
+  useEffect(() => {
+    fetch('/api/v1/system-alerts', { credentials: 'include' })
+      .then((response) => response.ok ? response.json() : { items: [] })
+      .then((body: { items: typeof alerts }) => setAlerts(body.items));
+  }, []);
 
   async function verifyChain() {
     setVerifying(true);
@@ -96,6 +103,8 @@ export function SifEventsPanel() {
   if (error) return <section className="sif-events-panel"><p className="import-error" role="status">{error}</p></section>;
 
   return <section className="sif-events-panel">
+    <h2>Alertas persistentes</h2>
+    {alerts.length ? <div className="reconciliation-table-panel"><table><thead><tr><th>Fecha</th><th>Severidad</th><th>Tipo</th><th>Origen</th><th>Estado</th></tr></thead><tbody>{alerts.map((alert) => <tr key={alert.id}><td>{formatDate(alert.openedAt)}</td><td><StatusBadge tone={alert.severity === 'CRITICAL' ? 'blocking' : 'warning'}>{alert.severity}</StatusBadge></td><td>{alert.type}</td><td>{alert.source}</td><td>{alert.status}</td></tr>)}</tbody></table></div> : <p className="workbench-notice">No hay alertas registradas.</p>}
     <div className="sif-events-toolbar">
       <button type="button" disabled={verifying} onClick={() => void verifyChain()}>
         {verifying ? 'Verificando…' : 'Verificar cadena'}
