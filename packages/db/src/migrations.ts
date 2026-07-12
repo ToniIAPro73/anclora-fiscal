@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
 const DEFAULT_MIGRATIONS_FOLDER = fileURLToPath(new URL('../migrations/', import.meta.url));
+const REMOTE_MIGRATION_LOCK_ID = 1_572_921_537;
 
 interface AppliedMigration {
   name: string;
@@ -90,39 +91,44 @@ export async function migrateRemoteDatabase(
 ): Promise<MigrationResult> {
   const client = postgres(url, { max: 1, prepare: false });
   try {
-    await client.unsafe(`
-      CREATE TABLE IF NOT EXISTS "_anclora_migrations" (
-        "name" text PRIMARY KEY,
-        "checksum" text NOT NULL,
-        "applied_at" timestamptz NOT NULL DEFAULT now()
-      )
-    `);
-    const appliedRows = await client<{ name: string; checksum: string }[]>`
-      SELECT "name", "checksum" FROM "_anclora_migrations"
-    `;
-    const known = new Map(appliedRows.map((row) => [row.name, row.checksum]));
-    const result: MigrationResult = { applied: [], skipped: [] };
+    await client`SELECT pg_advisory_lock(${REMOTE_MIGRATION_LOCK_ID})`;
+    try {
+      await client.unsafe(`
+        CREATE TABLE IF NOT EXISTS "_anclora_migrations" (
+          "name" text PRIMARY KEY,
+          "checksum" text NOT NULL,
+          "applied_at" timestamptz NOT NULL DEFAULT now()
+        )
+      `);
+      const appliedRows = await client<{ name: string; checksum: string }[]>`
+        SELECT "name", "checksum" FROM "_anclora_migrations"
+      `;
+      const known = new Map(appliedRows.map((row) => [row.name, row.checksum]));
+      const result: MigrationResult = { applied: [], skipped: [] };
 
-    for (const migration of await migrationFiles(migrationsFolder)) {
-      const appliedChecksum = known.get(migration.name);
-      if (appliedChecksum) {
-        if (appliedChecksum !== migration.checksum) {
-          throw new Error(`La migración aplicada ${migration.name} ha cambiado de contenido`);
+      for (const migration of await migrationFiles(migrationsFolder)) {
+        const appliedChecksum = known.get(migration.name);
+        if (appliedChecksum) {
+          if (appliedChecksum !== migration.checksum) {
+            throw new Error(`La migración aplicada ${migration.name} ha cambiado de contenido`);
+          }
+          result.skipped.push(migration.name);
+          continue;
         }
-        result.skipped.push(migration.name);
-        continue;
-      }
 
-      await client.begin(async (transaction) => {
-        await transaction.unsafe(migration.sql).simple();
-        await transaction`
-          INSERT INTO "_anclora_migrations" ("name", "checksum")
-          VALUES (${migration.name}, ${migration.checksum})
-        `;
-      });
-      result.applied.push(migration.name);
+        await client.begin(async (transaction) => {
+          await transaction.unsafe(migration.sql).simple();
+          await transaction`
+            INSERT INTO "_anclora_migrations" ("name", "checksum")
+            VALUES (${migration.name}, ${migration.checksum})
+          `;
+        });
+        result.applied.push(migration.name);
+      }
+      return result;
+    } finally {
+      await client`SELECT pg_advisory_unlock(${REMOTE_MIGRATION_LOCK_ID})`;
     }
-    return result;
   } finally {
     await client.end();
   }
