@@ -16,32 +16,47 @@ import {
   createGitHubOAuthTransaction,
   githubOAuthStatesMatch,
 } from './github-oauth-flow.js';
+import {
+  resolveGoogleOAuthIdentity,
+  type GoogleFetch,
+} from './google-oauth-client.js';
+import type { GoogleOAuthConfig } from './google-oauth-config.js';
+import {
+  createGoogleAuthorizationUrl,
+  createGoogleOAuthTransaction,
+  googleOAuthStatesMatch,
+} from './google-oauth-flow.js';
 
 export const SESSION_COOKIE = 'anclora_session';
 
 const GITHUB_OAUTH_TRANSACTION_COOKIE = 'anclora_github_oauth';
-const GITHUB_OAUTH_TRANSACTION_TTL_SECONDS = 10 * 60;
+const GOOGLE_OAUTH_TRANSACTION_COOKIE = 'anclora_google_oauth';
+const OAUTH_TRANSACTION_TTL_SECONDS = 10 * 60;
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(256),
 });
 
-const githubOAuthCallbackSchema = z.object({
+const oauthCallbackSchema = z.object({
   code: z.string().min(1).optional(),
   state: z.string().min(1).optional(),
   error: z.string().optional(),
 });
 
-const githubOAuthTransactionSchema = z.object({
+const oauthTransactionSchema = z.object({
   state: z.string().min(1),
   codeVerifier: z.string().min(1),
   expiresAt: z.number().int().positive(),
 });
 
+type OAuthTransaction = z.infer<typeof oauthTransactionSchema>;
+
 interface AuthRoutesOptions {
   githubOAuthConfig?: GitHubOAuthConfig | null;
   githubFetch?: GitHubFetch;
+  googleOAuthConfig?: GoogleOAuthConfig | null;
+  googleFetch?: GoogleFetch;
 }
 
 declare module 'fastify' {
@@ -78,16 +93,15 @@ function setSessionCookie(
   });
 }
 
-function encodeGitHubOAuthTransaction(
-  transaction: z.infer<typeof githubOAuthTransactionSchema>,
-): string {
+function encodeOAuthTransaction(transaction: OAuthTransaction): string {
   return Buffer.from(JSON.stringify(transaction)).toString('base64url');
 }
 
-function decodeGitHubOAuthTransaction(
+function decodeOAuthTransaction(
   request: FastifyRequest,
-): z.infer<typeof githubOAuthTransactionSchema> | null {
-  const signedCookie = request.cookies[GITHUB_OAUTH_TRANSACTION_COOKIE];
+  cookieName: string,
+): OAuthTransaction | null {
+  const signedCookie = request.cookies[cookieName];
 
   if (!signedCookie) {
     return null;
@@ -103,8 +117,7 @@ function decodeGitHubOAuthTransaction(
     const decoded = JSON.parse(
       Buffer.from(unsignedCookie.value, 'base64url').toString('utf8'),
     );
-
-    const parsed = githubOAuthTransactionSchema.safeParse(decoded);
+    const parsed = oauthTransactionSchema.safeParse(decoded);
 
     if (
       !parsed.success ||
@@ -119,37 +132,43 @@ function decodeGitHubOAuthTransaction(
   }
 }
 
-function setGitHubOAuthTransactionCookie(
+function setOAuthTransactionCookie(
   reply: FastifyReply,
-  transaction: z.infer<typeof githubOAuthTransactionSchema>,
+  cookieName: string,
+  provider: 'github' | 'google',
+  transaction: OAuthTransaction,
 ): void {
-  reply.setCookie(
-    GITHUB_OAUTH_TRANSACTION_COOKIE,
-    encodeGitHubOAuthTransaction(transaction),
-    {
-      path: '/api/v1/auth/oauth/github',
-      httpOnly: true,
-      sameSite: 'lax',
-      signed: true,
-      maxAge: GITHUB_OAUTH_TRANSACTION_TTL_SECONDS,
-      secure: process.env.NODE_ENV === 'production',
-    },
-  );
-}
-
-function clearGitHubOAuthTransactionCookie(reply: FastifyReply): void {
-  reply.clearCookie(GITHUB_OAUTH_TRANSACTION_COOKIE, {
-    path: '/api/v1/auth/oauth/github',
+  reply.setCookie(cookieName, encodeOAuthTransaction(transaction), {
+    path: `/api/v1/auth/oauth/${provider}`,
+    httpOnly: true,
+    sameSite: 'lax',
+    signed: true,
+    maxAge: OAUTH_TRANSACTION_TTL_SECONDS,
+    secure: process.env.NODE_ENV === 'production',
   });
 }
 
-function oauthFailureRedirect(
-  reason:
-    | 'github_cancelled'
-    | 'github_invalid_state'
-    | 'github_not_authorized'
-    | 'github_error',
-): string {
+function clearOAuthTransactionCookie(
+  reply: FastifyReply,
+  cookieName: string,
+  provider: 'github' | 'google',
+): void {
+  reply.clearCookie(cookieName, {
+    path: `/api/v1/auth/oauth/${provider}`,
+  });
+}
+
+type OAuthFailureReason =
+  | 'github_cancelled'
+  | 'github_invalid_state'
+  | 'github_not_authorized'
+  | 'github_error'
+  | 'google_cancelled'
+  | 'google_invalid_state'
+  | 'google_not_authorized'
+  | 'google_error';
+
+function oauthFailureRedirect(reason: OAuthFailureReason): string {
   return `/auth/login?oauth=${reason}`;
 }
 
@@ -245,14 +264,18 @@ export function registerAuthRoutes(
 
       const transaction = createGitHubOAuthTransaction();
       const expiresAt =
-        Math.floor(Date.now() / 1000) +
-        GITHUB_OAUTH_TRANSACTION_TTL_SECONDS;
+        Math.floor(Date.now() / 1000) + OAUTH_TRANSACTION_TTL_SECONDS;
 
-      setGitHubOAuthTransactionCookie(reply, {
-        state: transaction.state,
-        codeVerifier: transaction.codeVerifier,
-        expiresAt,
-      });
+      setOAuthTransactionCookie(
+        reply,
+        GITHUB_OAUTH_TRANSACTION_COOKIE,
+        'github',
+        {
+          state: transaction.state,
+          codeVerifier: transaction.codeVerifier,
+          expiresAt,
+        },
+      );
 
       return reply.redirect(
         createGitHubAuthorizationUrl(config, transaction),
@@ -271,7 +294,11 @@ export function registerAuthRoutes(
       },
     },
     async (request, reply) => {
-      clearGitHubOAuthTransactionCookie(reply);
+      clearOAuthTransactionCookie(
+        reply,
+        GITHUB_OAUTH_TRANSACTION_COOKIE,
+        'github',
+      );
 
       const config = options.githubOAuthConfig;
 
@@ -279,7 +306,7 @@ export function registerAuthRoutes(
         return reply.redirect(oauthFailureRedirect('github_error'));
       }
 
-      const callback = githubOAuthCallbackSchema.safeParse(request.query);
+      const callback = oauthCallbackSchema.safeParse(request.query);
 
       if (!callback.success) {
         return reply.redirect(oauthFailureRedirect('github_error'));
@@ -289,7 +316,10 @@ export function registerAuthRoutes(
         return reply.redirect(oauthFailureRedirect('github_cancelled'));
       }
 
-      const transaction = decodeGitHubOAuthTransaction(request);
+      const transaction = decodeOAuthTransaction(
+        request,
+        GITHUB_OAUTH_TRANSACTION_COOKIE,
+      );
 
       if (
         !transaction ||
@@ -314,12 +344,12 @@ export function registerAuthRoutes(
           options.githubFetch,
         );
 
-        const githubEmailHash = createHash('sha256')
-          .update(identity.email.trim().toLowerCase())
-          .digest('hex');
-
         request.log.info(
-          { githubEmailHash },
+          {
+            githubEmailHash: createHash('sha256')
+              .update(identity.email.trim().toLowerCase())
+              .digest('hex'),
+          },
           'GitHub OAuth identity resolved',
         );
 
@@ -339,7 +369,6 @@ export function registerAuthRoutes(
         }
 
         setSessionCookie(reply, auth, session);
-
         return reply.redirect('/');
       } catch (error) {
         request.log.warn(
@@ -353,6 +382,150 @@ export function registerAuthRoutes(
         );
 
         return reply.redirect(oauthFailureRedirect('github_error'));
+      }
+    },
+  );
+
+  app.get(
+    '/api/v1/auth/oauth/google/start',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (_request, reply) => {
+      const config = options.googleOAuthConfig;
+
+      if (!config) {
+        return reply.code(503).send({
+          code: 'GOOGLE_OAUTH_NOT_CONFIGURED',
+          message: 'El acceso mediante Google no está disponible',
+        });
+      }
+
+      const transaction = createGoogleOAuthTransaction();
+      const expiresAt =
+        Math.floor(Date.now() / 1000) + OAUTH_TRANSACTION_TTL_SECONDS;
+
+      setOAuthTransactionCookie(
+        reply,
+        GOOGLE_OAUTH_TRANSACTION_COOKIE,
+        'google',
+        {
+          state: transaction.state,
+          codeVerifier: transaction.codeVerifier,
+          expiresAt,
+        },
+      );
+
+      return reply.redirect(
+        createGoogleAuthorizationUrl(config, transaction),
+      );
+    },
+  );
+
+  app.get(
+    '/api/v1/auth/oauth/google/callback',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    async (request, reply) => {
+      clearOAuthTransactionCookie(
+        reply,
+        GOOGLE_OAUTH_TRANSACTION_COOKIE,
+        'google',
+      );
+
+      const config = options.googleOAuthConfig;
+
+      if (!config) {
+        return reply.redirect(oauthFailureRedirect('google_error'));
+      }
+
+      const callback = oauthCallbackSchema.safeParse(request.query);
+
+      if (!callback.success) {
+        return reply.redirect(oauthFailureRedirect('google_error'));
+      }
+
+      if (callback.data.error) {
+        return reply.redirect(oauthFailureRedirect('google_cancelled'));
+      }
+
+      const transaction = decodeOAuthTransaction(
+        request,
+        GOOGLE_OAUTH_TRANSACTION_COOKIE,
+      );
+
+      if (
+        !transaction ||
+        !callback.data.code ||
+        !googleOAuthStatesMatch(
+          transaction.state,
+          callback.data.state,
+        )
+      ) {
+        return reply.redirect(
+          oauthFailureRedirect('google_invalid_state'),
+        );
+      }
+
+      try {
+        const identity = await resolveGoogleOAuthIdentity(
+          config,
+          {
+            code: callback.data.code,
+            codeVerifier: transaction.codeVerifier,
+          },
+          options.googleFetch,
+        );
+
+        request.log.info(
+          {
+            googleEmailHash: createHash('sha256')
+              .update(identity.email.trim().toLowerCase())
+              .digest('hex'),
+          },
+          'Google OAuth identity resolved',
+        );
+
+        const session = await auth.loginWithExternalIdentity(
+          {
+            provider: identity.provider,
+            providerAccountId: identity.providerAccountId,
+            email: identity.email,
+          },
+          ipHash(request),
+        );
+
+        if (!session) {
+          return reply.redirect(
+            oauthFailureRedirect('google_not_authorized'),
+          );
+        }
+
+        setSessionCookie(reply, auth, session);
+        return reply.redirect('/');
+      } catch (error) {
+        request.log.warn(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : 'unknown Google OAuth error',
+          },
+          'Google OAuth callback failed',
+        );
+
+        return reply.redirect(oauthFailureRedirect('google_error'));
       }
     },
   );
