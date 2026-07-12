@@ -183,6 +183,18 @@ body {
   border: 1px solid rgb(243 236 223 / 14%);
   border-radius: 10px;
   background: rgb(243 236 223 / 4%);
+  color: rgb(243 236 223 / 78%);
+  opacity: 1;
+  cursor: pointer;
+}
+
+.social-buttons button:hover:not(:disabled) {
+  border-color: rgb(231 183 102 / 45%);
+  background: rgb(231 183 102 / 8%);
+  color: #e7b766;
+}
+
+.social-buttons button:disabled {
   color: rgb(243 236 223 / 55%);
   opacity: 0.5;
   cursor: not-allowed;

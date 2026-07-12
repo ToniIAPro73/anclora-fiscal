@@ -1,10 +1,17 @@
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
+import {
+  randomBytes,
+  scrypt as scryptCallback,
+  timingSafeEqual,
+} from 'node:crypto';
 import { promisify } from 'node:util';
 import { roleSchema, type Role } from '@anclora/core';
 import { z } from 'zod';
 
 const scrypt = promisify(scryptCallback);
-const DUMMY_PASSWORD_HASH = `scrypt$${Buffer.alloc(16).toString('base64url')}$${Buffer.alloc(64).toString('base64url')}`;
+
+const DUMMY_PASSWORD_HASH = `scrypt$${Buffer.alloc(16).toString(
+  'base64url',
+)}$${Buffer.alloc(64).toString('base64url')}`;
 
 export interface AuthenticatedActor {
   actorId: string;
@@ -15,7 +22,10 @@ export interface AuthenticatedActor {
 }
 
 export interface IdentityProviderPort {
-  authenticate(email: string, password: string): Promise<AuthenticatedActor | null>;
+  authenticate(
+    email: string,
+    password: string,
+  ): Promise<AuthenticatedActor | null>;
   findByEmail?(email: string): Promise<AuthenticatedActor | null>;
 }
 
@@ -26,13 +36,19 @@ export interface VerifiedExternalIdentity {
 }
 
 export interface AuthAuditPort {
-  record(input: { tenantId: string; actorId: string; action: 'LOGIN_SUCCEEDED' | 'LOGOUT'; ipHash?: string }): Promise<void>;
+  record(input: {
+    tenantId: string;
+    actorId: string;
+    action: 'LOGIN_SUCCEEDED' | 'LOGOUT';
+    ipHash?: string;
+  }): Promise<void>;
 }
 
 const configuredIdentitySchema = z.object({
   actorId: z.string().uuid(),
   tenantId: z.string().uuid(),
   email: z.string().email(),
+  externalEmails: z.array(z.string().email()).default([]),
   displayName: z.string().min(1),
   role: roleSchema,
   passwordHash: z.string().startsWith('scrypt$'),
@@ -49,33 +65,82 @@ const sessionSchema = z.object({
 
 export type AuthSession = z.infer<typeof sessionSchema>;
 
-export async function hashPassword(password: string, salt = randomBytes(16)): Promise<string> {
-  const derived = await scrypt(password, salt, 64) as Buffer;
-  return `scrypt$${salt.toString('base64url')}$${derived.toString('base64url')}`;
+export async function hashPassword(
+  password: string,
+  salt = randomBytes(16),
+): Promise<string> {
+  const derived = (await scrypt(password, salt, 64)) as Buffer;
+
+  return `scrypt$${salt.toString('base64url')}$${derived.toString(
+    'base64url',
+  )}`;
 }
 
-async function verifyPassword(password: string, encoded: string): Promise<boolean> {
+async function verifyPassword(
+  password: string,
+  encoded: string,
+): Promise<boolean> {
   const [, saltValue, hashValue] = encoded.split('$');
-  if (!saltValue || !hashValue) return false;
-  const expected = Buffer.from(hashValue, 'base64url');
-  const actual = await scrypt(password, Buffer.from(saltValue, 'base64url'), expected.length) as Buffer;
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
-}
 
-export class ConfiguredIdentityProvider implements IdentityProviderPort {
-  private readonly identities: z.infer<typeof configuredIdentitySchema>[];
-
-  constructor(serializedIdentities: string | undefined) {
-    const parsed = serializedIdentities ? JSON.parse(serializedIdentities) : [];
-    this.identities = z.array(configuredIdentitySchema).parse(parsed);
+  if (!saltValue || !hashValue) {
+    return false;
   }
 
-  private findConfiguredIdentity(email: string) {
+  const expected = Buffer.from(hashValue, 'base64url');
+  const actual = (await scrypt(
+    password,
+    Buffer.from(saltValue, 'base64url'),
+    expected.length,
+  )) as Buffer;
+
+  return (
+    expected.length === actual.length &&
+    timingSafeEqual(expected, actual)
+  );
+}
+
+export class ConfiguredIdentityProvider
+  implements IdentityProviderPort
+{
+  private readonly identities: z.infer<
+    typeof configuredIdentitySchema
+  >[];
+
+  constructor(serializedIdentities: string | undefined) {
+    const parsed = serializedIdentities
+      ? JSON.parse(serializedIdentities)
+      : [];
+
+    this.identities = z
+      .array(configuredIdentitySchema)
+      .parse(parsed);
+  }
+
+  private findPasswordIdentity(email: string) {
     const normalizedEmail = email.trim().toLowerCase();
 
     return this.identities.find(
-      (candidate) => candidate.email.toLowerCase() === normalizedEmail,
+      (candidate) =>
+        candidate.email.trim().toLowerCase() === normalizedEmail,
     );
+  }
+
+  private findExternalIdentity(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    return this.identities.find((candidate) => {
+      const primaryEmailMatches =
+        candidate.email.trim().toLowerCase() === normalizedEmail;
+
+      const externalEmailMatches =
+        candidate.externalEmails.some(
+          (externalEmail) =>
+            externalEmail.trim().toLowerCase() ===
+            normalizedEmail,
+        );
+
+      return primaryEmailMatches || externalEmailMatches;
+    });
   }
 
   private toAuthenticatedActor(
@@ -90,17 +155,22 @@ export class ConfiguredIdentityProvider implements IdentityProviderPort {
     };
   }
 
-  async findByEmail(email: string): Promise<AuthenticatedActor | null> {
-    const identity = this.findConfiguredIdentity(email);
+  async findByEmail(
+    email: string,
+  ): Promise<AuthenticatedActor | null> {
+    const identity = this.findExternalIdentity(email);
 
-    return identity ? this.toAuthenticatedActor(identity) : null;
+    return identity
+      ? this.toAuthenticatedActor(identity)
+      : null;
   }
 
   async authenticate(
     email: string,
     password: string,
   ): Promise<AuthenticatedActor | null> {
-    const identity = this.findConfiguredIdentity(email);
+    const identity = this.findPasswordIdentity(email);
+
     const validPassword = await verifyPassword(
       password,
       identity?.passwordHash ?? DUMMY_PASSWORD_HASH,
@@ -134,7 +204,8 @@ export class AuthService {
 
     return {
       ...actor,
-      expiresAt: Math.floor(Date.now() / 1000) + this.ttlSeconds,
+      expiresAt:
+        Math.floor(Date.now() / 1000) + this.ttlSeconds,
     };
   }
 
@@ -143,9 +214,14 @@ export class AuthService {
     password: string,
     ipHash?: string,
   ): Promise<AuthSession | null> {
-    const actor = await this.identities.authenticate(email, password);
+    const actor = await this.identities.authenticate(
+      email,
+      password,
+    );
 
-    return actor ? this.createSession(actor, ipHash) : null;
+    return actor
+      ? this.createSession(actor, ipHash)
+      : null;
   }
 
   async loginWithExternalIdentity(
@@ -156,10 +232,15 @@ export class AuthService {
       ? await this.identities.findByEmail(identity.email)
       : null;
 
-    return actor ? this.createSession(actor, ipHash) : null;
+    return actor
+      ? this.createSession(actor, ipHash)
+      : null;
   }
 
-  async logout(session: AuthSession, ipHash?: string): Promise<void> {
+  async logout(
+    session: AuthSession,
+    ipHash?: string,
+  ): Promise<void> {
     await this.audit.record({
       tenantId: session.tenantId,
       actorId: session.actorId,
@@ -169,18 +250,23 @@ export class AuthService {
   }
 
   encode(session: AuthSession): string {
-    return Buffer.from(JSON.stringify(session)).toString('base64url');
+    return Buffer.from(JSON.stringify(session)).toString(
+      'base64url',
+    );
   }
 
   decode(value: string): AuthSession | null {
     try {
       const parsed = sessionSchema.safeParse(
-        JSON.parse(Buffer.from(value, 'base64url').toString('utf8')),
+        JSON.parse(
+          Buffer.from(value, 'base64url').toString('utf8'),
+        ),
       );
 
       if (
         !parsed.success ||
-        parsed.data.expiresAt <= Math.floor(Date.now() / 1000)
+        parsed.data.expiresAt <=
+          Math.floor(Date.now() / 1000)
       ) {
         return null;
       }
