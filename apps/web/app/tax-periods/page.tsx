@@ -2,6 +2,7 @@ import { PageHeader } from '@anclora/ui';
 import { AppShell } from '../components/app-shell';
 import { VatDossierPanel } from './vat-dossier-panel';
 import { PeriodReadinessPanel } from './period-readiness';
+import { MonthlyCloseWizard } from './monthly-close-wizard';
 
 export default function TaxPeriodsPage() {
   return <AppShell>
@@ -12,6 +13,7 @@ export default function TaxPeriodsPage() {
       backHref="/"
     />
     <PeriodReadinessPanel />
+    <MonthlyCloseWizard />
     <VatDossierPanel />
   </AppShell>;
 }
