@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { EmptyState, MetricCard, PageHeader, StatusBadge } from '@anclora/ui';
 import { AppShell } from './components/app-shell';
 import { formatSpanishPeriod } from './lib/spanish-months';
+import { FiscalHealthPanel } from './components/fiscal-health-panel';
 
 interface DashboardSummary {
   openIssuesCount: number;
@@ -65,6 +66,7 @@ export default function Dashboard() {
     </section> : null}
 
     {!loading && !error && summary ? <>
+      <FiscalHealthPanel />
       <section className="metrics" aria-label="Pendientes de revisar">
         <MetricCard label="Pendientes de revisar" value={String(summary.openIssuesCount)} detail="Incidencias abiertas" />
         <MetricCard label="Importaciones del mes" value={String(summary.importsThisMonthCount)} detail="Este mes" />

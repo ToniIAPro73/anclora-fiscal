@@ -12,7 +12,7 @@ vi.mock('next/image', () => ({
   },
 }));
 
-vi.mock('../app-shell', () => ({
+vi.mock('../components/app-shell', () => ({
   AppShell: ({ children }: { children: ReactNode }) => <main>{children}</main>,
 }));
 
@@ -285,6 +285,14 @@ describe('VerifactuPage', () => {
     expect(await screen.findByText('Sin registros VERI*FACTU aún')).toBeInTheDocument();
     expect(screen.getByText('Las facturas emitidas o rectificadas aparecerán aquí con su estado de preparación, entorno y trazabilidad de cadena.')).toBeInTheDocument();
     expect(screen.getAllByText('Desactivado').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
+  });
+
+  it('muestra la demo aislada y claramente sintética solo en modo mock vacío', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse({ ...runtimeDisabled, verifactuMode: 'mock' })).mockResolvedValueOnce(jsonResponse({ items: [], page: 1, pageSize: 25, total: 0 })));
+    render(<VerifactuPage />);
+    expect(await screen.findByText('DATOS SINTÉTICOS — NO ENVIADOS A AEAT')).toBeInTheDocument();
+    expect(screen.getByText('Aceptada con errores')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enviar/i })).not.toBeInTheDocument();
   });
 

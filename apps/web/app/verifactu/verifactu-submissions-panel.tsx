@@ -774,6 +774,7 @@ export function VerifactuSubmissionsPanel() {
 
   return (
     <div className="verifactu-layout">
+      {runtime?.verifactuMode === 'mock' && items.length === 0 ? <section className="demo-data-banner" aria-label="Casos sintéticos"><strong>DATOS SINTÉTICOS — NO ENVIADOS A AEAT</strong><p>Entorno aislado de simulación; no contiene datos del tenant.</p><ul>{['Aceptada','Aceptada con errores','Rechazada','Error técnico','Retry programado'].map((label) => <li key={label}>{label}</li>)}</ul></section> : null}
       <VerifactuExecutiveOverview runtime={runtime} />
       <VerifactuTechnicalReadinessCard runtime={runtime} />
 
