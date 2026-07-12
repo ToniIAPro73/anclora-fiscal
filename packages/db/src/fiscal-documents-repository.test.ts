@@ -101,7 +101,7 @@ async function seedOperationWithDecision(
   const [operation] = await db.insert(canonicalOperations).values({
     tenantId: tenant.id,
     legalEntityId: legalEntity.id,
-    sourceChannel: 'shopify',
+    sourceChannel: 'SHOPIFY',
     sourceOrderId: 'ORDER-1',
     operationType: 'SALE',
     operationStatus: 'READY_FOR_INVOICING',
@@ -241,7 +241,7 @@ async function seedAdditionalOperationWithDecision(
   const [operation] = await db.insert(canonicalOperations).values({
     tenantId: input.tenantId,
     legalEntityId: input.legalEntityId,
-    sourceChannel: 'shopify',
+    sourceChannel: 'SHOPIFY',
     sourceOrderId: input.sourceOrderId,
     operationType: 'SALE',
     operationStatus: 'READY_FOR_INVOICING',

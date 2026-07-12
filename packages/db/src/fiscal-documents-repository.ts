@@ -657,7 +657,7 @@ try {
       )
       .where(and(
         eq(canonicalOperations.tenantId, input.tenantId),
-        eq(canonicalOperations.sourceChannel, 'shopify'),
+        eq(canonicalOperations.sourceChannel, 'SHOPIFY'),
         sql`to_char(${canonicalOperations.createdAt}, 'YYYY-MM') = ${input.period}`,
         eq(taxDecisions.status, 'DETERMINADA'),
         inArray(taxDecisions.documentType, [SIMPLIFIED_DOCUMENT_TYPE, 'SIMPLIFIED_INVOICE']),
