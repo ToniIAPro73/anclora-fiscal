@@ -1,5 +1,10 @@
 # Limitaciones conocidas
 
+- Envío AEAT productivo: `PRODUCTION_BLOCKED`.
+- Cotejo QR y restauración de backups: `MANUAL_VALIDATION_PENDING`.
+- Gastos: alta manual, CSV y cálculo v1 implementados; OCR, mailbox, banca,
+  amortizaciones y presentación de modelos no están implementados.
+
 ## Shopify
 
 - No se importan extractos bancarios. `PAYOUT_PENDING` y “payout identificado”

@@ -2,7 +2,7 @@
 
 ## Estado
 
-PostgreSQL y Drizzle usan migraciones versionadas 0001–0017. La API de
+PostgreSQL y Drizzle usan migraciones versionadas 0000–0029. La API de
 producción conecta repositorios reales; todas las tablas operativas incluyen
 `tenant_id` y los importes usan `numeric`.
 
@@ -21,6 +21,12 @@ producción conecta repositorios reales; todas las tablas operativas incluyen
 | `fiscal_documents` | Facturas y rectificativas inmutables. |
 
 ## Configuración fiscal
+
+## Gastos
+
+`suppliers`, `purchase_documents`, `purchase_document_tax_lines`,
+`expense_tax_profiles`, `home_office_configurations` y
+`expense_deductibility_decisions` forman un dominio separado de VERI*FACTU.
 
 | Tabla | Responsabilidad |
 | --- | --- |

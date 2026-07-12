@@ -1,5 +1,9 @@
 # Política de flags y preparación de producción VERI*FACTU
 
+Estado consolidado: infraestructura y tests locales `IMPLEMENTED/TESTED`;
+transporte productivo `PRODUCTION_BLOCKED`; QR, certificado, declaración
+responsable y restauración `MANUAL_VALIDATION_PENDING`.
+
 > **Aviso de alcance**: este documento describe el estado técnico de preparación del
 > módulo VERI\*FACTU en `anclora-fiscal`. No constituye una afirmación de cumplimiento
 > normativo definitivo. La activación en producción requiere validación jurídica y

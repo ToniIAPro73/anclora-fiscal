@@ -39,6 +39,9 @@ cumplimiento fiscal hasta completar y validar la matriz normativa.
 
 ## Documentación VERI*FACTU
 
+Índice completo: [`docs/README.md`](docs/README.md). El producto incluye cierre
+mensual guiado, espacio readonly de asesoría y facturas recibidas manuales/CSV.
+
 - [`docs/verifactu-compliance-matrix.md`](docs/verifactu-compliance-matrix.md) — matriz
   requisito-por-requisito y su estado de implementación.
 - [`docs/verifactu-production-readiness.md`](docs/verifactu-production-readiness.md) —
