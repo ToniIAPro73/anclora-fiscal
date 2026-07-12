@@ -12,6 +12,13 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     'La cuenta de GitHub no está autorizada para acceder a Anclora Fiscal.',
   github_error:
     'No se ha podido completar el acceso mediante GitHub.',
+  google_cancelled: 'Has cancelado el acceso mediante Google.',
+  google_invalid_state:
+    'La solicitud de acceso mediante Google ha caducado o no es válida.',
+  google_not_authorized:
+    'La cuenta de Google no está autorizada para acceder a Anclora Fiscal.',
+  google_error:
+    'No se ha podido completar el acceso mediante Google.',
 };
 
 export function LoginForm() {
@@ -31,6 +38,10 @@ export function LoginForm() {
 
   function startGitHubLogin() {
     window.location.assign('/api/v1/auth/oauth/github/start');
+  }
+
+  function startGoogleLogin() {
+    window.location.assign('/api/v1/auth/oauth/google/start');
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -78,7 +89,7 @@ export function LoginForm() {
         <p className="login-register">¿No tienes una cuenta? <a href="/auth/register">Solicitar acceso</a></p>
         <div className="social-separator"><span>Acceso social</span></div>
         <div className="social-buttons">
-          <button type="button" disabled title="Próximamente">Google</button>
+          <button type="button" onClick={startGoogleLogin}>Google</button>
           <button type="button" onClick={startGitHubLogin}>GitHub</button>
         </div>
       </form>
