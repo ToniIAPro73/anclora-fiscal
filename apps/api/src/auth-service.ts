@@ -16,6 +16,13 @@ export interface AuthenticatedActor {
 
 export interface IdentityProviderPort {
   authenticate(email: string, password: string): Promise<AuthenticatedActor | null>;
+  findByEmail?(email: string): Promise<AuthenticatedActor | null>;
+}
+
+export interface VerifiedExternalIdentity {
+  provider: 'github' | 'google';
+  providerAccountId: string;
+  email: string;
 }
 
 export interface AuthAuditPort {
@@ -63,10 +70,17 @@ export class ConfiguredIdentityProvider implements IdentityProviderPort {
     this.identities = z.array(configuredIdentitySchema).parse(parsed);
   }
 
-  async authenticate(email: string, password: string): Promise<AuthenticatedActor | null> {
-    const identity = this.identities.find((candidate) => candidate.email.toLowerCase() === email.trim().toLowerCase());
-    const validPassword = await verifyPassword(password, identity?.passwordHash ?? DUMMY_PASSWORD_HASH);
-    if (!identity || !validPassword) return null;
+  private findConfiguredIdentity(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    return this.identities.find(
+      (candidate) => candidate.email.toLowerCase() === normalizedEmail,
+    );
+  }
+
+  private toAuthenticatedActor(
+    identity: z.infer<typeof configuredIdentitySchema>,
+  ): AuthenticatedActor {
     return {
       actorId: identity.actorId,
       tenantId: identity.tenantId,
@@ -74,6 +88,29 @@ export class ConfiguredIdentityProvider implements IdentityProviderPort {
       displayName: identity.displayName,
       role: identity.role,
     };
+  }
+
+  async findByEmail(email: string): Promise<AuthenticatedActor | null> {
+    const identity = this.findConfiguredIdentity(email);
+
+    return identity ? this.toAuthenticatedActor(identity) : null;
+  }
+
+  async authenticate(
+    email: string,
+    password: string,
+  ): Promise<AuthenticatedActor | null> {
+    const identity = this.findConfiguredIdentity(email);
+    const validPassword = await verifyPassword(
+      password,
+      identity?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+
+    if (!identity || !validPassword) {
+      return null;
+    }
+
+    return this.toAuthenticatedActor(identity);
   }
 }
 
@@ -84,15 +121,51 @@ export class AuthService {
     private readonly ttlSeconds = 8 * 60 * 60,
   ) {}
 
-  async login(email: string, password: string, ipHash?: string): Promise<AuthSession | null> {
+  private async createSession(
+    actor: AuthenticatedActor,
+    ipHash?: string,
+  ): Promise<AuthSession> {
+    await this.audit.record({
+      tenantId: actor.tenantId,
+      actorId: actor.actorId,
+      action: 'LOGIN_SUCCEEDED',
+      ...(ipHash ? { ipHash } : {}),
+    });
+
+    return {
+      ...actor,
+      expiresAt: Math.floor(Date.now() / 1000) + this.ttlSeconds,
+    };
+  }
+
+  async login(
+    email: string,
+    password: string,
+    ipHash?: string,
+  ): Promise<AuthSession | null> {
     const actor = await this.identities.authenticate(email, password);
-    if (!actor) return null;
-    await this.audit.record({ tenantId: actor.tenantId, actorId: actor.actorId, action: 'LOGIN_SUCCEEDED', ...(ipHash ? { ipHash } : {}) });
-    return { ...actor, expiresAt: Math.floor(Date.now() / 1000) + this.ttlSeconds };
+
+    return actor ? this.createSession(actor, ipHash) : null;
+  }
+
+  async loginWithExternalIdentity(
+    identity: VerifiedExternalIdentity,
+    ipHash?: string,
+  ): Promise<AuthSession | null> {
+    const actor = this.identities.findByEmail
+      ? await this.identities.findByEmail(identity.email)
+      : null;
+
+    return actor ? this.createSession(actor, ipHash) : null;
   }
 
   async logout(session: AuthSession, ipHash?: string): Promise<void> {
-    await this.audit.record({ tenantId: session.tenantId, actorId: session.actorId, action: 'LOGOUT', ...(ipHash ? { ipHash } : {}) });
+    await this.audit.record({
+      tenantId: session.tenantId,
+      actorId: session.actorId,
+      action: 'LOGOUT',
+      ...(ipHash ? { ipHash } : {}),
+    });
   }
 
   encode(session: AuthSession): string {
@@ -101,8 +174,17 @@ export class AuthService {
 
   decode(value: string): AuthSession | null {
     try {
-      const parsed = sessionSchema.safeParse(JSON.parse(Buffer.from(value, 'base64url').toString('utf8')));
-      if (!parsed.success || parsed.data.expiresAt <= Math.floor(Date.now() / 1000)) return null;
+      const parsed = sessionSchema.safeParse(
+        JSON.parse(Buffer.from(value, 'base64url').toString('utf8')),
+      );
+
+      if (
+        !parsed.success ||
+        parsed.data.expiresAt <= Math.floor(Date.now() / 1000)
+      ) {
+        return null;
+      }
+
       return parsed.data;
     } catch {
       return null;

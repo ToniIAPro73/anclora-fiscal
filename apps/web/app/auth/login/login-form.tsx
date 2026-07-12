@@ -1,13 +1,37 @@
 'use client';
 
 import Image from 'next/image';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import medal from '../../../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
+
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  github_cancelled: 'Has cancelado el acceso mediante GitHub.',
+  github_invalid_state:
+    'La solicitud de acceso mediante GitHub ha caducado o no es válida.',
+  github_not_authorized:
+    'La cuenta de GitHub no está autorizada para acceder a Anclora Fiscal.',
+  github_error:
+    'No se ha podido completar el acceso mediante GitHub.',
+};
 
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const oauthError = new URLSearchParams(window.location.search).get(
+      'oauth',
+    );
+
+    if (oauthError && OAUTH_ERROR_MESSAGES[oauthError]) {
+      setError(OAUTH_ERROR_MESSAGES[oauthError]);
+    }
+  }, []);
+
+  function startGitHubLogin() {
+    window.location.assign('/api/v1/auth/oauth/github/start');
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,7 +79,7 @@ export function LoginForm() {
         <div className="social-separator"><span>Acceso social</span></div>
         <div className="social-buttons">
           <button type="button" disabled title="Próximamente">Google</button>
-          <button type="button" disabled title="Próximamente">GitHub</button>
+          <button type="button" onClick={startGitHubLogin}>GitHub</button>
         </div>
       </form>
       <footer className="login-legal">Al iniciar sesión aceptas los <a href="/terms">términos de uso</a> y la <a href="/privacy">política de privacidad</a>.<br />© {new Date().getFullYear()} Anclora Group — Todos los derechos reservados.</footer>

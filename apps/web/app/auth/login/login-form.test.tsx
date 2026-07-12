@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { LoginForm } from './login-form';
 
 describe('LoginForm contract', () => {
-  it('renderiza el orden funcional, accesibilidad, legales y OAuth deshabilitado', () => {
+  it('renderiza el formulario y habilita el acceso mediante GitHub', () => {
     render(<LoginForm />);
     const email = screen.getByLabelText('Correo electrónico');
     expect(email).toHaveAttribute('type', 'email');
@@ -17,6 +17,9 @@ describe('LoginForm contract', () => {
     expect(screen.getByRole('link', { name: 'términos de uso' })).toHaveAttribute('href', '/terms');
     expect(screen.getByRole('link', { name: 'política de privacidad' })).toHaveAttribute('href', '/privacy');
     expect(screen.getByRole('button', { name: 'Google' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'GitHub' })).toBeDisabled();
+
+    const githubButton = screen.getByRole('button', { name: 'GitHub' });
+    expect(githubButton).toBeEnabled();
+    expect(githubButton).not.toHaveAttribute('title', 'Próximamente');
   });
 });

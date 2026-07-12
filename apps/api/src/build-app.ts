@@ -32,6 +32,11 @@ import { createDashboardSummaryHandler, type DashboardSummaryRepositoryPort } fr
 import { requireRole } from './rbac-plugin.js';
 import { registerAuthRoutes } from './auth-controller.js';
 import { AuthService, ConfiguredIdentityProvider } from './auth-service.js';
+import type { GitHubFetch } from './github-oauth-client.js';
+import {
+  readGitHubOAuthConfig,
+  type GitHubOAuthConfig,
+} from './github-oauth-config.js';
 import { createFiscalConfigurationGetHandler, createFiscalConfigurationPutHandler, type FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
 import { createCommercialOrdersListHandler, type CommercialOrdersRepositoryPort } from './commercial-orders-controller.js';
 import { createShopifyEvidenceLinkDecisionHandler, createShopifyEvidenceLinksListHandler, type ShopifyEvidenceLinksRepositoryPort } from './shopify-evidence-links-controller.js';
@@ -91,6 +96,8 @@ export async function buildApp(options: {
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
   shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort | undefined;
   authService?: AuthService;
+  githubOAuthConfig?: GitHubOAuthConfig | null;
+  githubFetch?: GitHubFetch;
 } = {}) {
   const sessionSecret = process.env.SESSION_SECRET;
   if (process.env.NODE_ENV === 'production' && (!sessionSecret || sessionSecret.length < 32)) {
@@ -156,7 +163,17 @@ export async function buildApp(options: {
     new ConfiguredIdentityProvider(process.env.AUTH_IDENTITIES_JSON),
     { record: async () => undefined },
   );
-  registerAuthRoutes(app, authService);
+  const githubOAuthConfig =
+    options.githubOAuthConfig === undefined
+      ? readGitHubOAuthConfig()
+      : options.githubOAuthConfig;
+
+  registerAuthRoutes(app, authService, {
+    githubOAuthConfig,
+    ...(options.githubFetch
+      ? { githubFetch: options.githubFetch }
+      : {}),
+  });
   app.post(
     '/api/v1/imports/preview',
     { preHandler: requireRole(['imports:write']) },
