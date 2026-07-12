@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "prebuild": "node scripts/migrate-before-build.mjs",
     "build": "pnpm --filter '@anclora/core' --filter '@anclora/db' --filter '@anclora/connectors' build && tsc -p tsconfig.build.json && node ../../scripts/postbuild-dist-extensionless.js dist && pnpm run build:vercel-handler && pnpm run verify:vercel-bundle",
     "build:vercel-handler": "node scripts/build-vercel-handler.mjs",
     "verify:vercel-bundle": "node scripts/verify-vercel-bundle.mjs",
