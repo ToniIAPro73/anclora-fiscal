@@ -35,6 +35,7 @@ export const navigation: NavItem[] = [
   { label: 'Eventos SIF', href: '/sif-events', status: 'advanced' },
   { label: 'Reglas fiscales', href: '/tax-rules', status: 'enabled' },
   { label: 'Periodos fiscales', href: '/tax-periods', status: 'enabled' },
+  { label: 'Asesoría', href: '/advisory', status: 'enabled' },
   { label: 'Liquidaciones KDP', href: '/settlements/kdp', status: 'comingSoon' },
   { label: 'Registros', href: '/registers', status: 'comingSoon' },
   { label: 'Configuración', href: '/settings', status: 'requiresData' },

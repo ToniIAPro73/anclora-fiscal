@@ -1,0 +1,4 @@
+export interface AdvisoryExportTemplate { name: string; columns: readonly string[]; separator: ','|';'|'\t'; decimal: '.'|','; encoding: 'UTF-8'|'ISO-8859-1' }
+const ALLOWED_COLUMNS = new Set(['date','documentNumber','documentType','taxBase','taxRate','taxAmount','totalAmount','currency','status']);
+export function validateAdvisoryExportTemplate(template: AdvisoryExportTemplate): AdvisoryExportTemplate { if (!template.name.trim() || template.columns.length === 0 || template.columns.some((column) => !ALLOWED_COLUMNS.has(column))) throw new Error('ADVISORY_EXPORT_TEMPLATE_INVALID'); return { ...template, columns:[...template.columns] }; }
+export function maskTaxIdentity(value: string): string { const compact=value.replace(/\s/g,''); return compact.length < 5 ? '***' : `${compact.slice(0,2)}${'*'.repeat(compact.length-4)}${compact.slice(-2)}`; }

@@ -10,6 +10,7 @@ export * from './matching.js';
 export * from './royalty.js';
 export * from './spanish-tax-id.js';
 export * from './shopify-payment.js';
+export * from './advisory-export.js';
 
 export const importStatusSchema = z.enum([
   'PENDING', 'PROCESSING', 'PREVIEW_READY', 'VALIDATED', 'PARTIALLY_IMPORTED', 'FAILED', 'REPROCESSED',
