@@ -13,6 +13,22 @@ describe('cadena de integridad', () => {
 
 describe('expediente IVA', () => {
   const invoice = { number: 'AF-1', issuedAt: '2026-07-03', type: 'FULL_INVOICE' as const, country: 'ES', channel: 'shopify', taxBase: 6.72, taxRate: .04, taxAmount: .27, totalAmount: 6.99, currency: 'EUR', evidenceHash: 'a'.repeat(64) };
-  it('genera ZIP verificable con CSV, XLSX, PDF y manifiesto', async () => { const dossier = await createVatDossier({ period: '2026-Q3', invoices: [invoice], issues: [], verifactuStatuses: { NOT_CONFIGURED: 1 } }); expect(dossier.status).toBe('CLOSED'); expect(verifyVatDossier(dossier.zipBytes)).toBe(true); expect(Object.keys(dossier.manifest)).toHaveLength(6); });
+  it('genera ZIP verificable con CSV, XLSX, PDF y manifiesto', async () => {
+    const dossier = await createVatDossier({ period: '2026-Q3', invoices: [invoice], issues: [], verifactuStatuses: { NOT_CONFIGURED: 1 } });
+
+    expect(dossier.status).toBe('CLOSED');
+    expect(verifyVatDossier(dossier.zipBytes)).toBe(true);
+    expect(Object.keys(dossier.manifest).sort()).toEqual([
+      'advertencias.json',
+      'estado-verifactu.json',
+      'expense-deductibility.csv',
+      'facturas.csv',
+      'facturas.xlsx',
+      'gastos-resumen.json',
+      'purchases.csv',
+      'regalias-kdp.csv',
+      'resumen-iva.pdf',
+    ]);
+  });
   it('bloquea el cierre con incidencias sin aprobación', async () => { await expect(createVatDossier({ period: '2026-Q3', invoices: [invoice], issues: [{ code: 'COUNTRY_MISSING', severity: 'BLOCKING', status: 'OPEN' }], verifactuStatuses: {} })).rejects.toThrow('BLOCKING_ISSUES_REQUIRE_APPROVAL'); });
 });
