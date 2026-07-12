@@ -1046,6 +1046,38 @@ describe('VERI*FACTU submission drafts', () => {
     });
   });
 
+  it('incrusta el QR VERI*FACTU en el PDF cuando hay verifactuConfig', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+
+    const repository = new DrizzleFiscalDocumentsRepository(db);
+    const storageWithQr = new InMemoryStorage();
+    const storageWithoutQr = new InMemoryStorage();
+
+    const withQrSeed = await seedOperationWithDecision(db, 'tenant-verifactu-qr-pdf');
+    await repository.issue({
+      tenantId: withQrSeed.tenantId,
+      actorId: withQrSeed.actorId,
+      canonicalOperationId: withQrSeed.operationId,
+      storage: storageWithQr,
+      verifactuConfig: resolveVerifactuRuntimeConfig({ mode: 'mock', nodeEnv: 'test' }),
+    });
+
+    const withoutQrSeed = await seedOperationWithDecision(db, 'tenant-verifactu-no-qr-pdf');
+    await repository.issue({
+      tenantId: withoutQrSeed.tenantId,
+      actorId: withoutQrSeed.actorId,
+      canonicalOperationId: withoutQrSeed.operationId,
+      storage: storageWithoutQr,
+    });
+
+    expect(storageWithQr.puts).toHaveLength(1);
+    expect(storageWithoutQr.puts).toHaveLength(1);
+    expect(storageWithQr.puts[0]!.bytes.byteLength)
+      .toBeGreaterThan(storageWithoutQr.puts[0]!.bytes.byteLength + 2000);
+  });
+
   it('no duplica el draft VERI*FACTU si la emisión se repite de forma idempotente', async () => {
     const { db, client } = createOfflineDatabase();
     clients.push(client);

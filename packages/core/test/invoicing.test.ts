@@ -111,4 +111,57 @@ describe('facturación inmutable', () => {
     expect(invoice.input).not.toHaveProperty('customerAddress');
     expect(invoice.input).not.toHaveProperty('customerEmail');
   });
+
+  it('incrusta el QR de cotejo VERI*FACTU cuando se solicita un entorno', async () => {
+    const invoiceInput = {
+      operationId: 'op-4',
+      issuerName: 'Anclora Fiscal',
+      issuerTaxIdentity: '12345678Z',
+      issuerAddress: 'Calle Fiscal 1, Palma',
+      description: 'Ebook',
+      taxBase: 6.72,
+      taxRate: 0.04,
+      taxAmount: 0.27,
+      totalAmount: 6.99,
+      currency: 'EUR' as const,
+      issuedAt: '2026-07-03',
+    };
+
+    const withoutQr = await renderInvoicePdf('FS-00003', 'SIMPLIFICADA', invoiceInput);
+    const withQr = await renderInvoicePdf(
+      'FS-00003',
+      'SIMPLIFICADA',
+      invoiceInput,
+      undefined,
+      { environment: 'test' },
+    );
+
+    expect((await PDFDocument.load(withQr)).getPageCount()).toBe(1);
+    // A 300x300 QR image XObject adds several KB — a reliable signal the
+    // image was actually embedded, since pdf-lib decodes PNGs into raw
+    // Image XObjects rather than embedding the literal PNG bytes verbatim.
+    expect(withQr.length).toBeGreaterThan(withoutQr.length + 2000);
+  });
+
+  it('no incrusta QR cuando no se solicita entorno VERI*FACTU', async () => {
+    const bytes = await renderInvoicePdf(
+      'FS-00004',
+      'SIMPLIFICADA',
+      {
+        operationId: 'op-5',
+        issuerName: 'Anclora Fiscal',
+        issuerTaxIdentity: '12345678Z',
+        issuerAddress: 'Calle Fiscal 1, Palma',
+        description: 'Ebook',
+        taxBase: 6.72,
+        taxRate: 0.04,
+        taxAmount: 0.27,
+        totalAmount: 6.99,
+        currency: 'EUR',
+        issuedAt: '2026-07-03',
+      },
+    );
+
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBe(1);
+  });
 });

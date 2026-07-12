@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import {
+  buildVerifactuQrValidationUrl,
+  generateVerifactuQrPng,
+  VERIFACTU_QR_LEGEND_LINES,
+  type VerifactuQrEnvironment,
+} from './verifactu-qr.js';
 
 export type FiscalDocumentType =
   | 'SIMPLIFICADA'
@@ -69,11 +75,16 @@ const documentTitle = (type: FiscalDocumentType) => {
   return 'Factura completa';
 };
 
+export interface RenderInvoicePdfQrOptions {
+  environment: VerifactuQrEnvironment;
+}
+
 export async function renderInvoicePdf(
   number: string,
   type: FiscalDocument['type'],
   input: InvoiceInput,
   originalNumber?: string,
+  qr?: RenderInvoicePdfQrOptions,
 ): Promise<Uint8Array> {
   const document = await PDFDocument.create();
 
@@ -329,6 +340,42 @@ export async function renderInvoicePdf(
     },
   );
 
+  if (qr) {
+    const { url } = buildVerifactuQrValidationUrl({
+      environment: qr.environment,
+      issuerTaxIdentity: input.issuerTaxIdentity,
+      documentNumber: number,
+      issuedAt: input.issuedAt,
+      totalAmount: input.totalAmount,
+    });
+
+    const qrPng = await generateVerifactuQrPng(url);
+    const qrImage = await document.embedPng(qrPng);
+
+    const qrSize = 100; // ≈ 35.3 mm, within the 30–40 mm AEAT-recommended range
+    const qrX = 547 - qrSize;
+    const qrY = 78;
+
+    page.drawImage(qrImage, {
+      x: qrX,
+      y: qrY,
+      width: qrSize,
+      height: qrSize,
+    });
+
+    VERIFACTU_QR_LEGEND_LINES.forEach((line, index) => {
+      const textWidth = ui.widthOfTextAtSize(line, 6);
+
+      page.drawText(line, {
+        x: qrX + (qrSize - textWidth) / 2,
+        y: qrY - 10 - index * 9,
+        size: 6,
+        font: ui,
+        color: muted,
+      });
+    });
+  }
+
   return document.save();
 }
 
@@ -336,6 +383,7 @@ export async function issueInvoice(
   sequence: InvoiceSequence,
   input: InvoiceInput,
   type: FiscalDocumentType = 'COMPLETA',
+  qrEnvironment?: VerifactuQrEnvironment,
 ): Promise<FiscalDocument> {
   const number = sequence.allocate();
 
@@ -343,6 +391,8 @@ export async function issueInvoice(
     number,
     type,
     input,
+    undefined,
+    qrEnvironment ? { environment: qrEnvironment } : undefined,
   );
 
   return Object.freeze({
@@ -362,6 +412,7 @@ export async function rectifyInvoice(
   sequence: InvoiceSequence,
   original: FiscalDocument,
   issuedAt: string,
+  qrEnvironment?: VerifactuQrEnvironment,
 ): Promise<FiscalDocument> {
   if (original.status !== 'ISSUED') {
     throw new Error(
@@ -384,6 +435,7 @@ export async function rectifyInvoice(
     'RECTIFICATIVA',
     input,
     original.number,
+    qrEnvironment ? { environment: qrEnvironment } : undefined,
   );
 
   return Object.freeze({

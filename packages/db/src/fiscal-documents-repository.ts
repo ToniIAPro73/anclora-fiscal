@@ -450,7 +450,9 @@ try {
         totalAmount: Number(decision.totalAmount ?? 0),
         currency: 'EUR',
         issuedAt: issuedAt.toISOString(),
-      }, documentType);
+      }, documentType, input.verifactuConfig
+        ? (input.verifactuConfig.mode === 'production' ? 'production' : 'test')
+        : undefined);
 
       const stored = await input.storage.put({ tenantId: input.tenantId, bytes: invoice.pdfBytes, mimeType: 'application/pdf' });
 
@@ -734,6 +736,9 @@ try {
           status: 'ISSUED',
         },
         issuedAt.toISOString(),
+        input.verifactuConfig
+          ? (input.verifactuConfig.mode === 'production' ? 'production' : 'test')
+          : undefined,
       );
 
       const stored = await input.storage.put({ tenantId: input.tenantId, bytes: rectification.pdfBytes, mimeType: 'application/pdf' });
