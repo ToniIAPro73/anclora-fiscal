@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/v1/internal/verifactu/process-due",
-      "schedule": "0 * * * *"
+      "schedule": "0 2 * * *"
     }
   ],
   "rewrites": [
