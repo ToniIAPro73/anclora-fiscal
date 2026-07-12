@@ -18,7 +18,7 @@
 .shopify-summary-grid,
 .reconciliation-summary-grid,
 .invoicing-summary-grid { margin-bottom: 28px; }
-.shopify-sales-filters { align-items: end; }
+.shopify-sales-filters { align-items: flex-end; }
 .shopify-export-button { white-space: nowrap; }
 .shopify-workflow-table .cell-stack { min-width: 145px; }
 .fiscal-action-cell a { color: #e7b766; font-size: 0.72rem; font-weight: 650; text-decoration: none; }
@@ -59,7 +59,7 @@
   display: grid;
   grid-template-columns: 0.85fr 1.25fr 1fr 1.25fr 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: flex-start;
 }
 .table-kicker { color: rgb(243 236 223 / 42%); font-size: 0.62rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .reconciliation-order-card details { margin-top: 18px; }
@@ -84,7 +84,7 @@
 .invoicing-batch-card { padding: 22px; margin-bottom: 24px; }
 .invoicing-batch-copy h2 { margin: 8px 0 6px; font-size: 1.55rem; }
 .invoicing-batch-copy p { margin: 0; color: rgb(243 236 223 / 58%); font-size: 0.78rem; }
-.invoicing-batch-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.invoicing-batch-controls { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
 .invoicing-batch-controls > label { display: grid; gap: 7px; color: rgb(243 236 223 / 66%); font-size: 0.7rem; font-weight: 650; }
 .invoicing-batch-controls input {
   min-height: 42px;
@@ -119,7 +119,7 @@
 
 .invoice-grid { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
 .invoice-card { padding: 20px; }
-.invoice-card-header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.invoice-card-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
 .invoice-card h2 { margin: 8px 0 0; font-size: 1.35rem; }
 .invoice-card-amount { display: grid; gap: 4px; margin-top: 18px; }
 .invoice-card-amount span { color: rgb(243 236 223 / 45%); font-size: 0.65rem; text-transform: uppercase; }
