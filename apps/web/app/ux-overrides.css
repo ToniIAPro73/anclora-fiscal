@@ -1,0 +1,163 @@
+/* UX workflow improvements for Shopify sales, reconciliation and invoicing. */
+.workflow-guide {
+  display: grid;
+  gap: 6px;
+  margin: 28px 0 32px;
+  padding: 18px 20px;
+  border: 1px solid rgb(104 160 204 / 28%);
+  border-left: 3px solid #70a9d6;
+  border-radius: 14px;
+  background: linear-gradient(110deg, rgb(65 119 162 / 12%), rgb(13 23 38 / 65%));
+  color: rgb(243 236 223 / 72%);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+.workflow-guide strong { color: #fffaf0; font-size: 0.9rem; }
+.workflow-guide span:last-child { color: rgb(243 236 223 / 58%); }
+
+.shopify-summary-grid,
+.reconciliation-summary-grid,
+.invoicing-summary-grid { margin-bottom: 28px; }
+
+.shopify-sales-filters { align-items: end; }
+.shopify-export-button { white-space: nowrap; }
+.shopify-workflow-table .cell-stack { min-width: 145px; }
+.fiscal-action-cell a { color: #e7b766; font-size: 0.72rem; font-weight: 650; text-decoration: none; }
+.fiscal-action-cell a:hover { text-decoration: underline; }
+
+.reconciliation-view-switch,
+.invoicing-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 22px;
+}
+.reconciliation-view-switch button,
+.invoicing-tabs button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgb(243 236 223 / 14%);
+  border-radius: 999px;
+  background: rgb(243 236 223 / 4%);
+  color: rgb(243 236 223 / 68%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+.reconciliation-view-switch button[aria-pressed="true"],
+.invoicing-tabs button[aria-pressed="true"] {
+  border-color: rgb(231 183 102 / 55%);
+  background: rgb(231 183 102 / 12%);
+  color: #fffaf0;
+}
+
+.reconciliation-order-list { display: grid; gap: 14px; }
+.reconciliation-order-card,
+.invoicing-batch,
+.invoice-card {
+  border: 1px solid rgb(243 236 223 / 10%);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgb(16 29 46 / 92%), rgb(9 16 27 / 96%));
+}
+.reconciliation-order-card { padding: 18px 20px; }
+.reconciliation-order-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+.reconciliation-order-card h2 { margin: 0 0 4px; font-size: 1.25rem; }
+.reconciliation-order-card header p { margin: 0; color: rgb(243 236 223 / 56%); font-size: 0.75rem; }
+.reconciliation-order-card dl,
+.invoice-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 0;
+}
+.reconciliation-order-card dl div,
+.invoice-card dl div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.reconciliation-order-card dt,
+.invoice-card dt { color: rgb(243 236 223 / 45%); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.reconciliation-order-card dd,
+.invoice-card dd { margin: 0; color: #fffaf0; font-size: 0.82rem; }
+.reconciliation-order-card details { margin-top: 18px; }
+.reconciliation-order-card summary { color: #e7b766; cursor: pointer; font-size: 0.75rem; font-weight: 650; }
+.reconciliation-detail-table { overflow-x: auto; margin-top: 12px; }
+.reconciliation-detail-table table { width: 100%; border-collapse: collapse; min-width: 760px; }
+.reconciliation-detail-table th,
+.reconciliation-detail-table td { padding: 11px 10px; border-top: 1px solid rgb(243 236 223 / 8%); text-align: left; font-size: 0.72rem; }
+.reconciliation-actions { display: flex; gap: 8px; }
+.reconciliation-actions button { min-height: 34px; }
+
+.invoicing-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  margin: 26px 0 18px;
+}
+.invoicing-batch { padding: 22px; margin-bottom: 24px; }
+.invoicing-batch header { display: flex; justify-content: space-between; gap: 18px; align-items: start; }
+.invoicing-batch h2 { margin: 0; font-size: 1.5rem; }
+.invoicing-batch header p { margin: 6px 0 0; color: rgb(243 236 223 / 58%); font-size: 0.78rem; }
+.invoicing-batch-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.invoicing-batch-controls label { display: grid; gap: 7px; color: rgb(243 236 223 / 66%); font-size: 0.7rem; font-weight: 650; }
+.invoicing-batch-controls input {
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid rgb(243 236 223 / 16%);
+  border-radius: 10px;
+  background: #0a111d;
+  color: #fffaf0;
+  color-scheme: dark;
+}
+.invoicing-batch-confirm { margin-top: 18px; padding: 16px; border: 1px solid rgb(231 183 102 / 28%); border-radius: 12px; background: rgb(231 183 102 / 7%); }
+.invoicing-batch-confirm p { margin-top: 0; color: rgb(243 236 223 / 72%); line-height: 1.6; }
+.invoicing-batch-confirm-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.invoicing-batch-result { margin-top: 16px; }
+
+.invoicing-empty {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+  padding: 24px;
+  border: 1px solid rgb(243 236 223 / 10%);
+  border-left: 3px solid #e7b766;
+  border-radius: 14px;
+  background: rgb(13 23 38 / 72%);
+}
+.invoicing-empty h2 { margin: 0; font-size: 1.35rem; }
+.invoicing-empty p { margin: 0; color: rgb(243 236 223 / 62%); line-height: 1.55; }
+.invoicing-empty a { width: fit-content; color: #e7b766; text-decoration: none; font-size: 0.78rem; font-weight: 650; }
+
+.invoice-grid { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); }
+.invoice-card { padding: 20px; }
+.invoice-card-header { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.invoice-card h2 { margin: 13px 0 0; font-size: 1.35rem; }
+.invoice-card-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.invoice-card-actions .btn,
+.invoice-card-actions button { min-height: 40px; }
+.invoice-blocking-reason { margin: 14px 0 0; color: #ffc778; font-size: 0.76rem; line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .reconciliation-order-card dl,
+  .invoice-card dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .invoicing-toolbar { align-items: stretch; flex-direction: column; }
+}
+
+@media (max-width: 620px) {
+  .reconciliation-order-card > header,
+  .invoicing-batch header { flex-direction: column; }
+  .reconciliation-order-card dl,
+  .invoice-card dl { grid-template-columns: 1fr; }
+  .invoicing-batch-controls { align-items: stretch; }
+  .invoicing-batch-controls label,
+  .invoicing-batch-controls input,
+  .invoicing-batch-controls button { width: 100%; }
+}
