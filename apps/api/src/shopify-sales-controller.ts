@@ -25,6 +25,23 @@ const paramsSchema = z.object({
   orderId: z.string().uuid(),
 });
 
+export interface ShopifyAdvisoryExportRow {
+  commercialDate: Date | string | null;
+  externalOrderId: string;
+  customerCountry: string | null;
+  channel: string;
+  totalAmount: number;
+  taxBase: number;
+  taxAmount: number;
+  taxRate: number;
+  fiscalStatus: string;
+  documentType: string | null;
+  documentNumber: string | null;
+  reconciliationStatus: string | null;
+  verifactuStatus: string | null;
+  settlementStatus: string | null;
+}
+
 export interface ShopifySalesRepositoryPort {
   list(input: {
     tenantId: string;
@@ -45,6 +62,17 @@ export interface ShopifySalesRepositoryPort {
     tenantId: string,
     orderId: string,
   ): Promise<Record<string, unknown> | null>;
+
+  exportAdvisory?(input: {
+    tenantId: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    paymentStatus?: string;
+    refundStatus?: string;
+    fiscalStatus?: string;
+    settlementStatus?: 'PENDING' | 'SETTLED';
+    zeroAmount?: boolean;
+  }): Promise<ShopifyAdvisoryExportRow[]>;
 }
 
 interface ShopifySaleEligibility {
@@ -62,6 +90,111 @@ interface ShopifySaleEligibility {
   existeTransaccionShopifyConfirmada?: boolean;
   estadoDecisionFiscal?: string | null;
   tipoDocumentoFiscal?: string | null;
+}
+
+const ADVISORY_EXPORT_CSV_HEADER = [
+  'order_date',
+  'shopify_order',
+  'country',
+  'channel',
+  'total_amount',
+  'tax_base',
+  'tax_amount',
+  'tax_rate',
+  'fiscal_status',
+  'document_type',
+  'document_number',
+  'reconciliation_status',
+  'verifactu_status',
+  'settlement_status',
+] as const;
+
+function csvField(value: string): string {
+  if (/[",\n]/.test(value)) {
+    return `"${value.replaceAll('"', '""')}"`;
+  }
+  return value;
+}
+
+function formatCsvDate(value: Date | string | null): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+/** Two decimals for amounts, four for the tax rate — same convention as `docs/asesoria-export-spec.md`. */
+function buildAdvisoryExportCsv(rows: ShopifyAdvisoryExportRow[]): string {
+  const lines = [ADVISORY_EXPORT_CSV_HEADER.join(',')];
+
+  for (const row of rows) {
+    lines.push([
+      formatCsvDate(row.commercialDate),
+      csvField(row.externalOrderId),
+      row.customerCountry ?? '',
+      row.channel,
+      row.totalAmount.toFixed(2),
+      row.taxBase.toFixed(2),
+      row.taxAmount.toFixed(2),
+      row.taxRate.toFixed(4),
+      row.fiscalStatus,
+      row.documentType ?? '',
+      row.documentNumber ?? '',
+      row.reconciliationStatus ?? '',
+      row.verifactuStatus ?? '',
+      row.settlementStatus ?? '',
+    ].join(','));
+  }
+
+  return `${lines.join('\r\n')}\r\n`;
+}
+
+export function createShopifySalesExportHandler(
+  repository?: ShopifySalesRepositoryPort,
+) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const tenantId = request.authSession?.tenantId;
+
+    if (!tenantId) {
+      return reply.code(401).send({
+        code: 'UNAUTHENTICATED',
+        message: 'Debe iniciar sesión',
+      });
+    }
+
+    if (!repository?.exportAdvisory) {
+      return reply.code(503).send({
+        code: 'SHOPIFY_SALES_UNAVAILABLE',
+        message: 'El servicio de exportación de ventas Shopify no está disponible',
+      });
+    }
+
+    const parsed = filtersSchema.safeParse(request.query);
+
+    if (!parsed.success) {
+      return reply.code(400).send({
+        code: 'INVALID_SHOPIFY_SALES_FILTER',
+        message: 'Filtros no válidos',
+      });
+    }
+
+    const data = parsed.data;
+
+    const rows = await repository.exportAdvisory({
+      tenantId,
+      ...(data.dateFrom ? { dateFrom: data.dateFrom } : {}),
+      ...(data.dateTo ? { dateTo: data.dateTo } : {}),
+      ...(data.paymentStatus ? { paymentStatus: data.paymentStatus } : {}),
+      ...(data.refundStatus ? { refundStatus: data.refundStatus } : {}),
+      ...(data.fiscalStatus ? { fiscalStatus: data.fiscalStatus } : {}),
+      ...(data.settlementStatus ? { settlementStatus: data.settlementStatus } : {}),
+      ...(data.zeroAmount !== undefined ? { zeroAmount: data.zeroAmount } : {}),
+    });
+
+    return reply
+      .header('content-disposition', 'attachment; filename="ventas-shopify-asesoria.csv"')
+      .type('text/csv; charset=utf-8')
+      .send(buildAdvisoryExportCsv(rows));
+  };
 }
 
 interface ShopifySaleDetail {

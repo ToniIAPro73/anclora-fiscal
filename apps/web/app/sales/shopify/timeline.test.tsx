@@ -88,6 +88,14 @@ describe("OperationsTimeline SHOPIFY-06", () => {
     await screen.findByText("Payout Shopify identificado · banco sin conciliar");
     expect(screen.queryByText(/banco verificado/i)).not.toBeInTheDocument();
   });
+  it("expone un enlace de exportación CSV que respeta los filtros activos", async () => {
+    mock({ items: [sale], metrics });
+    render(<OperationsTimeline />);
+    await screen.findByText("AI-1001");
+    const link = screen.getByRole("link", { name: "Exportar CSV para asesoría" });
+    expect(link).toHaveAttribute("href", "/api/v1/shopify/sales/export?");
+  });
+
   it("muestra error de API", async () => {
     mock({}, false);
     render(<OperationsTimeline />);

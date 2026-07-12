@@ -17,6 +17,23 @@ import {
   taxDecisions,
 } from './schema.js';
 
+export interface ShopifyAdvisoryExportRow {
+  commercialDate: Date | null;
+  externalOrderId: string;
+  customerCountry: string | null;
+  channel: 'Shopify';
+  totalAmount: number;
+  taxBase: number;
+  taxAmount: number;
+  taxRate: number;
+  fiscalStatus: string;
+  documentType: string | null;
+  documentNumber: string | null;
+  reconciliationStatus: string | null;
+  verifactuStatus: string | null;
+  settlementStatus: string | null;
+}
+
 export interface ShopifySalesFilters {
   tenantId: string;
   page: number;
@@ -37,7 +54,9 @@ export class DrizzleShopifySalesRepository<
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
 
-  async list(input: ShopifySalesFilters) {
+  private buildOrderFilters(
+    input: Pick<ShopifySalesFilters, 'tenantId' | 'dateFrom' | 'dateTo' | 'paymentStatus' | 'refundStatus' | 'fiscalStatus' | 'settlementStatus' | 'zeroAmount'>,
+  ) {
     const filters = [
       eq(commercialOrders.tenantId, input.tenantId),
       eq(commercialOrders.sourceChannel, 'SHOPIFY'),
@@ -102,7 +121,11 @@ export class DrizzleShopifySalesRepository<
       `);
     }
 
-    const where = and(...filters);
+    return filters;
+  }
+
+  async list(input: ShopifySalesFilters) {
+    const where = and(...this.buildOrderFilters(input));
 
     const [items, [totalRow], [metrics]] = await Promise.all([
       this.db
@@ -255,6 +278,113 @@ export class DrizzleShopifySalesRepository<
         pendingSettlement: 0,
       },
     };
+  }
+
+  /**
+   * Unpaginated export for the advisory (asesoría) hand-off, honoring the
+   * same filters as `list()` (built via the shared `buildOrderFilters`).
+   * Joins canonicalOperations/fiscalDocuments scalar subqueries — keyed by
+   * (tenantId, sourceChannel='SHOPIFY', sourceOrderId=externalOrderId), the
+   * same join established for reconciliation/VERI*FACTU status elsewhere in
+   * this repository — to surface reconciliation and VERI*FACTU status plus
+   * the issued document, if any, alongside each order.
+   */
+  async exportAdvisory(
+    input: Omit<ShopifySalesFilters, 'page' | 'pageSize'>,
+  ): Promise<ShopifyAdvisoryExportRow[]> {
+    const where = and(...this.buildOrderFilters(input));
+
+    const rows = await this.db
+      .select({
+        externalOrderId: commercialOrders.externalOrderId,
+        commercialDate: commercialOrders.commercialDate,
+        customerCountry: commercialOrders.customerCountry,
+        totalAmount: commercialOrders.totalAmount,
+        taxAmount: commercialOrders.taxAmount,
+        reportedTaxRate: commercialOrders.reportedTaxRate,
+        fiscalStatus: commercialOrders.fiscalStatus,
+        documentType: sql<string | null>`(
+          select fd.document_type
+          from ${canonicalOperations} co
+          join ${fiscalDocuments} fd on fd.canonical_operation_id = co.id
+          where co.tenant_id = commercial_orders.tenant_id
+            and co.source_channel = 'SHOPIFY'
+            and co.source_order_id = commercial_orders.external_order_id
+          order by fd.created_at desc
+          limit 1
+        )`,
+        documentNumber: sql<string | null>`(
+          select fd.number
+          from ${canonicalOperations} co
+          join ${fiscalDocuments} fd on fd.canonical_operation_id = co.id
+          where co.tenant_id = commercial_orders.tenant_id
+            and co.source_channel = 'SHOPIFY'
+            and co.source_order_id = commercial_orders.external_order_id
+          order by fd.created_at desc
+          limit 1
+        )`,
+        reconciliationStatus: sql<string | null>`(
+          select co.reconciliation_status
+          from ${canonicalOperations} co
+          where co.tenant_id = commercial_orders.tenant_id
+            and co.source_channel = 'SHOPIFY'
+            and co.source_order_id = commercial_orders.external_order_id
+          limit 1
+        )`,
+        verifactuStatus: sql<string | null>`(
+          select co.verifactu_status
+          from ${canonicalOperations} co
+          where co.tenant_id = commercial_orders.tenant_id
+            and co.source_channel = 'SHOPIFY'
+            and co.source_order_id = commercial_orders.external_order_id
+          limit 1
+        )`,
+        settlementStatus: sql<string | null>`
+          (
+            select case
+              when commercial_orders.total_amount = 0 then 'LEDGER_NOT_REQUIRED'
+              when max(le.external_payout_id) is not null then 'SETTLED'
+              when count(*) > 0 then 'PENDING'
+              else 'LEDGER_MISSING'
+            end
+            from ${shopifyPaymentsLedgerEntries} le
+            where le.tenant_id = commercial_orders.tenant_id
+              and (
+                le.commercial_order_id = commercial_orders.id
+                or le.shopify_order_name = commercial_orders.external_order_id
+              )
+          )
+        `,
+      })
+      .from(commercialOrders)
+      .where(where)
+      .orderBy(desc(commercialOrders.commercialDate));
+
+    return rows.map((row) => {
+      const totalAmount = Number(row.totalAmount ?? 0);
+      const taxAmount = Number(row.taxAmount ?? 0);
+      const taxBase = totalAmount - taxAmount;
+      const taxRate = row.reportedTaxRate !== null
+        ? Number(row.reportedTaxRate)
+        : (taxBase !== 0 ? taxAmount / taxBase : 0);
+
+      return {
+        commercialDate: row.commercialDate,
+        externalOrderId: row.externalOrderId,
+        customerCountry: row.customerCountry,
+        channel: 'Shopify',
+        totalAmount,
+        taxBase,
+        taxAmount,
+        taxRate,
+        fiscalStatus: row.fiscalStatus,
+        documentType: row.documentType,
+        documentNumber: row.documentNumber,
+        reconciliationStatus: row.reconciliationStatus,
+        verifactuStatus: row.verifactuStatus,
+        settlementStatus: row.settlementStatus,
+      };
+    });
   }
 
   async getById(tenantId: string, orderId: string) {

@@ -20,7 +20,7 @@ import { parsePagination } from './pagination.js';
 import type { Paginated } from './pagination.js';
 import { createIssueResolveHandler, createIssuesListHandler, type IssuesRepositoryPort } from './issues-controller.js';
 import { createInvoiceBatchIssueHandler, createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
-import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
+import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesExportHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
 import { createVatDossierGenerateHandler, createVatDossierGetHandler, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import {
@@ -193,6 +193,11 @@ export async function buildApp(options: {
     '/api/v1/shopify/sales/:orderId',
     { preHandler: requireRole(['operations:read']) },
     createShopifySaleDetailHandler(options.shopifySalesRepository),
+  );
+  app.get(
+    '/api/v1/shopify/sales/export',
+    { preHandler: requireRole(['operations:read']) },
+    createShopifySalesExportHandler(options.shopifySalesRepository),
   );
   app.post(
     '/api/v1/shopify/sales/:orderId/invoice',

@@ -170,6 +170,12 @@ export function OperationsTimeline() {
         <Button variant="secondary" onClick={() => setFilters(emptyFilters)}>
           Limpiar
         </Button>
+        <a
+          className="btn"
+          href={`/api/v1/shopify/sales/export?${new URLSearchParams(Object.entries(filters).filter(([, value]) => value))}`}
+        >
+          Exportar CSV para asesoría
+        </a>
       </div>
       <DataTable
         caption="Ventas Shopify"
