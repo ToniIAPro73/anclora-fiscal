@@ -34,9 +34,10 @@ export const VERIFACTU_QR_LEGEND_LINES = [
 
 function formatQrDate(isoDate: string): string {
   const date = new Date(isoDate);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
+  if (Number.isNaN(date.getTime())) throw new Error('VERIFACTU_QR_DATE_INVALID');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = date.getUTCFullYear();
 
   return `${day}-${month}-${year}`;
 }
@@ -44,6 +45,9 @@ function formatQrDate(isoDate: string): string {
 export function buildVerifactuQrValidationUrl(
   input: VerifactuQrInput,
 ): VerifactuQrValidationUrlResult {
+  if (input.environment === 'production') {
+    throw new Error('VERIFACTU_QR_PRODUCTION_BLOCKED_PENDING_MANUAL_COTEJO');
+  }
   const base = AEAT_QR_VALIDATION_URL[input.environment];
   const params = new URLSearchParams({
     nif: input.issuerTaxIdentity,
@@ -58,13 +62,26 @@ export function buildVerifactuQrValidationUrl(
   };
 }
 
+export function parseVerifactuQrValidationUrl(url: string) {
+  const parsed = new URL(url);
+  if (`${parsed.origin}${parsed.pathname}` !== AEAT_QR_VALIDATION_URL.test) throw new Error('VERIFACTU_QR_URL_NOT_ALLOWED');
+  const nif = parsed.searchParams.get('nif');
+  const documentNumber = parsed.searchParams.get('numserie');
+  const issuedAt = parsed.searchParams.get('fecha');
+  const totalAmount = parsed.searchParams.get('importe');
+  if (!nif || !documentNumber || !/^\d{2}-\d{2}-\d{4}$/.test(issuedAt ?? '') || !/^\d+\.\d{2}$/.test(totalAmount ?? '')) throw new Error('VERIFACTU_QR_PARAMETERS_INVALID');
+  return { nif, documentNumber, issuedAt: issuedAt as string, totalAmount: totalAmount as string };
+}
+
+export const VERIFACTU_QR_PNG_OPTIONS = Object.freeze({
+  errorCorrectionLevel: 'M',
+  margin: 1,
+  width: 300,
+} as const);
+
 /** PNG bytes, square, error correction level M as required by the AEAT QR spec. */
 export async function generateVerifactuQrPng(url: string): Promise<Uint8Array> {
-  const buffer = await QRCode.toBuffer(url, {
-    errorCorrectionLevel: 'M',
-    margin: 1,
-    width: 300,
-  });
+  const buffer = await QRCode.toBuffer(url, { ...VERIFACTU_QR_PNG_OPTIONS });
 
   return new Uint8Array(buffer);
 }

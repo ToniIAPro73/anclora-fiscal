@@ -12,7 +12,7 @@
 | Trazabilidad y encadenamiento | RD 1007/2023, art. 8.2.b | 2026-07-03 | Hash anterior obligatorio | `compliance.test.ts` | Parcial | Falta persistencia transaccional |
 | Corrección mediante registro posterior | RD 1007/2023, art. 8.2.a | 2026-07-03 | Alta y anulación separadas | `compliance.test.ts` | Parcial | Catálogo oficial pendiente |
 | Remisión simultánea VERI*FACTU | Glosario AEAT | 2026-07-03 | `VerifactuPort` y mock | Flag apagado | No implementado | Sin conexión AEAT |
-| QR en factura | FAQ AEAT | 2026-07-12 | QR + leyenda en `renderInvoicePdf` (`verifactu-qr.ts`) | `verifactu-qr.test.ts`, `invoicing.test.ts` | Parcial | Host de cotejo AEAT (test/producción) usado de buena fe; pendiente de confirmar contra el anexo técnico oficial |
+| QR en factura | FAQ AEAT | 2026-07-12 | URL parseable + PNG 300×300/M + leyenda; producción bloqueada | `verifactu-qr.test.ts`, `invoicing.test.ts` | PENDING_MANUAL_COTEJO | Ejecutar `verifactu-qr-cotejo-runbook.md` con evidencia humana |
 | Registro de eventos SIF | Modalidades AEAT | 2026-07-12 | Cadena SHA-256, STARTUP por despliegue, errores/reintentos y alertas persistentes | `sif-events-repository.test.ts`, `system-alerts-repository.test.ts` | Implementado técnicamente | Validación preproducción pendiente |
 | Exportación legible | RD 1007/2023, art. 8.2.c | 2026-07-03 | CSV/XLSX/PDF/ZIP | `compliance.test.ts` | Parcial | Revisar esquema oficial |
 | Declaración responsable | Certificación AEAT | 2026-07-03 | No emitida | No aplica | Pendiente | Requiere validación jurídica/técnica |
