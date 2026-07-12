@@ -149,6 +149,7 @@ function KdpPreviewTable({
             header: "Unidades",
             render: (group) => group.totalUnits,
           },
+          { key: "marketplace", header: "Marketplace", render: (group) => (preview.royalty?.lines ?? []).find((line) => `${line.isbnOrAsin}::${line.format ?? ""}` === group.key)?.store ?? "—" },
           {
             key: "amount",
             header: "Importe",

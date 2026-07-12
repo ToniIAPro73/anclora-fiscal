@@ -62,6 +62,7 @@ export interface RoyaltyLine {
   unitsNet?: number;
   amount: number;
   currency: string;
+  store?: string;
   format?: string;
   date?: string;
 }

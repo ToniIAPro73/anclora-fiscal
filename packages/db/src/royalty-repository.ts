@@ -1,8 +1,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PgQueryResultHKT } from 'drizzle-orm/pg-core/session';
-import type { RoyaltyLine, RoyaltyStatement } from '@anclora/core';
-import { royaltyLines, royaltyStatements } from './schema.js';
+import { summarizeRoyaltyAdvisory, type ExchangeRateSnapshot, type RoyaltyLine, type RoyaltyStatement } from '@anclora/core';
+import { royaltyExchangeRates, royaltyLines, royaltyStatements } from './schema.js';
 import * as schema from './schema.js';
 
 export interface RoyaltySummary {
@@ -109,6 +109,15 @@ export class DrizzleRoyaltyRepository<TQueryResult extends PgQueryResultHKT> {
    * columns or aggregation logic beyond a plain sum, kept in JS since the
    * per-tenant statement count is expected to stay small at this MVP stage.
    */
+  async saveExchangeRate(tenantId: string, rate: ExchangeRateSnapshot): Promise<void> {
+    await this.db.insert(royaltyExchangeRates).values({ tenantId, source: rate.source, rateDate: rate.date, baseCurrency: rate.base, quoteCurrency: rate.quote, rate: String(rate.rate) }).onConflictDoNothing();
+  }
+
+  async getAdvisoryAnalytics(tenantId: string, period: string) {
+    const [lines, rates] = await Promise.all([this.db.select().from(royaltyLines).where(and(eq(royaltyLines.tenantId, tenantId), eq(royaltyLines.period, period))), this.db.select().from(royaltyExchangeRates).where(eq(royaltyExchangeRates.tenantId, tenantId))]);
+    return summarizeRoyaltyAdvisory(lines.map((row) => ({ businessKey: row.businessKey, classification: row.classification as RoyaltyLine['classification'], status: row.status as RoyaltyLine['status'], period: row.period, isbnOrAsin: row.isbnOrAsin, ...(row.store ? { store: row.store } : {}), amount: Number(row.amount), currency: row.currency, ...(row.productionCost === null ? {} : { productionCost: Number(row.productionCost) }), sourceSheet: row.sourceSheet, ...(row.classification === 'ebook' || row.classification === 'impreso' ? { format: row.classification } : {}) })), rates.map((row) => ({ source: row.source, date: row.rateDate, base: row.baseCurrency, quote: 'EUR' as const, rate: Number(row.rate) })));
+  }
+
   async getSummary(tenantId: string, period: string): Promise<RoyaltySummary> {
     const rows = await this.db
       .select({ totalRoyalties: royaltyStatements.totalRoyalties, periods: royaltyStatements.periods })

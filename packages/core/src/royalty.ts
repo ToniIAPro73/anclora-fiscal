@@ -60,6 +60,14 @@ export interface RoyaltyFormatSummary {
   averageProductionCost: number;
   totalRoyalties: number;
 }
+export interface ExchangeRateSnapshot { source: string; date: string; base: string; quote: 'EUR'; rate: number }
+export interface ExchangeRatePort { getRate(input: { source: string; date: string; base: string; quote: 'EUR' }): Promise<ExchangeRateSnapshot | null> }
+export interface RoyaltyAdvisorySummary { marketplace: string; format: string; currency: string; royalties: number; productionCosts: number; netInformative: number; eurInformative: number | null; warning?: string }
+export function summarizeRoyaltyAdvisory(lines: RoyaltyLine[], rates: ExchangeRateSnapshot[]): RoyaltyAdvisorySummary[] {
+  const groups = new Map<string, RoyaltyAdvisorySummary>();
+  for (const line of lines) { const format = line.format ?? line.classification; const marketplace = line.store ?? 'UNKNOWN'; const key = `${marketplace}|${format}|${line.currency}`; const item = groups.get(key) ?? { marketplace, format, currency: line.currency, royalties: 0, productionCosts: 0, netInformative: 0, eurInformative: null }; item.royalties += line.amount; item.productionCosts += line.productionCost ?? 0; item.netInformative = round2(item.royalties - item.productionCosts); const rate = rates.filter((candidate) => candidate.base === line.currency && candidate.quote === 'EUR' && candidate.date <= (line.date ?? `${line.period}-01`)).sort((a,b) => b.date.localeCompare(a.date))[0]; item.eurInformative = line.currency === 'EUR' ? item.netInformative : rate ? round2(item.netInformative * rate.rate) : null; if (!rate && line.currency !== 'EUR') item.warning = 'Tipo histórico ausente; conversión EUR no calculada'; groups.set(key,item); }
+  return [...groups.values()].sort((a,b) => `${a.marketplace}|${a.format}|${a.currency}`.localeCompare(`${b.marketplace}|${b.format}|${b.currency}`));
+}
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 const average = (values: number[]) => (values.length === 0 ? 0 : round2(values.reduce((sum, value) => sum + value, 0) / values.length));
