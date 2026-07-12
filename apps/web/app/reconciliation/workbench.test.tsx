@@ -8,4 +8,38 @@ describe('ReconciliationWorkbench SHOPIFY-06', () => {
   it('muestra propuesta, importes, enlace traducido, payout y estado fiscal', async () => { vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([{ ...proposed, linkType: 'Order to transaction' }]) }))); render(<ReconciliationWorkbench />); await screen.findByText('AI-1001'); expect(screen.getByText('Pedido → transacción')).toBeInTheDocument(); expect(screen.getByText('Payout Shopify pendiente')).toBeInTheDocument(); expect(screen.getByText('Pendiente de revisión fiscal')).toBeInTheDocument(); expect(screen.getByText(/Propuesto · 95%/)).toBeInTheDocument(); expect(screen.getByRole('button', { name: 'Confirmar' })).toHaveClass('btn'); });
   it('permite confirmar una propuesta', async () => { const fetchMock = vi.fn((_: string, init?: RequestInit) => Promise.resolve({ ok: true, json: () => Promise.resolve(init?.method === 'PATCH' ? proposed : [proposed]) })); vi.stubGlobal('fetch', fetchMock); render(<ReconciliationWorkbench />); fireEvent.click(await screen.findByRole('button', { name: 'Confirmar' })); await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/shopify/evidence-links/link-1', expect.objectContaining({ method: 'PATCH' }))); });
   it('muestra error de API', async () => { vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }))); render(<ReconciliationWorkbench />); await screen.findByText('No se pudieron obtener los enlaces de evidencia'); });
+
+  it('agrega el estado del pedido a CONCILIADO cuando todos sus enlaces están confirmados', async () => {
+    const confirmedLink = { ...proposed, id: 'link-2', state: 'CONFIRMED' };
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([confirmedLink]) })));
+    render(<ReconciliationWorkbench />);
+    await screen.findByText('AI-1001');
+    expect(screen.getByText('Conciliado')).toBeInTheDocument();
+    expect(screen.getByText('Pedidos conciliados').closest('article')).toHaveTextContent('1');
+  });
+
+  it('agrega el estado del pedido a DISCREPANTE cuando hay un enlace rechazado', async () => {
+    const rejectedLink = { ...proposed, id: 'link-3', state: 'REJECTED' };
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([rejectedLink]) })));
+    render(<ReconciliationWorkbench />);
+    await screen.findByText('AI-1001');
+    expect(screen.getByText('Discrepante')).toBeInTheDocument();
+    expect(screen.getByText('Pedidos discrepantes').closest('article')).toHaveTextContent('1');
+  });
+
+  it('agrega el estado del pedido a PENDIENTE cuando queda algún enlace propuesto', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([proposed]) })));
+    render(<ReconciliationWorkbench />);
+    await screen.findByText('AI-1001');
+    expect(screen.getByText('Pendiente').closest('article') ?? screen.getByText('Pedidos pendientes').closest('article')).toHaveTextContent('1');
+  });
+
+  it('muestra un resumen por payout cuando hay enlaces con externalPayoutId', async () => {
+    const settledLink = { ...proposed, id: 'link-4', state: 'CONFIRMED', explanationJson: { ...proposed.explanationJson, externalPayoutId: 'payout-9' } };
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve([settledLink]) })));
+    render(<ReconciliationWorkbench />);
+    await screen.findByText('Resumen por payout');
+    expect(screen.getByText('payout-9')).toBeInTheDocument();
+    expect(screen.getByText('6.64')).toBeInTheDocument();
+  });
 });
