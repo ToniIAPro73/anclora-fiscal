@@ -33,10 +33,15 @@ export function LoginForm() {
 
   useEffect(() => {
     const search = window.location.search;
-    const oauthError = new URLSearchParams(search).get('oauth');
+    const params = new URLSearchParams(search);
+    const oauthError = params.get('oauth');
 
     if (oauthError && OAUTH_ERROR_MESSAGES[oauthError]) {
       setError(OAUTH_ERROR_MESSAGES[oauthError]);
+      return;
+    }
+
+    if (!params.has('next')) {
       return;
     }
 
