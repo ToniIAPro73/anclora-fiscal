@@ -260,6 +260,8 @@ function summarizeUnrecognizedAeatSoapResponse(response: AeatVerifactuSoapTransp
 }
 
 export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransportResponse): VerifactuSubmissionResult {
+  const bodySha256 = createHash('sha256').update(response.body ?? '').digest('hex');
+
   if (response.statusCode < 200 || response.statusCode >= 300) {
     throw new Error(`AEAT_VERIFACTU_HTTP_${response.statusCode}`);
   }
@@ -279,11 +281,31 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
     ?? globalStatus
     ?? 'Respuesta AEAT procesada';
 
+  const errorCode = firstXmlText(response.body, 'CodigoErrorRegistro')
+    ?? firstXmlText(response.body, 'CodigoError')
+    ?? undefined;
+
+  const retryAfterHint = firstXmlText(response.body, 'TiempoEsperaEnvio') ?? undefined;
+
+  if (isPartiallyAcceptedStatus(recordStatus) || (!recordStatus && isPartiallyAcceptedStatus(globalStatus))) {
+    return {
+      status: 'ACCEPTED_WITH_ERRORS',
+      reference,
+      message,
+      bodySha256,
+      errorCode,
+      retryAfterHint,
+    };
+  }
+
   if (isRejectedStatus(recordStatus) || (!recordStatus && isRejectedStatus(globalStatus))) {
     return {
       status: 'REJECTED',
       reference,
       message,
+      bodySha256,
+      errorCode,
+      retryAfterHint,
     };
   }
 
@@ -292,6 +314,8 @@ export function parseAeatVerifactuSoapResponse(response: AeatVerifactuSoapTransp
       status: 'ACCEPTED',
       reference,
       message,
+      bodySha256,
+      retryAfterHint,
     };
   }
 
@@ -311,10 +335,16 @@ function isAcceptedStatus(value: string): boolean {
   const normalized = normalizeStatusText(value);
 
   return normalized === 'correcto'
-    || normalized === 'parcialmentecorrecto'
-    || normalized === 'aceptadoconerrores'
     || normalized.includes('aceptado')
     || normalized.includes('aceptada');
+}
+
+function isPartiallyAcceptedStatus(value: string): boolean {
+  const normalized = normalizeStatusText(value);
+
+  return normalized === 'parcialmentecorrecto'
+    || normalized === 'aceptadoconerrores'
+    || normalized.includes('conerrores');
 }
 
 function assertRuntime(config: VerifactuRuntimeConfig, environment: AeatVerifactuXmlEnvironment): void {

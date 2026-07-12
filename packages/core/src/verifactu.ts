@@ -42,9 +42,15 @@ export interface VerifactuRuntimeConfig {
 }
 
 export interface VerifactuSubmissionResult {
-  status: 'ACCEPTED' | 'REJECTED';
+  status: 'ACCEPTED' | 'ACCEPTED_WITH_ERRORS' | 'REJECTED';
   reference: string;
   message: string;
+  /** SHA-256 of the raw AEAT response body — never the body itself, for audit without PII exposure. */
+  bodySha256?: string | undefined;
+  /** AEAT-provided error code on REJECTED, when present. */
+  errorCode?: string | undefined;
+  /** AEAT-indicated retry/cadence hint, when present (e.g. `TiempoEsperaEnvio`). Advisory only. */
+  retryAfterHint?: string | undefined;
 }
 
 export interface VerifactuSubmissionExecutionContext {
@@ -276,14 +282,17 @@ export interface AeatVerifactuAdapterOptions {
 export interface VerifactuResponseRedacted {
   schemaVersion: 'anclora-verifactu-response-redacted-v1';
   environment: VerifactuSubmissionEnvironment;
-  status: 'ACCEPTED' | 'REJECTED' | 'TECHNICAL_ERROR';
+  status: 'ACCEPTED' | 'ACCEPTED_WITH_ERRORS' | 'REJECTED' | 'TECHNICAL_ERROR';
   reference: string | null;
   message: string;
   submittedAt: string;
+  bodySha256?: string | undefined;
+  errorCode?: string | undefined;
+  retryAfterHint?: string | undefined;
 }
 
 export interface VerifactuSubmissionAttemptOutcome {
-  status: Extract<VerifactuSubmissionStatus, 'ACCEPTED' | 'REJECTED' | 'TECHNICAL_ERROR'>;
+  status: Extract<VerifactuSubmissionStatus, 'ACCEPTED' | 'ACCEPTED_WITH_ERRORS' | 'REJECTED' | 'TECHNICAL_ERROR'>;
   responseRedacted: VerifactuResponseRedacted;
   attemptCountIncrement: 1;
 }
@@ -329,6 +338,9 @@ export async function createVerifactuSubmissionAttempt(
         reference: result.reference,
         message: result.message,
         submittedAt,
+        bodySha256: result.bodySha256,
+        errorCode: result.errorCode,
+        retryAfterHint: result.retryAfterHint,
       },
       attemptCountIncrement: 1,
     };

@@ -70,11 +70,12 @@ describe('parseAeatVerifactuSoapResponse', () => {
       ].join(''),
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'ACCEPTED',
       reference: 'CSV-123',
       message: 'Aceptado',
     });
+    expect(result.bodySha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('normaliza una respuesta rechazada de AEAT a VerifactuSubmissionResult', () => {
@@ -90,11 +91,53 @@ describe('parseAeatVerifactuSoapResponse', () => {
       ].join(''),
     });
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       status: 'REJECTED',
       reference: 'CSV-REJECTED',
       message: 'NIF no válido',
     });
+    expect(result.bodySha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('normaliza una respuesta aceptada con errores (parcial) a ACCEPTED_WITH_ERRORS', () => {
+    const result = parseAeatVerifactuSoapResponse({
+      statusCode: 200,
+      receivedAt: '2026-07-12T10:00:00.000Z',
+      body: [
+        '<RespuestaLinea>',
+        '<EstadoRegistro>AceptadoConErrores</EstadoRegistro>',
+        '<CSV>CSV-PARTIAL</CSV>',
+        '<CodigoErrorRegistro>3000</CodigoErrorRegistro>',
+        '<DescripcionErrorRegistro>Advertencia menor</DescripcionErrorRegistro>',
+        '</RespuestaLinea>',
+      ].join(''),
+    });
+
+    expect(result).toMatchObject({
+      status: 'ACCEPTED_WITH_ERRORS',
+      reference: 'CSV-PARTIAL',
+      message: 'Advertencia menor',
+      errorCode: '3000',
+    });
+  });
+
+  it('extrae el código de error y la huella de cadencia AEAT cuando existen', () => {
+    const result = parseAeatVerifactuSoapResponse({
+      statusCode: 200,
+      receivedAt: '2026-07-12T10:00:00.000Z',
+      body: [
+        '<RespuestaLinea>',
+        '<EstadoRegistro>Incorrecto</EstadoRegistro>',
+        '<CSV>CSV-CADENCE</CSV>',
+        '<CodigoErrorRegistro>1234</CodigoErrorRegistro>',
+        '<DescripcionErrorRegistro>Límite de envíos alcanzado</DescripcionErrorRegistro>',
+        '<TiempoEsperaEnvio>60</TiempoEsperaEnvio>',
+        '</RespuestaLinea>',
+      ].join(''),
+    });
+
+    expect(result.errorCode).toBe('1234');
+    expect(result.retryAfterHint).toBe('60');
   });
 
   it('rechaza respuestas HTTP no 2xx o XML no reconocible', () => {
