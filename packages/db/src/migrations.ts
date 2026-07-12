@@ -89,7 +89,7 @@ async function reconcileLegacyRemoteBaseline(
   client: ReturnType<typeof postgres>,
   migrations: Awaited<ReturnType<typeof migrationFiles>>,
 ): Promise<void> {
-  const [{ legacyThrough0022, sifEventsExists }] = await client<{
+  const rows = await client<{
     legacyThrough0022: boolean;
     sifEventsExists: boolean;
   }[]>`
@@ -103,8 +103,12 @@ async function reconcileLegacyRemoteBaseline(
       ) AS "legacyThrough0022",
       to_regclass('public.sif_events') IS NOT NULL AS "sifEventsExists"
   `;
+  const probe = rows[0];
 
-  if (!legacyThrough0022 || sifEventsExists) return;
+  if (!probe) {
+    throw new Error('No se pudo inspeccionar el baseline de migraciones remoto');
+  }
+  if (!probe.legacyThrough0022 || probe.sifEventsExists) return;
 
   const baseline = migrations.filter(
     (migration) => migration.name <= LEGACY_BASELINE_LAST_MIGRATION,
