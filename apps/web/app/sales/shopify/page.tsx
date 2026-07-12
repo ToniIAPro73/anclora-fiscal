@@ -5,9 +5,9 @@ import { OperationsTimeline } from './timeline';
 export default function SalesShopifyPage() {
   return <AppShell>
     <PageHeader
-      eyebrow="02 / EVIDENCIA CRUZADA"
+      eyebrow="02 / FLUJO DE VENTA"
       title="Ventas Shopify"
-      description="Controla ventas, cobros, comisiones, reembolsos y liquidaciones de Shopify."
+      description="Sigue cada pedido desde el cobro y el payout hasta su tratamiento fiscal y su factura."
       backHref="/"
     />
     <OperationsTimeline />
