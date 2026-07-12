@@ -10,6 +10,7 @@ export * from './tax-identity.js';
 export * from './verifactu.js';
 export * from './verifactu-qr.js';
 export * from './verifactu-remediation.js';
+export * from './retention-report.js';
 export * from './verifactu-aeat-spec.js';
 export * from './verifactu-aeat-portal.js';
 export * from './verifactu-aeat-local-validation.js';
