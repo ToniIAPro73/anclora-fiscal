@@ -44,6 +44,8 @@ import {
 import { createFiscalConfigurationGetHandler, createFiscalConfigurationPutHandler, type FiscalConfigurationRepositoryPort } from './fiscal-configuration-controller.js';
 import { createCommercialOrdersListHandler, type CommercialOrdersRepositoryPort } from './commercial-orders-controller.js';
 import { createShopifyEvidenceLinkDecisionHandler, createShopifyEvidenceLinksListHandler, type ShopifyEvidenceLinksRepositoryPort } from './shopify-evidence-links-controller.js';
+import { createExpenseCreateHandler, createExpenseDownloadHandler, createExpensesListHandler, type ExpensesRepositoryPort } from './expenses-controller.js';
+import type { ImportMetadataCipher } from './import-preview-persistence.js';
 
 export interface UnmatchedOrder {
   id: string;
@@ -103,6 +105,8 @@ export async function buildApp(options: {
   dashboardSummaryRepository?: DashboardSummaryRepositoryPort | undefined;
   fiscalConfigurationRepository?: FiscalConfigurationRepositoryPort | undefined;
   shopifyEvidenceLinksRepository?: ShopifyEvidenceLinksRepositoryPort | undefined;
+  expensesRepository?: ExpensesRepositoryPort | undefined;
+  expenseCipher?: ImportMetadataCipher | undefined;
   authService?: AuthService;
   githubOAuthConfig?: GitHubOAuthConfig | null;
   githubFetch?: GitHubFetch;
@@ -384,6 +388,9 @@ export async function buildApp(options: {
     { preHandler: requireRole(['dashboard:read']) },
     createDashboardSummaryHandler({ repository: options.dashboardSummaryRepository }),
   );
+  app.get('/api/v1/expenses', { preHandler: requireRole(['expenses:read']) }, createExpensesListHandler(options.expensesRepository));
+  if (options.expenseCipher) app.post('/api/v1/expenses', { preHandler: requireRole(['expenses:write']) }, createExpenseCreateHandler({ repository: options.expensesRepository, storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')), cipher: options.expenseCipher }));
+  app.get('/api/v1/expenses/:id/attachment', { preHandler: requireRole(['expenses:read']) }, createExpenseDownloadHandler({ repository: options.expensesRepository, storage: options.storage ?? new FilesystemStorage(resolve(process.cwd(), 'storage')) }));
   app.get('/api/v1/fiscal-configuration', { preHandler: requireRole(['settings:read']) }, createFiscalConfigurationGetHandler(options.fiscalConfigurationRepository));
   app.put('/api/v1/fiscal-configuration', { preHandler: requireRole(['settings:write']) }, createFiscalConfigurationPutHandler(options.fiscalConfigurationRepository));
   return app;

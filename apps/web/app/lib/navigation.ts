@@ -36,6 +36,7 @@ export const navigation: NavItem[] = [
   { label: 'Reglas fiscales', href: '/tax-rules', status: 'enabled' },
   { label: 'Periodos fiscales', href: '/tax-periods', status: 'enabled' },
   { label: 'Asesoría', href: '/advisory', status: 'enabled' },
+  { label: 'Gastos', href: '/expenses', status: 'enabled' },
   { label: 'Liquidaciones KDP', href: '/settlements/kdp', status: 'comingSoon' },
   { label: 'Registros', href: '/registers', status: 'comingSoon' },
   { label: 'Configuración', href: '/settings', status: 'requiresData' },
