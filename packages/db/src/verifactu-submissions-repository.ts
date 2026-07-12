@@ -58,6 +58,13 @@ export interface ApplyVerifactuSubmissionOutcomeInput {
   outcome: VerifactuPersistedSubmissionOutcome;
 }
 
+export interface ClaimDueVerifactuSubmissionsInput {
+  now: string;
+  limit: number;
+  workerId: string;
+  leaseMs: number;
+}
+
 const EXECUTABLE_SUBMISSION_STATUSES = ['PENDING', 'RETRY_SCHEDULED'] as const;
 
 export interface VerifactuSubmissionAttemptItem {
@@ -76,6 +83,101 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
   constructor(
     private readonly db: PgDatabase<TQueryResult, typeof schema>,
   ) {}
+
+  async releaseExpiredClaims(input: { now: string }): Promise<number> {
+    const now = new Date(input.now);
+    const released = await this.db
+      .update(verifactuSubmissions)
+      .set({
+        processingLockToken: null,
+        processingLockedAt: null,
+        processingLockExpiresAt: null,
+        updatedAt: now,
+      })
+      .where(sql`${verifactuSubmissions.processingLockExpiresAt} <= ${now}`)
+      .returning({ id: verifactuSubmissions.id });
+    return released.length;
+  }
+
+  async claimDueBatch(
+    input: ClaimDueVerifactuSubmissionsInput,
+  ): Promise<VerifactuSubmissionExecutable[]> {
+    const now = new Date(input.now);
+    if (!Number.isFinite(now.getTime())) throw new Error('VERIFACTU_CLAIM_INVALID_NOW');
+    const limit = Math.max(1, Math.min(100, Math.trunc(input.limit)));
+    const leaseMs = Math.max(1_000, Math.trunc(input.leaseMs));
+    const expiresAt = new Date(now.getTime() + leaseMs);
+
+    const claimedIds = await this.db.transaction(async (transaction) => {
+      const candidates = await transaction
+        .select({ id: verifactuSubmissions.id, tenantId: verifactuSubmissions.tenantId })
+        .from(verifactuSubmissions)
+        .innerJoin(
+          integrityChainRecords,
+          eq(verifactuSubmissions.integrityRecordId, integrityChainRecords.id),
+        )
+        .innerJoin(fiscalDocuments, eq(integrityChainRecords.fiscalDocumentId, fiscalDocuments.id))
+        .where(and(
+          inArray(verifactuSubmissions.status, EXECUTABLE_SUBMISSION_STATUSES),
+          sql`(${verifactuSubmissions.status} = 'PENDING' OR ${verifactuSubmissions.nextAttemptAt} <= ${now})`,
+          sql`(${verifactuSubmissions.processingLockExpiresAt} IS NULL OR ${verifactuSubmissions.processingLockExpiresAt} <= ${now})`,
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM verifactu_submissions previous_vs
+            JOIN integrity_chain_records previous_icr
+              ON previous_vs.integrity_record_id = previous_icr.id
+            JOIN fiscal_documents previous_fd
+              ON previous_icr.fiscal_document_id = previous_fd.id
+            WHERE previous_icr.tenant_id = ${integrityChainRecords.tenantId}
+              AND previous_icr.legal_entity_id = ${integrityChainRecords.legalEntityId}
+              AND previous_icr.software_installation_number = ${integrityChainRecords.softwareInstallationNumber}
+              AND previous_vs.id <> ${verifactuSubmissions.id}
+              AND (
+                previous_fd.issued_at < ${fiscalDocuments.issuedAt}
+                OR (
+                  previous_fd.issued_at = ${fiscalDocuments.issuedAt}
+                  AND previous_vs.created_at < ${verifactuSubmissions.createdAt}
+                )
+              )
+              AND previous_vs.status NOT IN ('ACCEPTED', 'ACCEPTED_WITH_ERRORS')
+          )`,
+        ))
+        .orderBy(
+          integrityChainRecords.tenantId,
+          integrityChainRecords.legalEntityId,
+          integrityChainRecords.softwareInstallationNumber,
+          fiscalDocuments.issuedAt,
+          verifactuSubmissions.createdAt,
+        )
+        .limit(limit);
+
+      const claimed: Array<{ id: string; tenantId: string }> = [];
+      for (const candidate of candidates) {
+        const [updated] = await transaction
+          .update(verifactuSubmissions)
+          .set({
+            processingLockToken: input.workerId,
+            processingLockedAt: now,
+            processingLockExpiresAt: expiresAt,
+            updatedAt: now,
+          })
+          .where(and(
+            eq(verifactuSubmissions.id, candidate.id),
+            eq(verifactuSubmissions.tenantId, candidate.tenantId),
+            sql`(${verifactuSubmissions.processingLockExpiresAt} IS NULL OR ${verifactuSubmissions.processingLockExpiresAt} <= ${now})`,
+          ))
+          .returning({ id: verifactuSubmissions.id });
+        if (updated) claimed.push(candidate);
+      }
+      return claimed;
+    });
+
+    const executable = await Promise.all(claimedIds.map((claimed) => this.findPendingById({
+      tenantId: claimed.tenantId,
+      submissionId: claimed.id,
+    })));
+    return executable.filter((item): item is VerifactuSubmissionExecutable => item !== null);
+  }
 
   async findPendingById(input: {
     tenantId: string;
@@ -187,6 +289,9 @@ export class DrizzleVerifactuSubmissionsRepository<TQueryResult extends PgQueryR
           attemptCount: sql`${verifactuSubmissions.attemptCount} + ${input.outcome.attemptCountIncrement}`,
           nextAttemptAt: input.outcome.nextAttemptAt ? new Date(input.outcome.nextAttemptAt) : null,
           lastError: input.outcome.lastError,
+          processingLockToken: null,
+          processingLockedAt: null,
+          processingLockExpiresAt: null,
           updatedAt: new Date(),
         })
         .where(and(

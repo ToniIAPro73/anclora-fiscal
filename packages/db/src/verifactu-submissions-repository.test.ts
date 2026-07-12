@@ -122,6 +122,64 @@ async function seedSubmission(
 }
 
 describe('DrizzleVerifactuSubmissionsRepository', () => {
+  it('reclama vencidas una sola vez y recupera leases expirados', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-claim',
+      status: 'PENDING',
+    });
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+
+    const now = '2026-07-12T10:00:00.000Z';
+    const first = await repository.claimDueBatch({
+      now,
+      limit: 10,
+      workerId: 'worker-a',
+      leaseMs: 60_000,
+    });
+    const second = await repository.claimDueBatch({
+      now,
+      limit: 10,
+      workerId: 'worker-b',
+      leaseMs: 60_000,
+    });
+
+    expect(first.map((item) => item.id)).toEqual([seeded.submissionId]);
+    expect(second).toEqual([]);
+    expect(await repository.releaseExpiredClaims({
+      now: '2026-07-12T10:01:01.000Z',
+    })).toBe(1);
+    expect(await repository.claimDueBatch({
+      now: '2026-07-12T10:01:01.000Z',
+      limit: 10,
+      workerId: 'worker-b',
+      leaseMs: 60_000,
+    })).toHaveLength(1);
+  });
+
+  it('no reclama un reintento cuya cadencia aún no vence', async () => {
+    const { db, client } = createOfflineDatabase();
+    clients.push(client);
+    await migrateOfflineDatabase(client);
+    const seeded = await seedSubmission(db, {
+      slug: 'tenant-verifactu-retry-not-due',
+      status: 'RETRY_SCHEDULED',
+    });
+    await db.update(verifactuSubmissions).set({
+      nextAttemptAt: new Date('2026-07-12T12:00:00.000Z'),
+    }).where(eq(verifactuSubmissions.id, seeded.submissionId));
+
+    const repository = new DrizzleVerifactuSubmissionsRepository(db);
+    expect(await repository.claimDueBatch({
+      now: '2026-07-12T11:00:00.000Z',
+      limit: 10,
+      workerId: 'worker-a',
+      leaseMs: 60_000,
+    })).toEqual([]);
+  });
+
   it('lista submissions tenant-scoped con datos del documento fiscal y cadena', async () => {
     const { db, client } = createOfflineDatabase();
     clients.push(client);

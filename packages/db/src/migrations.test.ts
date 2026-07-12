@@ -48,6 +48,7 @@ describe('migrateOfflineDatabase', () => {
       '0023_sif_events.sql',
       '0024_fiscal_document_counterparty.sql',
       '0025_aeat_invoice_semantics.sql',
+      '0026_verifactu_submission_claims.sql',
     ]);
     expect(second).toEqual({ applied: [], skipped: first.applied });
     expect(tables.rows.map((row) => row.table_name)).toEqual(
