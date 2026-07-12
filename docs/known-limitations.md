@@ -47,6 +47,20 @@
 - SheetJS usa el tarball parcheado oficial fuera del registro npm; Dependabot no
   cubre esa fuente y la instalación depende de su disponibilidad.
 
+## Validación end-to-end (Fase 24)
+
+- `pnpm lint`, `pnpm typecheck`, `pnpm test` y `pnpm build` están en verde sobre
+  `main`.
+- `pnpm test:e2e` (Playwright) no pudo ejecutarse en este entorno: el
+  `webServer` de Playwright arranca `apps/api` con el `.env.local` local del
+  operador, y el valor de `AUTH_IDENTITIES_JSON` en ese archivo está truncado
+  (JSON incompleto), por lo que `ConfiguredIdentityProvider` falla al
+  construirse y la API no llega a escuchar. Es un problema de configuración
+  local no versionada (`.env.local` está en `.gitignore`), no un defecto de
+  código. Estado: `MANUAL_VALIDATION_PENDING` — requiere que el operador
+  corrija su `AUTH_IDENTITIES_JSON` local y vuelva a ejecutar
+  `pnpm --filter @anclora/web test:e2e`.
+
 ## Datos de aceptación
 
 Los tres exports reales pueden contener PII. Se conservan sólo en `.evidence/`
