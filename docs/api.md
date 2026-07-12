@@ -215,6 +215,14 @@ cableado → `503 PERIOD_CLOSES_REPOSITORY_UNAVAILABLE`.
 
 ### `POST /api/v1/periods/:period/vat-dossier`
 
+### `GET /api/v1/periods/:period/readiness`
+
+Requiere `periods:read`. Devuelve el semáforo fiscal `RED`, `AMBER`, `GREEN`
+o `CLOSED`, métricas tenant-scoped, razones deterministas y acciones
+recomendadas. `CLOSED` exige periodo cerrado y dossier generado.
+
+### `POST /api/v1/periods/:period/vat-dossier`
+
 Requiere `dossier:write`. Solo genera el expediente si el período está
 `CLOSED` (`409 PERIOD_NOT_CLOSED` en caso contrario). Si quedan incidencias
 bloqueantes sin aprobar, `409 BLOCKING_ISSUES_REQUIRE_APPROVAL`. Idempotente:

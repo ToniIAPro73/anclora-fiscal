@@ -22,6 +22,7 @@ import { createIssueResolveHandler, createIssuesListHandler, type IssuesReposito
 import { createFullInvoiceIssueHandler, createInvoiceBatchIssueHandler, createInvoiceDownloadHandler, createInvoiceIssueHandler, createInvoiceRectifyHandler, type FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import { createShopifySaleDetailHandler, createShopifySaleInvoiceHandler, createShopifySalesExportHandler, createShopifySalesListHandler, type ShopifySalesRepositoryPort } from './shopify-sales-controller.js';
 import { createPeriodCloseHandler, createPeriodReopenHandler, type PeriodClosesRepositoryPort } from './period-closes-controller.js';
+import { createPeriodReadinessHandler, type PeriodReadinessRepositoryPort } from './period-readiness-controller.js';
 import { createVatDossierArchiveHandler, createVatDossierGenerateHandler, createVatDossierGetHandler, type DossierIntegrityIncidentPort, type VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import { createSifEventsListHandler, createSifEventsVerifyHandler, type SifEventsRepositoryPort } from './sif-events-controller.js';
 import { createSystemAlertResolveHandler, createSystemAlertsListHandler, type SystemAlertsRepositoryPort } from './system-alerts-controller.js';
@@ -92,6 +93,7 @@ export async function buildApp(options: {
   shopifySalesRepository?: ShopifySalesRepositoryPort | undefined;
   fiscalDocumentsRepository?: FiscalDocumentsRepositoryPort | undefined;
   periodClosesRepository?: PeriodClosesRepositoryPort | undefined;
+  periodReadinessRepository?: PeriodReadinessRepositoryPort | undefined;
   vatDossiersRepository?: VatDossiersRepositoryPort | undefined;
   dossierIntegrityIncidents?: DossierIntegrityIncidentPort | undefined;
   sifEventsRepository?: SifEventsRepositoryPort | undefined;
@@ -325,6 +327,7 @@ export async function buildApp(options: {
     { preHandler: requireRole(['periods:close']) },
     createPeriodCloseHandler({ repository: options.periodClosesRepository }),
   );
+  app.get('/api/v1/periods/:period/readiness', { preHandler: requireRole(['periods:read']) }, createPeriodReadinessHandler({ repository: options.periodReadinessRepository }));
   app.post(
     '/api/v1/periods/:period/reopen',
     { preHandler: requireRole(['periods:close']) },

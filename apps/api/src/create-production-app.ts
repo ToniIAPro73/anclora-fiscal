@@ -1,5 +1,5 @@
 import { FilesystemStorage, VercelBlobStorage } from '@anclora/core/server';
-import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleShopifySalesRepository, DrizzleSifEventsRepository, DrizzleSystemAlertsRepository, DrizzleTaxDecisionsRepository, DrizzleVatDossiersRepository, DrizzleVerifactuSubmissionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
+import { createOfflineDatabase, createRemoteDatabase, DrizzleAuthAuditRepository, DrizzleCommercialOrdersRepository, DrizzleDashboardSummaryRepository, DrizzleFinancialEventsRepository, DrizzleFiscalConfigurationRepository, DrizzleFiscalDocumentsRepository, DrizzleImportPreviewRepository, DrizzleIssuesRepository, DrizzleLegalEntitiesRepository, DrizzleOperationsRepository, DrizzlePeriodClosesRepository, DrizzlePeriodReadinessRepository, DrizzleReconciliationRepository, DrizzleRoyaltyRepository, DrizzleShopifyEvidenceLinksRepository, DrizzleShopifyOrderPaymentEventsRepository, DrizzleShopifyPaymentsLedgerRepository, DrizzleShopifySalesRepository, DrizzleSifEventsRepository, DrizzleSystemAlertsRepository, DrizzleTaxDecisionsRepository, DrizzleVatDossiersRepository, DrizzleVerifactuSubmissionsRepository, ensureDevelopmentTenant, migrateOfflineDatabase } from '@anclora/db';
 import { resolve } from 'node:path';
 import { buildApp } from './build-app.js';
 import { ImportMetadataCipher, ImportPreviewPersistenceService, type FiscalPersistencePort, type ImportPreviewPersistencePort } from './import-preview-persistence.js';
@@ -12,6 +12,7 @@ import type { ReconciliationRepositoryPort } from './reconciliation-controller.j
 import type { IssuesRepositoryPort } from './issues-controller.js';
 import type { FiscalDocumentsRepositoryPort } from './fiscal-documents-controller.js';
 import type { PeriodClosesRepositoryPort } from './period-closes-controller.js';
+import type { PeriodReadinessRepositoryPort } from './period-readiness-controller.js';
 import type { VatDossiersRepositoryPort } from './vat-dossier-controller.js';
 import type { SifEventsRepositoryPort } from './sif-events-controller.js';
 import type { SystemAlertsRepositoryPort } from './system-alerts-controller.js';
@@ -71,6 +72,7 @@ export async function createProductionApp() {
   let issuesRepository: IssuesRepositoryPort;
   let fiscalDocumentsRepository: FiscalDocumentsRepositoryPort;
   let periodClosesRepository: PeriodClosesRepositoryPort;
+  let periodReadinessRepository: PeriodReadinessRepositoryPort;
   let vatDossiersRepository: VatDossiersRepositoryPort;
   let sifEventsRepository: SifEventsRepositoryPort;
   let systemAlertsRepository: SystemAlertsRepositoryPort & { open(input: { tenantId: string; severity: string; type: string; source: string; detail: Record<string, unknown>; deduplicationKey: string; eventType?: 'INTEGRITY_ERROR' | 'SUBMISSION_ERROR' | 'ANOMALY' }): Promise<unknown>; report(input: { tenantId: string; dossierId: string; period: string; expectedSha256: string; actualSha256: string }): Promise<void> };
@@ -143,6 +145,7 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
+    periodReadinessRepository = new DrizzlePeriodReadinessRepository(database.db);
     vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
     const sifRepository = new DrizzleSifEventsRepository(database.db);
     sifEventsRepository = sifRepository;
@@ -213,6 +216,7 @@ export async function createProductionApp() {
     issuesRepository = new DrizzleIssuesRepository(database.db);
     fiscalDocumentsRepository = fiscalDocumentsRepositoryForMatching;
     periodClosesRepository = new DrizzlePeriodClosesRepository(database.db);
+    periodReadinessRepository = new DrizzlePeriodReadinessRepository(database.db);
     vatDossiersRepository = new DrizzleVatDossiersRepository(database.db);
     const sifRepository = new DrizzleSifEventsRepository(database.db);
     sifEventsRepository = sifRepository;
@@ -243,6 +247,7 @@ export async function createProductionApp() {
     issuesRepository,
     fiscalDocumentsRepository,
     periodClosesRepository,
+    periodReadinessRepository,
     vatDossiersRepository,
     sifEventsRepository,
     systemAlertsRepository,

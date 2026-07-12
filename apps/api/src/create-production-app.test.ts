@@ -55,6 +55,7 @@ vi.mock('@anclora/db', () => ({
   DrizzleLegalEntitiesRepository: mocks.GenericRepository,
   DrizzleOperationsRepository: mocks.GenericRepository,
   DrizzlePeriodClosesRepository: mocks.GenericRepository,
+  DrizzlePeriodReadinessRepository: mocks.GenericRepository,
   DrizzleReconciliationRepository: mocks.GenericRepository,
   DrizzleRoyaltyRepository: mocks.GenericRepository,
   DrizzleShopifyEvidenceLinksRepository: mocks.GenericRepository,
