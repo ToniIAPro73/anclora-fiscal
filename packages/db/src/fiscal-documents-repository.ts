@@ -67,6 +67,7 @@ export type IssueInvoiceResult =
         | 'DECISION_FISCAL_NO_EMITIBLE'
         | 'COBRO_SHOPIFY_NO_CONFIRMADO'
         | 'CONFIGURACION_FISCAL_INCOMPLETA'
+        | 'SIMPLIFIED_INVOICE_LIMIT_EXCEEDED'
         | 'IMPORTE_CERO_EN_REVISION';
     };
 
@@ -77,6 +78,8 @@ export interface RectifyInvoiceInput {
   fiscalDocumentId: string;
   storage: StoragePort;
   verifactuConfig?: VerifactuRuntimeConfig;
+  verifactuSoftwareInstallationNumber?: string | undefined;
+  reason?: string | undefined;
 }
 
 export type RectifyInvoiceResult =
@@ -141,7 +144,7 @@ const RECTIFYING_DOCUMENT_TYPE = 'RECTIFICATIVA';
 const LEGACY_FULL_INVOICE_DOCUMENT_TYPE = 'FULL_INVOICE';
 const LEGACY_RECTIFYING_INVOICE_DOCUMENT_TYPE = 'RECTIFYING_INVOICE';
 const DEFAULT_VERIFACTU_SOFTWARE_INSTALLATION_NUMBER = 'LOCAL-TEST-001';
-const CURRENT_AEAT_TIPO_FACTURA_SIMPLIFICADA = 'F1';
+const CURRENT_AEAT_TIPO_FACTURA_SIMPLIFICADA = 'F2';
 
 type InvoiceNumberAllocator<TQueryResult extends PgQueryResultHKT> = Pick<
   PgDatabase<TQueryResult, typeof schema>,
@@ -160,6 +163,22 @@ interface OfficialAeatSubmissionPayloadRedactedInput {
   numSerieFactura: string;
   fechaExpedicionFactura: string;
   tipoFactura: string;
+  recipient?: { taxId: string; name: string } | null | undefined;
+  substitutedInvoices?: Array<{
+    issuerTaxId?: string | undefined;
+    documentNumber: string;
+    issuedAt: string;
+  }> | undefined;
+  rectification?: {
+    type: 'S' | 'I';
+    correctedInvoices: Array<{
+      issuerTaxId?: string | undefined;
+      documentNumber: string;
+      issuedAt: string;
+    }>;
+    correctedTaxBase: number;
+    correctedTaxAmount: number;
+  } | undefined;
   huella: string;
   huellaGeneratedAt: string;
   previousHuella: string | null;
@@ -246,6 +265,9 @@ async function insertVerifactuSubmissionDraft<TQueryResult extends PgQueryResult
           numSerieFactura: input.officialAeat.numSerieFactura,
           fechaExpedicionFactura: input.officialAeat.fechaExpedicionFactura,
           tipoFactura: input.officialAeat.tipoFactura,
+          recipient: input.officialAeat.recipient,
+          substitutedInvoices: input.officialAeat.substitutedInvoices,
+          rectification: input.officialAeat.rectification,
           huella: input.officialAeat.huella,
           huellaGeneratedAt: input.officialAeat.huellaGeneratedAt,
           previousHuella: input.officialAeat.previousHuella,
@@ -464,6 +486,15 @@ if (!issuer.taxIdentityEncrypted) {
   };
 }
 
+      const generalLimit = Number(issuer.simplifiedInvoiceGeneralLimit);
+      const specialLimit = Number(issuer.simplifiedInvoiceSpecialLimit);
+      const specialRegimeReady = issuer.simplifiedInvoiceSpecialRegimeEnabled
+        && Boolean(issuer.simplifiedInvoiceSpecialRegimeEvidence?.trim());
+      const applicableLimit = specialRegimeReady ? specialLimit : generalLimit;
+      if (!Number.isFinite(applicableLimit) || importeTotalDecision > applicableLimit) {
+        return { ok: false, reason: 'SIMPLIFIED_INVOICE_LIMIT_EXCEEDED' };
+      }
+
 let issuerTaxIdentity: string;
 
 try {
@@ -575,11 +606,8 @@ try {
       const aeatPayload = buildAeatVerifactuUnsignedXml({
         environment: 'test',
         record: recordForAeatHuella,
+        invoiceType: 'F2',
         issuer: {
-          taxId: issuerTaxIdentity,
-          name: issuer.legalName,
-        },
-        recipient: {
           taxId: issuerTaxIdentity,
           name: issuer.legalName,
         },
@@ -733,6 +761,20 @@ try {
           .limit(1);
         if (existing) return { ok: true, document: existing, alreadyIssued: true };
 
+        const [simplifiedToReplace] = await transaction
+          .select()
+          .from(fiscalDocuments)
+          .where(and(
+            eq(fiscalDocuments.tenantId, input.tenantId),
+            eq(fiscalDocuments.canonicalOperationId, input.canonicalOperationId),
+            inArray(
+              fiscalDocuments.documentType,
+              documentTypeSeriesCandidates(SIMPLIFIED_DOCUMENT_TYPE),
+            ),
+          ))
+          .limit(1);
+        const aeatInvoiceType = simplifiedToReplace ? 'F3' as const : 'F1' as const;
+
         if (!operation.sourceOrderId) {
           return { ok: false, reason: 'COBRO_SHOPIFY_NO_CONFIRMADO' };
         }
@@ -847,6 +889,7 @@ try {
             renderStorageKey: stored.key,
             renderSha256: invoice.sha256,
             counterpartyId: counterparty.id,
+            originalDocumentId: simplifiedToReplace?.id ?? null,
           })
           .returning();
         if (!document) throw new Error('No se pudo crear el documento fiscal');
@@ -893,6 +936,7 @@ try {
         const aeatPayload = buildAeatVerifactuUnsignedXml({
           environment: 'test',
           record: recordForAeatHuella,
+          invoiceType: aeatInvoiceType,
           issuer: {
             taxId: issuerTaxIdentity,
             name: issuer.legalName,
@@ -901,6 +945,11 @@ try {
             taxId: normalizedTaxIdentity,
             name: input.buyer.displayName,
           },
+          substitutedInvoices: simplifiedToReplace ? [{
+            issuerTaxId: issuerTaxIdentity.toUpperCase(),
+            documentNumber: simplifiedToReplace.number,
+            issuedAt: simplifiedToReplace.issuedAt.toISOString().slice(0, 10),
+          }] : undefined,
           previousRecord: previousOfficialRecord
             ? toAeatPreviousRecordReference(previousOfficialRecord)
             : undefined,
@@ -927,7 +976,7 @@ try {
           aeatIdEmisorFactura: issuerTaxIdentity.toUpperCase(),
           aeatNumSerieFactura: invoice.number,
           aeatFechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
-          aeatTipoFactura: 'F1',
+          aeatTipoFactura: aeatInvoiceType,
           aeatHuella: aeatPayload.chainHash,
           aeatHuellaGeneratedAt: issuedAt,
           aeatPreviousHuella: previousOfficialRecord?.huella ?? null,
@@ -947,7 +996,16 @@ try {
             idEmisorFactura: issuerTaxIdentity.toUpperCase(),
             numSerieFactura: invoice.number,
             fechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
-            tipoFactura: 'F1',
+            tipoFactura: aeatInvoiceType,
+            recipient: {
+              taxId: normalizedTaxIdentity,
+              name: input.buyer.displayName,
+            },
+            substitutedInvoices: simplifiedToReplace ? [{
+              issuerTaxId: issuerTaxIdentity.toUpperCase(),
+              documentNumber: simplifiedToReplace.number,
+              issuedAt: simplifiedToReplace.issuedAt.toISOString().slice(0, 10),
+            }] : undefined,
             huella: aeatPayload.chainHash,
             huellaGeneratedAt: issuedAt.toISOString(),
             previousHuella: previousOfficialRecord?.huella ?? null,
@@ -1235,27 +1293,84 @@ try {
         .orderBy(desc(integrityChainRecords.createdAt))
         .limit(1);
 
+      const softwareInstallationNumber = input.verifactuSoftwareInstallationNumber
+        ?? DEFAULT_VERIFACTU_SOFTWARE_INSTALLATION_NUMBER;
+      const previousOfficialRecord = await new DrizzleVerifactuChainResolutionService(
+        transaction as PgDatabase<TQueryResult, typeof schema>,
+      ).getPreviousOfficialBillingRecord({
+        tenantId: input.tenantId,
+        legalEntityId: operation.legalEntityId,
+        softwareInstallationNumber,
+      });
+
       const integrityRecord = createIntegrityRecord(
         {
           documentId: document.id,
           documentNumber: rectification.number,
-          recordType: 'ANULACION',
+          recordType: 'ALTA',
           issuedAt: issuedAt.toISOString(),
-          totalAmount: rectification.input.totalAmount,
-          taxAmount: rectification.input.taxAmount,
+          totalAmount: -Math.abs(rectification.input.totalAmount),
+          taxAmount: -Math.abs(rectification.input.taxAmount),
           ...(lastRecord ? { previousHash: lastRecord.hash } : {}),
         },
         issuedAt.toISOString(),
       );
 
+      const recordForAeatHuella = previousOfficialRecord
+        ? integrityRecord
+        : (() => {
+            const recordWithoutPreviousHash = { ...integrityRecord };
+            delete recordWithoutPreviousHash.previousHash;
+            return recordWithoutPreviousHash;
+          })();
+      const rectificationData = {
+        type: 'S' as const,
+        correctedInvoices: [{
+          issuerTaxId: issuerTaxIdentity.toUpperCase(),
+          documentNumber: original.number,
+          issuedAt: original.issuedAt.toISOString().slice(0, 10),
+        }],
+        correctedTaxBase: Number(original.taxBase),
+        correctedTaxAmount: Number(original.taxAmount),
+      };
+      const aeatPayload = buildAeatVerifactuUnsignedXml({
+        environment: 'test',
+        record: recordForAeatHuella,
+        invoiceType: 'R5',
+        issuer: { taxId: issuerTaxIdentity, name: issuer.legalName },
+        rectification: rectificationData,
+        previousRecord: previousOfficialRecord
+          ? toAeatPreviousRecordReference(previousOfficialRecord)
+          : undefined,
+        software: buildAeatSoftwareIdentityForIssuer({
+          issuerTaxIdentity,
+          issuerName: issuer.legalName,
+          installationNumber: softwareInstallationNumber,
+        }),
+        generatedAt: issuedAt.toISOString(),
+        operationDescription: input.reason ?? `Rectificación de ${original.number}`,
+        externalReference: document.id,
+      });
+
       const [storedIntegrityRecord] = await transaction.insert(integrityChainRecords).values({
         tenantId: input.tenantId,
         fiscalDocumentId: document.id,
-        recordType: 'ANULACION',
+        recordType: 'ALTA',
         canonicalPayload: integrityRecord.canonicalPayload,
         previousHash: integrityRecord.previousHash ?? null,
         hash: integrityRecord.hash,
         algorithm: integrityRecord.algorithm,
+        legalEntityId: operation.legalEntityId,
+        softwareInstallationNumber,
+        aeatIdEmisorFactura: issuerTaxIdentity.toUpperCase(),
+        aeatNumSerieFactura: rectification.number,
+        aeatFechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
+        aeatTipoFactura: 'R5',
+        aeatHuella: aeatPayload.chainHash,
+        aeatHuellaGeneratedAt: issuedAt,
+        aeatPreviousHuella: previousOfficialRecord?.huella ?? null,
+        previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+        chainStatus: previousOfficialRecord ? 'CHAINED' : 'FIRST_RECORD',
       }).returning({ id: integrityChainRecords.id });
 
       if (!storedIntegrityRecord) throw new Error('No se pudo crear el registro de integridad fiscal rectificativo');
@@ -1265,6 +1380,22 @@ try {
         integrityRecordId: storedIntegrityRecord.id,
         integrityRecord,
         config: input.verifactuConfig,
+        officialAeat: {
+          legalEntityId: operation.legalEntityId,
+          softwareInstallationNumber,
+          idEmisorFactura: issuerTaxIdentity.toUpperCase(),
+          numSerieFactura: rectification.number,
+          fechaExpedicionFactura: issuedAt.toISOString().slice(0, 10),
+          tipoFactura: 'R5',
+          rectification: rectificationData,
+          huella: aeatPayload.chainHash,
+          huellaGeneratedAt: issuedAt.toISOString(),
+          previousHuella: previousOfficialRecord?.huella ?? null,
+          previousFiscalDocumentId: previousOfficialRecord?.fiscalDocumentId ?? null,
+          previousIdEmisorFactura: previousOfficialRecord?.idEmisorFactura ?? null,
+          previousNumSerieFactura: previousOfficialRecord?.numSerieFactura ?? null,
+          previousFechaExpedicionFactura: previousOfficialRecord?.fechaExpedicionFactura ?? null,
+        },
       });
 
       await transaction.insert(auditEvents).values({

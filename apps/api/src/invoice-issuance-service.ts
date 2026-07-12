@@ -24,7 +24,8 @@ export interface InvoiceIssuanceIssueResult {
     | 'DECISION_FISCAL_NO_EMITIBLE'
     | 'COBRO_SHOPIFY_NO_CONFIRMADO'
     | 'CONFIGURACION_FISCAL_INCOMPLETA'
-    | 'IMPORTE_CERO_EN_REVISION';
+    | 'IMPORTE_CERO_EN_REVISION'
+    | 'SIMPLIFIED_INVOICE_LIMIT_EXCEEDED';
   alreadyIssued?: boolean;
 }
 
@@ -331,7 +332,8 @@ export type ManualIssuanceResult =
         | 'DECISION_FISCAL_NO_EMITIBLE'
         | 'COBRO_SHOPIFY_NO_CONFIRMADO'
         | 'CONFIGURACION_FISCAL_INCOMPLETA'
-        | 'IMPORTE_CERO_EN_REVISION';
+        | 'IMPORTE_CERO_EN_REVISION'
+        | 'SIMPLIFIED_INVOICE_LIMIT_EXCEEDED';
     }
   | { status: 'ISSUED' | 'ALREADY_ISSUED'; documentId: string };
 

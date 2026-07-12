@@ -37,7 +37,8 @@ export type IssueInvoiceResult =
         | 'DECISION_FISCAL_NO_EMITIBLE'
         | 'COBRO_SHOPIFY_NO_CONFIRMADO'
         | 'CONFIGURACION_FISCAL_INCOMPLETA'
-        | 'IMPORTE_CERO_EN_REVISION';
+        | 'IMPORTE_CERO_EN_REVISION'
+        | 'SIMPLIFIED_INVOICE_LIMIT_EXCEEDED';
     };
 
 export type RectifyInvoiceResult =
@@ -238,7 +239,8 @@ function isIssueInvoiceError(
     | 'DECISION_FISCAL_NO_EMITIBLE'
     | 'COBRO_SHOPIFY_NO_CONFIRMADO'
     | 'CONFIGURACION_FISCAL_INCOMPLETA'
-    | 'IMPORTE_CERO_EN_REVISION';
+    | 'IMPORTE_CERO_EN_REVISION'
+    | 'SIMPLIFIED_INVOICE_LIMIT_EXCEEDED';
 } {
   return !result.ok;
 }
@@ -504,6 +506,8 @@ export function createFullInvoiceIssueHandler(dependencies: {
         COBRO_SHOPIFY_NO_CONFIRMADO: 'No existe un cobro Shopify confirmado para esta operación',
         DECISION_FISCAL_NO_EMITIBLE: 'La decisión fiscal actual no permite emitir una factura',
         IMPORTE_CERO_EN_REVISION: 'Las operaciones con importe cero requieren revisión fiscal',
+        SIMPLIFIED_INVOICE_LIMIT_EXCEEDED:
+          'El importe supera el límite configurado para factura simplificada; solicite factura completa',
       };
 
       return reply.code(422).send({

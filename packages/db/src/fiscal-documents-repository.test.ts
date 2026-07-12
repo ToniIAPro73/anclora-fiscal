@@ -352,7 +352,7 @@ describe('DrizzleFiscalDocumentsRepository', () => {
       expect(chainRecords[0]?.aeatIdEmisorFactura).toBe('12345678Z');
       expect(chainRecords[0]?.aeatNumSerieFactura).toBe('FS-00001');
       expect(chainRecords[0]?.aeatFechaExpedicionFactura).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(chainRecords[0]?.aeatTipoFactura).toBe('F1');
+      expect(chainRecords[0]?.aeatTipoFactura).toBe('F2');
       expect(chainRecords[0]?.aeatHuella).toMatch(/^[A-F0-9]{64}$/);
       expect(chainRecords[0]?.aeatPreviousHuella).toBeNull();
       expect(chainRecords[0]?.previousFiscalDocumentId).toBeNull();
@@ -368,7 +368,7 @@ describe('DrizzleFiscalDocumentsRepository', () => {
           idEmisorFactura: '12345678Z',
           numSerieFactura: 'FS-00001',
           fechaExpedicionFactura: chainRecords[0]?.aeatFechaExpedicionFactura,
-          tipoFactura: 'F1',
+          tipoFactura: 'F2',
           huella: chainRecords[0]?.aeatHuella,
           previousHuella: null,
           previousFiscalDocumentId: null,
@@ -1150,7 +1150,10 @@ describe('VERI*FACTU submission drafts', () => {
     const submissions = await getTenantVerifactuSubmissions(db, tenantId);
     expect(submissions).toHaveLength(2);
     expect(submissions.map((submission) => submission.status)).toEqual(['PENDING', 'PENDING']);
-    expect(submissions.map((submission) => (submission.payloadRedacted as { recordType: string }).recordType)).toEqual(['ALTA', 'ANULACION']);
+    expect(submissions.map((submission) => (submission.payloadRedacted as { recordType: string }).recordType)).toEqual(['ALTA', 'ALTA']);
+    expect((submissions[1]?.payloadRedacted as {
+      officialAeat?: { tipoFactura?: string };
+    }).officialAeat?.tipoFactura).toBe('R5');
   });
 });
 

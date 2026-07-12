@@ -85,6 +85,22 @@ export interface OfficialAeatBillingRecordRedacted {
   numSerieFactura: string;
   fechaExpedicionFactura: string;
   tipoFactura: string;
+  recipient?: { taxId: string; name: string } | null | undefined;
+  substitutedInvoices?: Array<{
+    issuerTaxId?: string | undefined;
+    documentNumber: string;
+    issuedAt: string;
+  }> | undefined;
+  rectification?: {
+    type: 'S' | 'I';
+    correctedInvoices: Array<{
+      issuerTaxId?: string | undefined;
+      documentNumber: string;
+      issuedAt: string;
+    }>;
+    correctedTaxBase: number;
+    correctedTaxAmount: number;
+  } | undefined;
   huella: string;
   huellaGeneratedAt: string;
   previousHuella: string | null;

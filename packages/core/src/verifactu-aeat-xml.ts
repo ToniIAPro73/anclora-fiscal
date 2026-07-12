@@ -134,7 +134,7 @@ function buildRegistroAlta(
     input.invoiceType === 'F3' ? buildSubstitutedInvoices(input, issuer) : '',
     element('sum1:DescripcionOperacion', input.operationDescription ?? 'Operación registrada desde Anclora Fiscal'),
     recipient ? buildDestinatarios(recipient) : '',
-    buildDesglose(input.record),
+    buildDesglose(input.record, input.invoiceType === 'R5'),
     element('sum1:CuotaTotal', formatAmount(input.record.taxAmount)),
     element('sum1:ImporteTotal', formatAmount(input.record.totalAmount)),
     buildEncadenamiento(input, issuer),
@@ -255,10 +255,10 @@ function buildDestinatarios(recipient: AeatVerifactuPartyIdentity): string {
   ].join('');
 }
 
-function buildDesglose(record: IntegrityRecord): string {
+function buildDesglose(record: IntegrityRecord, allowNegative = false): string {
   const baseAmount = record.totalAmount - record.taxAmount;
 
-  if (!Number.isFinite(baseAmount) || baseAmount < 0) {
+  if (!Number.isFinite(baseAmount) || (!allowNegative && baseAmount < 0)) {
     throw new Error('AEAT_VERIFACTU_INVALID_AMOUNT');
   }
 
