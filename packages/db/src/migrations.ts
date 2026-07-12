@@ -6,6 +6,7 @@ import postgres from 'postgres';
 
 const DEFAULT_MIGRATIONS_FOLDER = fileURLToPath(new URL('../migrations/', import.meta.url));
 const REMOTE_MIGRATION_LOCK_ID = 1_572_921_537;
+const LEGACY_BASELINE_LAST_MIGRATION = '0022_verifactu_submission_retry_scheduling.sql';
 
 interface AppliedMigration {
   name: string;
@@ -84,6 +85,40 @@ export async function migrateOfflineDatabase(
   return result;
 }
 
+async function reconcileLegacyRemoteBaseline(
+  client: ReturnType<typeof postgres>,
+  migrations: Awaited<ReturnType<typeof migrationFiles>>,
+): Promise<void> {
+  const [{ legacyThrough0022, sifEventsExists }] = await client<{
+    legacyThrough0022: boolean;
+    sifEventsExists: boolean;
+  }[]>`
+    SELECT
+      EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'verifactu_submissions'
+          AND column_name = 'next_attempt_at'
+      ) AS "legacyThrough0022",
+      to_regclass('public.sif_events') IS NOT NULL AS "sifEventsExists"
+  `;
+
+  if (!legacyThrough0022 || sifEventsExists) return;
+
+  const baseline = migrations.filter(
+    (migration) => migration.name <= LEGACY_BASELINE_LAST_MIGRATION,
+  );
+
+  for (const migration of baseline) {
+    await client`
+      INSERT INTO "_anclora_migrations" ("name", "checksum")
+      VALUES (${migration.name}, ${migration.checksum})
+      ON CONFLICT ("name") DO NOTHING
+    `;
+  }
+}
+
 /** Applies the same immutable migration files to a remote PostgreSQL database. */
 export async function migrateRemoteDatabase(
   url: string,
@@ -100,13 +135,16 @@ export async function migrateRemoteDatabase(
           "applied_at" timestamptz NOT NULL DEFAULT now()
         )
       `);
+      const migrations = await migrationFiles(migrationsFolder);
+      await reconcileLegacyRemoteBaseline(client, migrations);
+
       const appliedRows = await client<{ name: string; checksum: string }[]>`
         SELECT "name", "checksum" FROM "_anclora_migrations"
       `;
       const known = new Map(appliedRows.map((row) => [row.name, row.checksum]));
       const result: MigrationResult = { applied: [], skipped: [] };
 
-      for (const migration of await migrationFiles(migrationsFolder)) {
+      for (const migration of migrations) {
         const appliedChecksum = known.get(migration.name);
         if (appliedChecksum) {
           if (appliedChecksum !== migration.checksum) {
