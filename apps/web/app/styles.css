@@ -1788,6 +1788,18 @@ body {
   color: var(--fiscal-muted);
   font-size: 0.78rem;
 }
+/* .evidence-panel's default 2-column grid (see line ~616) is designed for
+   the dashboard's KDP summary panel. These modifiers reuse .evidence-panel
+   for unrelated single-column flows (a wizard, a readiness form, an alert
+   card) — without this override their children get auto-placed into the
+   2-column grid instead of stacking, which stretches trailing buttons to
+   fill a whole grid row. */
+.evidence-panel.monthly-close-wizard,
+.evidence-panel.period-readiness-panel,
+.evidence-panel.sif-events-alert-card {
+  display: block;
+}
+
 .step-indicator {
   display: flex;
   gap: 10px;
