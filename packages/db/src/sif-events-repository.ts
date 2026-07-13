@@ -15,6 +15,17 @@ export interface RecordSifEventInput {
 
 export type SifEventRow = typeof sifEvents.$inferSelect;
 
+/** Postgres unique_violation (23505) on sif_events_tenant_idempotency_uq, however many layers of wrapping Drizzle/postgres.js put around the driver error. */
+function isIdempotencyKeyConflict(error: unknown): boolean {
+  for (let candidate = error; candidate; candidate = (candidate as { cause?: unknown }).cause) {
+    const code = (candidate as { code?: unknown }).code;
+    const constraint = (candidate as { constraint_name?: unknown; constraint?: unknown }).constraint_name
+      ?? (candidate as { constraint?: unknown }).constraint;
+    if (code === '23505' && constraint === 'sif_events_tenant_idempotency_uq') return true;
+  }
+  return false;
+}
+
 export interface ListSifEventsInput {
   tenantId: string;
   page: number;
@@ -37,6 +48,24 @@ export class DrizzleSifEventsRepository<TQueryResult extends PgQueryResultHKT> {
       const [existing] = await this.db.select().from(sifEvents).where(and(eq(sifEvents.tenantId, input.tenantId), eq(sifEvents.idempotencyKey, input.idempotencyKey))).limit(1);
       if (existing) return existing;
     }
+    try {
+      return await this.recordInTransaction(input);
+    } catch (error) {
+      // Check-then-insert race: two concurrent callers (e.g. two cold-started
+      // serverless instances both recording the same deployment's STARTUP
+      // event) can both pass the SELECT above before either INSERTs. The
+      // loser hits sif_events_tenant_idempotency_uq -- since the whole point
+      // of idempotencyKey is "this event was already recorded, that's fine",
+      // fetch and return the winner's row instead of throwing.
+      if (input.idempotencyKey && isIdempotencyKeyConflict(error)) {
+        const [existing] = await this.db.select().from(sifEvents).where(and(eq(sifEvents.tenantId, input.tenantId), eq(sifEvents.idempotencyKey, input.idempotencyKey))).limit(1);
+        if (existing) return existing;
+      }
+      throw error;
+    }
+  }
+
+  private recordInTransaction(input: RecordSifEventInput): Promise<SifEventRow> {
     return this.db.transaction(async (transaction) => {
       const [lastEvent] = await transaction
         .select({ hash: sifEvents.hash })
