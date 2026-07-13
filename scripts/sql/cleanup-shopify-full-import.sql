@@ -1,17 +1,30 @@
--- Limpia una importacion de pedidos Shopify desde Neon SQL.
+-- Limpia TODOS los datos Shopify de un tenant desde Neon SQL: pedidos,
+-- transacciones de pedido y movimientos/liquidaciones de Shopify Payments,
+-- en un unico script (combina el alcance de cleanup-shopify-orders-import.sql,
+-- cleanup-shopify-order-transactions-import.sql y
+-- cleanup-shopify-payments-import.sql).
 --
 -- Uso:
 -- 1. Cambia tenant_slug si necesitas otro tenant.
 -- 2. Ejecuta el script completo en Neon SQL.
 --
 -- Alcance:
--- - Borra import_jobs/import_files/import_errors/import_rows del conector de pedidos Shopify.
--- - Borra commercial_orders y order_lines Shopify creados por esa carga.
--- - Borra canonical_operations, tax_decisions, issues y fiscal_documents derivados de esos pedidos.
+-- - Borra import_jobs/import_files/import_errors/import_rows de los 6
+--   connector_id Shopify (pedidos, transacciones de pedido y payments, CSV y
+--   alias legacy).
+-- - Borra commercial_orders, order_lines, canonical_operations, tax_decisions,
+--   issues y fiscal_documents derivados de esos pedidos.
 -- - Borra la cadena VERI*FACTU de esos documentos: verifactu_submission_attempts,
 --   verifactu_submissions e integrity_chain_records (migraciones 0004/0020/0021).
--- - Borra shopify_evidence_links que referencian el pedido borrado como COMMERCIAL_ORDER.
--- - Conserva transacciones y movimientos Shopify Payments, pero elimina su enlace al pedido borrado.
+-- - Borra shopify_order_payment_events (transacciones de pedido) por completo.
+-- - Borra shopify_payments_ledger_entries, payouts y payout_allocations
+--   Shopify por completo, y financial_events legacy con source_channel='SHOPIFY'.
+-- - Borra shopify_evidence_links y matching_candidates que referencien
+--   cualquiera de las filas anteriores.
+-- - A diferencia de los 3 scripts individuales (que se limitan a desenlazar
+--   commercial_order_id cuando el pedido se borra pero las transacciones/pagos
+--   quedan fuera de su alcance), este script SI borra las transacciones y los
+--   pagos, porque los tres estan dentro de su alcance conjunto.
 -- - No borra objetos Blob; Neon SQL solo limpia la base de datos.
 
 BEGIN;
@@ -28,7 +41,11 @@ CREATE TEMP TABLE cleanup_jobs ON COMMIT DROP AS
 SELECT j.id
 FROM import_jobs j
 JOIN cleanup_tenant t ON t.tenant_id = j.tenant_id
-WHERE j.connector_id IN ('shopify-orders', 'shopify-orders-csv');
+WHERE j.connector_id IN (
+  'shopify-orders', 'shopify-orders-csv',
+  'shopify-order-transactions', 'shopify-order-transactions-csv',
+  'shopify-payments', 'shopify-csv'
+);
 
 CREATE TEMP TABLE cleanup_files ON COMMIT DROP AS
 SELECT f.id
@@ -66,11 +83,6 @@ WITH RECURSIVE docs AS (
 )
 SELECT id FROM docs;
 
-CREATE TEMP TABLE cleanup_evidence_documents ON COMMIT DROP AS
-SELECT ed.id
-FROM evidence_documents ed
-JOIN cleanup_files f ON f.id = ed.import_file_id;
-
 -- VERI*FACTU chain hanging off the fiscal_documents we're about to delete
 -- (integrity_chain_records.fiscal_document_id -> verifactu_submissions
 -- .integrity_record_id -> verifactu_submission_attempts
@@ -90,15 +102,54 @@ SELECT vsa.id
 FROM verifactu_submission_attempts vsa
 WHERE vsa.verifactu_submission_id IN (SELECT id FROM cleanup_verifactu_submissions);
 
+CREATE TEMP TABLE cleanup_order_transactions ON COMMIT DROP AS
+SELECT pe.id
+FROM shopify_order_payment_events pe
+JOIN cleanup_tenant t ON t.tenant_id = pe.tenant_id
+WHERE pe.import_file_id IN (SELECT id FROM cleanup_files)
+   OR pe.commercial_order_id IN (SELECT id FROM cleanup_orders);
+
+CREATE TEMP TABLE cleanup_ledger_entries ON COMMIT DROP AS
+SELECT le.id, le.external_payout_id
+FROM shopify_payments_ledger_entries le
+JOIN cleanup_tenant t ON t.tenant_id = le.tenant_id
+WHERE le.import_file_id IN (SELECT id FROM cleanup_files)
+   OR le.commercial_order_id IN (SELECT id FROM cleanup_orders);
+
+CREATE TEMP TABLE cleanup_payouts ON COMMIT DROP AS
+SELECT p.id
+FROM payouts p
+JOIN cleanup_tenant t ON t.tenant_id = p.tenant_id
+WHERE p.channel = 'SHOPIFY'
+  AND p.external_payout_id IN (
+    SELECT external_payout_id
+    FROM cleanup_ledger_entries
+    WHERE external_payout_id IS NOT NULL
+  );
+
+CREATE TEMP TABLE cleanup_financial_events ON COMMIT DROP AS
+SELECT fe.id
+FROM financial_events fe
+JOIN cleanup_tenant t ON t.tenant_id = fe.tenant_id
+WHERE fe.source_channel = 'SHOPIFY';
+
 -- shopify_evidence_links has no FK (left/right_evidence_id are plain uuid
--- columns, see 0015), so this never blocks a delete -- but left uncleaned it
--- leaves dangling COMMERCIAL_ORDER links pointing at a deleted order.
+-- columns, see 0015), so this never blocks a delete -- collected up front so
+-- every kind of evidence being deleted below (order, transaction, ledger
+-- entry) also has its links cleaned instead of left dangling.
 CREATE TEMP TABLE cleanup_evidence_links ON COMMIT DROP AS
 SELECT l.id
 FROM shopify_evidence_links l
 JOIN cleanup_tenant t ON t.tenant_id = l.tenant_id
-WHERE l.left_evidence_type = 'COMMERCIAL_ORDER'
-  AND l.left_evidence_id IN (SELECT id FROM cleanup_orders);
+WHERE (l.left_evidence_type = 'COMMERCIAL_ORDER' AND l.left_evidence_id IN (SELECT id FROM cleanup_orders))
+   OR (l.left_evidence_type = 'ORDER_TRANSACTION' AND l.left_evidence_id IN (SELECT id FROM cleanup_order_transactions))
+   OR (l.right_evidence_type = 'ORDER_TRANSACTION' AND l.right_evidence_id IN (SELECT id FROM cleanup_order_transactions))
+   OR (l.right_evidence_type = 'LEDGER_ENTRY' AND l.right_evidence_id IN (SELECT id FROM cleanup_ledger_entries));
+
+CREATE TEMP TABLE cleanup_evidence_documents ON COMMIT DROP AS
+SELECT ed.id
+FROM evidence_documents ed
+JOIN cleanup_files f ON f.id = ed.import_file_id;
 
 -- Cross-period VERI*FACTU chain continuity: some OTHER (not-being-deleted)
 -- integrity_chain_records row may point back at one of the fiscal_documents
@@ -149,6 +200,10 @@ WITH deleted AS (
     UNION SELECT id::text FROM cleanup_verifactu_submissions
     UNION SELECT id::text FROM cleanup_verifactu_attempts
     UNION SELECT id::text FROM cleanup_evidence_links
+    UNION SELECT id::text FROM cleanup_order_transactions
+    UNION SELECT id::text FROM cleanup_ledger_entries
+    UNION SELECT id::text FROM cleanup_payouts
+    UNION SELECT id::text FROM cleanup_financial_events
   )
   RETURNING 1
 )
@@ -182,37 +237,52 @@ WITH deleted AS (
 )
 SELECT 'canonical_operations' AS target, count(*) AS rows_deleted FROM deleted;
 
-WITH updated AS (
-  UPDATE shopify_order_payment_events
-  SET commercial_order_id = NULL
-  WHERE commercial_order_id IN (SELECT id FROM cleanup_orders)
-  RETURNING 1
-)
-SELECT 'shopify_order_payment_events_unlinked' AS target, count(*) AS rows_updated FROM updated;
-
-WITH updated AS (
-  UPDATE shopify_payments_ledger_entries
-  SET commercial_order_id = NULL
-  WHERE commercial_order_id IN (SELECT id FROM cleanup_orders)
-  RETURNING 1
-)
-SELECT 'shopify_payments_ledger_entries_unlinked' AS target, count(*) AS rows_updated FROM updated;
-
-WITH updated AS (
-  UPDATE payout_allocations
-  SET commercial_order_id = NULL
-  WHERE commercial_order_id IN (SELECT id FROM cleanup_orders)
-  RETURNING 1
-)
-SELECT 'payout_allocations_unlinked' AS target, count(*) AS rows_updated FROM updated;
-
 WITH deleted AS (
   DELETE FROM matching_candidates
   WHERE commercial_order_id IN (SELECT id FROM cleanup_orders)
+     OR financial_event_id IN (SELECT id FROM cleanup_financial_events)
   RETURNING 1
 )
 SELECT 'matching_candidates' AS target, count(*) AS rows_deleted FROM deleted;
 
+WITH deleted AS (
+  DELETE FROM shopify_order_payment_events
+  WHERE id IN (SELECT id FROM cleanup_order_transactions)
+  RETURNING 1
+)
+SELECT 'shopify_order_payment_events' AS target, count(*) AS rows_deleted FROM deleted;
+
+WITH deleted AS (
+  DELETE FROM payout_allocations
+  WHERE payout_id IN (SELECT id FROM cleanup_payouts)
+     OR commercial_order_id IN (SELECT id FROM cleanup_orders)
+  RETURNING 1
+)
+SELECT 'payout_allocations' AS target, count(*) AS rows_deleted FROM deleted;
+
+WITH deleted AS (
+  DELETE FROM payouts
+  WHERE id IN (SELECT id FROM cleanup_payouts)
+  RETURNING 1
+)
+SELECT 'payouts' AS target, count(*) AS rows_deleted FROM deleted;
+
+WITH deleted AS (
+  DELETE FROM shopify_payments_ledger_entries
+  WHERE id IN (SELECT id FROM cleanup_ledger_entries)
+  RETURNING 1
+)
+SELECT 'shopify_payments_ledger_entries' AS target, count(*) AS rows_deleted FROM deleted;
+
+WITH deleted AS (
+  DELETE FROM financial_events
+  WHERE id IN (SELECT id FROM cleanup_financial_events)
+  RETURNING 1
+)
+SELECT 'financial_events' AS target, count(*) AS rows_deleted FROM deleted;
+
+-- order_lines cascades from commercial_orders (ON DELETE CASCADE, see 0011)
+-- but is deleted explicitly first for an accurate rows_deleted count.
 WITH deleted AS (
   DELETE FROM order_lines
   WHERE commercial_order_id IN (SELECT id FROM cleanup_orders)
@@ -235,18 +305,23 @@ WITH deleted AS (
 SELECT 'evidence_documents' AS target, count(*) AS rows_deleted FROM deleted;
 
 WITH deleted AS (
+  DELETE FROM import_errors
+  WHERE import_job_id IN (SELECT id FROM cleanup_jobs)
+     OR import_row_id IN (
+       SELECT id
+       FROM import_rows
+       WHERE import_file_id IN (SELECT id FROM cleanup_files)
+     )
+  RETURNING 1
+)
+SELECT 'import_errors' AS target, count(*) AS rows_deleted FROM deleted;
+
+WITH deleted AS (
   DELETE FROM import_rows
   WHERE import_file_id IN (SELECT id FROM cleanup_files)
   RETURNING 1
 )
 SELECT 'import_rows' AS target, count(*) AS rows_deleted FROM deleted;
-
-WITH deleted AS (
-  DELETE FROM import_errors
-  WHERE import_job_id IN (SELECT id FROM cleanup_jobs)
-  RETURNING 1
-)
-SELECT 'import_errors' AS target, count(*) AS rows_deleted FROM deleted;
 
 WITH deleted AS (
   DELETE FROM import_files
@@ -265,9 +340,13 @@ SELECT 'import_jobs' AS target, count(*) AS rows_deleted FROM deleted;
 COMMIT;
 
 -- Comprobacion posterior opcional:
-SELECT 'import_jobs_shopify_orders' AS item, count(*) AS remaining
+SELECT 'import_jobs_shopify' AS item, count(*) AS remaining
 FROM import_jobs
-WHERE connector_id IN ('shopify-orders', 'shopify-orders-csv')
+WHERE connector_id IN (
+  'shopify-orders', 'shopify-orders-csv',
+  'shopify-order-transactions', 'shopify-order-transactions-csv',
+  'shopify-payments', 'shopify-csv'
+)
 UNION ALL
 SELECT 'commercial_orders_shopify', count(*)
 FROM commercial_orders
@@ -275,6 +354,20 @@ WHERE source_channel = 'SHOPIFY'
 UNION ALL
 SELECT 'canonical_operations_shopify', count(*)
 FROM canonical_operations
+WHERE source_channel = 'SHOPIFY'
+UNION ALL
+SELECT 'shopify_order_payment_events', count(*)
+FROM shopify_order_payment_events
+UNION ALL
+SELECT 'shopify_payments_ledger_entries', count(*)
+FROM shopify_payments_ledger_entries
+UNION ALL
+SELECT 'payouts_shopify', count(*)
+FROM payouts
+WHERE channel = 'SHOPIFY'
+UNION ALL
+SELECT 'financial_events_shopify', count(*)
+FROM financial_events
 WHERE source_channel = 'SHOPIFY'
 UNION ALL
 SELECT 'verifactu_submissions_orphaned', count(*)
