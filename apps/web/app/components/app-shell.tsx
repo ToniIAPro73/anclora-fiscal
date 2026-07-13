@@ -6,7 +6,13 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import medal from '../../../../packages/ui/assets/brand/anclora-fiscal-medalla-oro-transparente.png';
 import { LogoutButton } from '../logout-button';
-import { navigation, type NavPendingCounts } from '../lib/navigation';
+import {
+  navigation,
+  navGroupLabels,
+  type NavGroup,
+  type NavItem,
+  type NavPendingCounts,
+} from '../lib/navigation';
 
 const SIDEBAR_STORAGE_KEY = 'anclora-fiscal.sidebar-collapsed';
 
@@ -127,6 +133,20 @@ export function AppShell({
       item.gatedBy !== 'hasPayoutData' || resolvedHasPayoutData,
   );
 
+  const groupedNavigation = visibleNavigation.reduce<
+    Array<{ group: NavGroup; items: NavItem[] }>
+  >((groups, item) => {
+    const lastGroup = groups[groups.length - 1];
+
+    if (lastGroup?.group === item.group) {
+      lastGroup.items.push(item);
+    } else {
+      groups.push({ group: item.group, items: [item] });
+    }
+
+    return groups;
+  }, []);
+
   return (
     <main
       className={`app-shell${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}
@@ -170,59 +190,67 @@ export function AppShell({
         </div>
 
         <nav aria-label="Navegación principal">
-          {visibleNavigation.map((item) => {
-            if (item.status === 'comingSoon') {
-              return (
-                <span
-                  key={item.href}
-                  className="nav-item nav-item-disabled"
-                  aria-disabled="true"
-                  aria-label={`${item.label} — Próximamente disponible`}
-                  title={`${item.label} — Próximamente disponible`}
-                >
-                  <span className="nav-rail-token" aria-hidden="true">
-                    {getNavShortLabel(item.label)}
-                  </span>
+          {groupedNavigation.map(({ group, items }) => (
+            <div className="nav-group" key={group}>
+              <span className="nav-group-label" aria-hidden={isSidebarCollapsed}>
+                {navGroupLabels[group]}
+              </span>
 
-                  <span className="nav-label">{item.label}</span>
+              {items.map((item) => {
+                if (item.status === 'comingSoon') {
+                  return (
+                    <span
+                      key={item.href}
+                      className="nav-item nav-item-disabled"
+                      aria-disabled="true"
+                      aria-label={`${item.label} — Próximamente disponible`}
+                      title={`${item.label} — Próximamente disponible`}
+                    >
+                      <span className="nav-rail-token" aria-hidden="true">
+                        {getNavShortLabel(item.label)}
+                      </span>
 
-                  <span className="nav-badge-soon">Próx.</span>
-                </span>
-              );
-            }
+                      <span className="nav-label">{item.label}</span>
 
-            const isActive = pathname === item.href;
+                      <span className="nav-badge-soon">Próx.</span>
+                    </span>
+                  );
+                }
 
-            const pendingCount = item.pendingCountKey
-              ? pendingCounts?.[item.pendingCountKey]
-              : undefined;
+                const isActive = pathname === item.href;
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={isActive ? 'active' : ''}
-                aria-current={isActive ? 'page' : undefined}
-                aria-label={isSidebarCollapsed ? item.label : undefined}
-                title={isSidebarCollapsed ? item.label : undefined}
-              >
-                <span className="nav-rail-token" aria-hidden="true">
-                  {getNavShortLabel(item.label)}
-                </span>
+                const pendingCount = item.pendingCountKey
+                  ? pendingCounts?.[item.pendingCountKey]
+                  : undefined;
 
-                <span className="nav-label">{item.label}</span>
-
-                {pendingCount ? (
-                  <span
-                    className="nav-badge"
-                    aria-label={`${pendingCount} pendientes`}
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={isActive ? 'active' : ''}
+                    aria-current={isActive ? 'page' : undefined}
+                    aria-label={isSidebarCollapsed ? item.label : undefined}
+                    title={isSidebarCollapsed ? item.label : undefined}
                   >
-                    {pendingCount}
-                  </span>
-                ) : null}
-              </Link>
-            );
-          })}
+                    <span className="nav-rail-token" aria-hidden="true">
+                      {getNavShortLabel(item.label)}
+                    </span>
+
+                    <span className="nav-label">{item.label}</span>
+
+                    {pendingCount ? (
+                      <span
+                        className="nav-badge"
+                        aria-label={`${pendingCount} pendientes`}
+                      >
+                        {pendingCount}
+                      </span>
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="sidebar-footer">
