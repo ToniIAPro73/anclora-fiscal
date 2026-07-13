@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { StatusBadge } from '@anclora/ui';
+import { Button, StatusBadge } from '@anclora/ui';
 
 interface SifEventItem {
   id: string;
@@ -103,12 +103,16 @@ export function SifEventsPanel() {
   if (error) return <section className="sif-events-panel"><p className="import-error" role="status">{error}</p></section>;
 
   return <section className="sif-events-panel">
-    <h2>Alertas persistentes</h2>
-    {alerts.length ? <div className="reconciliation-table-panel"><table><thead><tr><th>Fecha</th><th>Severidad</th><th>Tipo</th><th>Origen</th><th>Estado</th></tr></thead><tbody>{alerts.map((alert) => <tr key={alert.id}><td>{formatDate(alert.openedAt)}</td><td><StatusBadge tone={alert.severity === 'CRITICAL' ? 'blocking' : 'warning'}>{alert.severity}</StatusBadge></td><td>{alert.type}</td><td>{alert.source}</td><td>{alert.status}</td></tr>)}</tbody></table></div> : <p className="workbench-notice">No hay alertas registradas.</p>}
-    <div className="sif-events-toolbar">
-      <button type="button" disabled={verifying} onClick={() => void verifyChain()}>
+    <article className="evidence-panel sif-events-alert-card">
+      <span className="section-index">Alertas persistentes</span>
+      <h2>Alertas persistentes</h2>
+      {alerts.length ? <div className="reconciliation-table-panel"><table><thead><tr><th>Fecha</th><th>Severidad</th><th>Tipo</th><th>Origen</th><th>Estado</th></tr></thead><tbody>{alerts.map((alert) => <tr key={alert.id}><td>{formatDate(alert.openedAt)}</td><td><StatusBadge tone={alert.severity === 'CRITICAL' ? 'blocking' : 'warning'}>{alert.severity}</StatusBadge></td><td>{alert.type}</td><td>{alert.source}</td><td>{alert.status}</td></tr>)}</tbody></table></div> : <p className="workbench-notice">No hay alertas registradas.</p>}
+    </article>
+
+    <div className="sif-events-toolbar reconciliation-actions">
+      <Button type="button" variant="secondary" disabled={verifying} onClick={() => void verifyChain()}>
         {verifying ? 'Verificando…' : 'Verificar cadena'}
-      </button>
+      </Button>
       {chainValid !== null ? (
         <StatusBadge tone={chainValid ? 'info' : 'blocking'}>
           {chainValid ? 'Cadena íntegra' : 'Cadena rota — requiere investigación'}
@@ -151,14 +155,14 @@ export function SifEventsPanel() {
     ) : null}
 
     {data && data.total > 0 ? (
-      <div className="sif-events-pagination">
-        <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+      <div className="sif-events-pagination reconciliation-actions">
+        <Button type="button" variant="ghost" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
           Anterior
-        </button>
+        </Button>
         <span>Página {page} de {totalPages}</span>
-        <button type="button" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>
+        <Button type="button" variant="ghost" disabled={page >= totalPages} onClick={() => setPage((current) => current + 1)}>
           Siguiente
-        </button>
+        </Button>
       </div>
     ) : null}
   </section>;

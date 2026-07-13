@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { FieldLabel, PageHeader } from "@anclora/ui";
+import { Button, FieldLabel, PageHeader } from "@anclora/ui";
 import { AppShell } from "../../components/app-shell";
 export default function NewExpensePage() {
   const [message, setMessage] = useState("");
@@ -37,7 +37,7 @@ export default function NewExpensePage() {
         title="Nueva factura recibida"
         backHref="/expenses"
       />
-      <form onSubmit={(event) => void submit(event)}>
+      <form onSubmit={(event) => void submit(event)} className="evidence-panel new-expense-form">
         {([
           ["supplierName", "Proveedor"],
           ["supplierTaxId", "NIF/VAT"],
@@ -51,7 +51,7 @@ export default function NewExpensePage() {
           ["categoryCode", "Categoría"],
           ["description", "Descripción"],
         ] as const).map(([name, label]) => (
-          <div key={name}>
+          <div key={name} className="field">
             <FieldLabel htmlFor={name} required={name !== "description"}>
               {label}
             </FieldLabel>
@@ -82,19 +82,21 @@ export default function NewExpensePage() {
             />
           </div>
         ))}
-        <FieldLabel htmlFor="attachment" required>
-          PDF o imagen
-        </FieldLabel>
-        <input
-          id="attachment"
-          name="attachment"
-          type="file"
-          accept="application/pdf,image/png,image/jpeg"
-          required
-        />
-        <button type="submit">Guardar factura recibida</button>
+        <div className="field">
+          <FieldLabel htmlFor="attachment" required>
+            PDF o imagen
+          </FieldLabel>
+          <input
+            id="attachment"
+            name="attachment"
+            type="file"
+            accept="application/pdf,image/png,image/jpeg"
+            required
+          />
+        </div>
+        <Button type="submit">Guardar factura recibida</Button>
       </form>
-      {message ? <p role="status">{message}</p> : null}
+      {message ? <p role="status" className="workbench-notice">{message}</p> : null}
     </AppShell>
   );
 }

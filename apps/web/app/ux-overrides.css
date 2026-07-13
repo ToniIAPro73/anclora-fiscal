@@ -134,6 +134,67 @@
 .invoice-card > .btn,
 .invoice-card > button { margin-top: 4px; }
 
+.sif-events-panel { display: grid; gap: 20px; }
+.sif-events-alert-card { padding: clamp(24px, 3.5vw, 40px); }
+.sif-events-alert-card h2 { margin: 6px 0 14px; font-size: 1.25rem; }
+.sif-events-toolbar,
+.sif-events-pagination { align-items: center; }
+.sif-events-pagination span { color: rgb(243 236 223 / 62%); font-size: 0.75rem; }
+
+.advisory-panel { display: grid; gap: 28px; }
+.advisory-period-field { max-width: 260px; }
+.advisory-quick-links-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.advisory-quick-links-grid li { min-width: 0; }
+.advisory-quick-links-grid article {
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgb(21 36 55 / 78%), rgb(10 18 29 / 76%));
+  box-shadow:
+    inset 0 0 0 1px rgb(245 239 227 / 8%),
+    inset 0 1px rgb(255 255 255 / 5%);
+}
+.advisory-quick-links-grid a {
+  color: var(--fiscal-gold);
+  font-weight: 650;
+  text-underline-offset: 4px;
+}
+.advisory-quick-links-grid span {
+  color: rgb(243 236 223 / 58%);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.advisory-download { width: fit-content; margin-top: 4px; }
+.advisory-disclaimer {
+  color: rgb(243 236 223 / 55%);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.expenses-settings-nav { margin: 0 0 24px; }
+.expenses-settings-nav a {
+  color: var(--fiscal-gold);
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-underline-offset: 4px;
+}
+
+.new-expense-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.new-expense-form > .btn { grid-column: 1 / -1; width: fit-content; }
+
 @media (max-width: 1100px) {
   .reconciliation-order-main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

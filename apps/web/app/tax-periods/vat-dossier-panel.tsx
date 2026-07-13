@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { FieldLabel, StatusBadge } from '@anclora/ui';
+import { Button, FieldLabel, StatusBadge } from '@anclora/ui';
 
 interface VatDossier {
   id: string;
@@ -91,28 +91,33 @@ export function VatDossierPanel() {
 
   return <section className="vat-dossier">
     <span className="section-index">Consultar expediente</span>
+    <h2>Expediente de IVA</h2>
     <form
       onSubmit={(event) => { event.preventDefault(); if (period.trim()) void fetchDossier(period.trim()); }}
-      className="drop-panel"
+      className="inline-lookup-form"
     >
-      <FieldLabel htmlFor="vat-period" required>Periodo</FieldLabel>
-      <input id="vat-period" name="period" placeholder="2026-T3" value={period} onChange={(event) => setPeriod(event.target.value)} required />
+      <div className="field">
+        <FieldLabel htmlFor="vat-period" required>Periodo</FieldLabel>
+        <input id="vat-period" name="period" placeholder="2026-T3" value={period} onChange={(event) => setPeriod(event.target.value)} required />
+      </div>
       <div className="dossier-actions">
-        <button disabled={busy || !period.trim()} type="submit">{busy ? 'Consultando…' : 'Consultar expediente'}</button>
-        <button disabled={busy || !period.trim()} type="button" onClick={() => void generateDossier(period.trim())}>{busy ? 'Generando…' : 'Generar expediente'}</button>
+        <Button disabled={busy || !period.trim()} type="submit">{busy ? 'Consultando…' : 'Consultar expediente'}</Button>
+        <Button variant="secondary" disabled={busy || !period.trim()} type="button" onClick={() => void generateDossier(period.trim())}>{busy ? 'Generando…' : 'Generar expediente'}</Button>
       </div>
     </form>
     {error ? <p className="import-error" role="status">{error}</p> : null}
     {notClosed ? <p className="import-error" role="status">El período no está cerrado todavía; no se puede generar un expediente de IVA hasta que exista un cierre de periodo.</p> : null}
-    {notFound ? <p role="status">No hay un periodo cerrado ni un expediente de IVA para este periodo todavía.</p> : null}
-    {dossier ? <>
+    {notFound ? <p role="status" className="workbench-notice">No hay un periodo cerrado ni un expediente de IVA para este periodo todavía.</p> : null}
+    {dossier ? <div className="vat-dossier-result">
       <StatusBadge tone="info">{statusLabels[dossier.status] ?? dossier.status}</StatusBadge>
-      <h2>Periodo {dossier.period}</h2>
-      <button type="button" disabled={downloading} onClick={() => void downloadDossier(period.trim())}>{downloading ? 'Descargando…' : 'Descargar ZIP verificado'}</button>
-      <table>
-        <thead><tr><th scope="col">Fichero</th><th scope="col">Descripción</th></tr></thead>
-        <tbody>{Object.entries(dossier.manifest).map(([file]) => <tr key={file}><td>{file}</td><td>{fileDescriptions[file] ?? 'Fichero del expediente'}</td></tr>)}</tbody>
-      </table>
-    </> : null}
+      <h3>Periodo {dossier.period}</h3>
+      <Button type="button" disabled={downloading} onClick={() => void downloadDossier(period.trim())}>{downloading ? 'Descargando…' : 'Descargar ZIP verificado'}</Button>
+      <div className="reconciliation-table-panel">
+        <table>
+          <thead><tr><th scope="col">Fichero</th><th scope="col">Descripción</th></tr></thead>
+          <tbody>{Object.entries(dossier.manifest).map(([file]) => <tr key={file}><td>{file}</td><td>{fileDescriptions[file] ?? 'Fichero del expediente'}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </div> : null}
   </section>;
 }

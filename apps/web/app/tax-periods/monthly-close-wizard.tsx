@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
-import { FieldLabel, StatusBadge } from "@anclora/ui";
+import { Button, FieldLabel, StatusBadge } from "@anclora/ui";
+
 type Readiness = {
   status: "RED" | "AMBER" | "GREEN" | "CLOSED";
   reasons: Array<{ code: string; action: string }>;
@@ -11,6 +12,7 @@ const steps = [
   "Facturación y VERI*FACTU",
   "Dossier",
 ] as const;
+
 export function MonthlyCloseWizard() {
   const [period, setPeriod] = useState("");
   const [step, setStep] = useState(0);
@@ -48,32 +50,45 @@ export function MonthlyCloseWizard() {
   const blocked = readiness?.status === "RED";
   const actionsDisabled = blocked || !period || !canAct;
   return (
-    <section className="monthly-close-wizard">
+    <section className="evidence-panel monthly-close-wizard">
+      <span className="section-index">Cierre de mes guiado</span>
       <h2>Cierre de mes guiado</h2>
-      <FieldLabel htmlFor="wizard-period" required>
-        Periodo mensual
-      </FieldLabel>
-      <input
-        id="wizard-period"
-        placeholder="2026-06"
-        value={period}
-        onChange={(event) => setPeriod(event.target.value)}
-      />
-      <button type="button" disabled={!period} onClick={() => void refresh()}>
-        Iniciar revisión
-      </button>
-      <ol className="wizard-steps">
-        {steps.map((label, index) => (
-          <li key={label}>
-            <button
-              type="button"
-              aria-current={index === step ? "step" : undefined}
-              onClick={() => setStep(index)}
+      <div className="inline-lookup-form">
+        <div className="field">
+          <FieldLabel htmlFor="wizard-period" required>
+            Periodo mensual
+          </FieldLabel>
+          <input
+            id="wizard-period"
+            placeholder="2026-06"
+            value={period}
+            onChange={(event) => setPeriod(event.target.value)}
+          />
+        </div>
+        <Button type="button" disabled={!period} onClick={() => void refresh()}>
+          Iniciar revisión
+        </Button>
+      </div>
+      <ol className="step-indicator wizard-steps" aria-label="Progreso del cierre">
+        {steps.map((label, index) => {
+          const isCurrent = index === step;
+          const isDone = index < step;
+          return (
+            <li
+              key={label}
+              className={`step${isCurrent ? " step-current" : ""}${isDone ? " step-done" : ""}`}
             >
-              {index + 1}. {label}
-            </button>
-          </li>
-        ))}
+              <button
+                type="button"
+                className="btn btn-ghost"
+                aria-current={isCurrent ? "step" : undefined}
+                onClick={() => setStep(index)}
+              >
+                {index + 1}. {label}
+              </button>
+            </li>
+          );
+        })}
       </ol>
       {readiness ? (
         <StatusBadge
@@ -88,7 +103,7 @@ export function MonthlyCloseWizard() {
           {readiness.status}
         </StatusBadge>
       ) : null}
-      <div aria-live="polite">
+      <div aria-live="polite" className="wizard-step-body">
         <h3>{steps[step]}</h3>
         {step === 0 ? (
           <p>
@@ -105,7 +120,7 @@ export function MonthlyCloseWizard() {
                 ))}
               </ul>
             ) : (
-              <p>Sin incidencias pendientes.</p>
+              <p className="workbench-notice">Sin incidencias pendientes.</p>
             )}
           </>
         ) : null}
@@ -115,7 +130,7 @@ export function MonthlyCloseWizard() {
               Previsualiza elegibles y emite de forma controlada. Los envíos los
               procesa exclusivamente la cola protegida.
             </p>
-            <button
+            <Button
               type="button"
               disabled={actionsDisabled}
               onClick={() =>
@@ -126,12 +141,12 @@ export function MonthlyCloseWizard() {
               }
             >
               Emitir elegibles
-            </button>
+            </Button>
           </>
         ) : null}
         {step === 3 ? (
           <div className="dossier-actions">
-            <button
+            <Button
               type="button"
               disabled={actionsDisabled}
               onClick={() =>
@@ -142,9 +157,10 @@ export function MonthlyCloseWizard() {
               }
             >
               Cerrar periodo
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               disabled={actionsDisabled}
               onClick={() =>
                 void execute(
@@ -154,8 +170,9 @@ export function MonthlyCloseWizard() {
               }
             >
               Generar dossier
-            </button>
+            </Button>
             <a
+              className="btn btn-ghost"
               aria-disabled={!period}
               href={
                 period
@@ -169,21 +186,22 @@ export function MonthlyCloseWizard() {
         ) : null}
       </div>
       {message ? <p role="status">{message}</p> : null}
-      <div>
-        <button
+      <div className="reconciliation-actions">
+        <Button
           type="button"
+          variant="secondary"
           disabled={step === 0}
           onClick={() => setStep((value) => value - 1)}
         >
           Anterior
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={step === steps.length - 1 || blocked || !readiness}
           onClick={() => setStep((value) => value + 1)}
         >
           Siguiente
-        </button>
+        </Button>
       </div>
     </section>
   );
