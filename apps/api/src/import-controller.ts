@@ -11,6 +11,7 @@ const EXPECTED_CONNECTOR_BY_CARD = {
   'shopify-payments': 'shopify-csv',
   'amazon-kdp-royalties': 'kdp-xlsx',
   'expenses-csv': 'expenses-csv',
+  'expenses-pdf': 'expenses-pdf',
 } as const;
 
 const ALLOWED_IMPORT_MIME_TYPES = new Set([

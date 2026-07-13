@@ -26,7 +26,7 @@ export const IMPORT_ISSUE_CODES = [
 
 export type ImportIssueCode = (typeof IMPORT_ISSUE_CODES)[number];
 
-export const IMPORT_CONNECTOR_IDS = ['shopify-orders', 'shopify-order-transactions', 'shopify-payments', 'amazon-kdp-royalties', 'expenses-csv'] as const;
+export const IMPORT_CONNECTOR_IDS = ['shopify-orders', 'shopify-order-transactions', 'shopify-payments', 'amazon-kdp-royalties', 'expenses-csv', 'expenses-pdf'] as const;
 
 export type ImportConnectorId = (typeof IMPORT_CONNECTOR_IDS)[number];
 
@@ -44,10 +44,10 @@ export const IMPORT_ISSUE_CODE_CONNECTORS: Record<ImportIssueCode, readonly Impo
   PLATFORM_VAT_ZERO_UNVALIDATED: ['shopify-payments'],
   ORDER_EVIDENCE_MISSING: ['shopify-order-transactions'],
   ORDER_TRANSACTION_STATUS_UNSUPPORTED: ['shopify-order-transactions'],
-  EXPENSE_NUMBER_MISSING: ['expenses-csv'],
-  EXPENSE_DATE_INVALID: ['expenses-csv'],
-  EXPENSE_TOTAL_INCOHERENT: ['expenses-csv'],
-  EXPENSE_CATEGORY_UNKNOWN: ['expenses-csv'],
+  EXPENSE_NUMBER_MISSING: ['expenses-csv', 'expenses-pdf'],
+  EXPENSE_DATE_INVALID: ['expenses-csv', 'expenses-pdf'],
+  EXPENSE_TOTAL_INCOHERENT: ['expenses-csv', 'expenses-pdf'],
+  EXPENSE_CATEGORY_UNKNOWN: ['expenses-csv', 'expenses-pdf'],
 };
 
 export function isImportIssueCode(value: string): value is ImportIssueCode {

@@ -1,4 +1,4 @@
-export type ConnectorId = 'shopify-orders' | 'shopify-order-transactions' | 'shopify-payments' | 'amazon-kdp-royalties' | 'expenses-csv';
+export type ConnectorId = 'shopify-orders' | 'shopify-order-transactions' | 'shopify-payments' | 'amazon-kdp-royalties' | 'expenses-csv' | 'expenses-pdf';
 
 /**
  * Job/preview status is an opaque string driven by this label map — never
@@ -82,6 +82,23 @@ export interface CommercialOrderPreview {
   discountAmount?: string;
 }
 
+export interface ExpenseDocumentPreview {
+  documentType: string;
+  issueDate: string;
+  invoiceNumber: string;
+  supplierTaxId: string;
+  supplierName: string;
+  country: string;
+  currency: string;
+  taxBase: number;
+  vatRate: number;
+  vatAmount: number;
+  total: number;
+  withholding: number;
+  category: string;
+  description: string;
+}
+
 export interface PreviewResponse {
   jobId: string;
   connector: string;
@@ -99,6 +116,7 @@ export interface PreviewResponse {
   shopifyOrders?: { orders: Array<CommercialOrderPreview & { orderName: string; financialStatus?: string; fulfillmentStatus?: string; lines: Array<{ title: string; quantity: string; unitPrice: string; discountAmount: string; subtotalAmount: string }> }> };
   shopifyOrderTransactions?: { events: Array<BuyerPreview & { orderId?: string; orderName?: string; shopifyOrderId?: string; shopifyOrderName?: string; kind: string; status: string; amount: string; currency: string; occurredAt: string; gateway?: string; paymentMethod?: string }> };
   shopifyPaymentsLedger?: { entries: Array<BuyerPreview & { orderName?: string; shopifyOrderName?: string; entryType: string; amount: string; feeAmount: string; netAmount: string; currency: string; payoutStatus: string; payoutDate?: string | null; externalPayoutId?: string | null }> };
+  expenses?: { documents: ExpenseDocumentPreview[] };
 }
 
 export interface ConfirmResponse {
