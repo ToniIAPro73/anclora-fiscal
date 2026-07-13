@@ -1040,6 +1040,13 @@ h2 {
   display: grid;
   gap: 24px;
 }
+/* .vat-dossier shares the card background of the selector above but (unlike
+   its siblings, which get horizontal padding from a page-specific wrapper)
+   never got left/right/bottom padding of its own, leaving content flush
+   against the card edges. */
+.vat-dossier {
+  padding: 54px clamp(24px, 4vw, 48px) 40px;
+}
 .timeline-summary {
   display: flex;
   flex-wrap: wrap;
